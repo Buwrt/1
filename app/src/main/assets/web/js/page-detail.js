@@ -98,7 +98,7 @@
       UI.menu('操作', acts).then(function (k) {
         if (!k) return;
         if (k === 'web') { var u = it.html_url; return window.NativeBridge && NativeBridge.openExternal ? NativeBridge.openExternal(u) : window.open(u, '_blank'); }
-        if (k === 'state') return toggleState(full, n, it);
+        if (k === 'state') return toggleState(full, n, it, isPR);
         if (k === 'labels') return pickLabels(full, n, it);
         if (k === 'assign') return pickAssignees(full, n);
         if (k === 'review') return reviewPR(full, n, it);
@@ -110,12 +110,34 @@
     document.getElementById('fab').onclick = function () { commentBox(full, n); };
   }
 
-  function toggleState(full, n, it) {
+  function toggleState(full, n, it, isPR) {
     var next = it.state === 'open' ? 'closed' : 'open';
-    window.API.patch('/repos/' + full + '/issues/' + n, { state: next }).then(function () {
+    /*
+     * 拉取请求必须走 /pulls 端点。
+     *
+     * GitHub 里 PR 确实也是一种 issue，所以 /issues/{n} 能读到它，但
+     * 「改状态」这件事在 PR 上只认 /pulls/{n} —— 用 /issues 端点去改，
+     * 服务端一律回 422 Validation Failed（而且 errors 是空的，什么都看不出来），
+     * 用户看到的就是一句不明所以的英文报错。
+     */
+    var path = '/repos/' + full + (isPR ? '/pulls/' : '/issues/') + n;
+    window.API.patch(path, { state: next }).then(function () {
       UI.toast(next === 'closed' ? '已关闭' : '已重新打开');
       window.Router.reload();
-    }).catch(function (e) { UI.toast('操作失败：' + e.message); });
+    }).catch(function (e) {
+      var m = String((e && e.message) || '未知错误');
+      /*
+       * 「重新打开」还有一种注定失败的情况：PR 的源分支已经被删掉了。
+       * GitHub 不允许重新打开这种 PR，同样回一个空的 422。
+       * 这时候再显示英文没有意义 —— 直接说清楚为什么打不开、怎么办。
+       */
+      if (m.indexOf('Validation Failed') >= 0 && next === 'open') {
+        m = isPR
+          ? '这个拉取请求重新打开不了：它的源分支多半已被删除（GitHub 不允许重新打开）'
+          : '这个议题重新打开不了：GitHub 拒绝了这次修改';
+      }
+      UI.toast('操作失败：' + m);
+    });
   }
 
   function pickLabels(full, n, it) {
@@ -284,10 +306,15 @@
       var bodies = UI.$$('.bubble-body', tl);
       var ci = 0;
       all.forEach(function (x) {
-        if (x.t === 'c') {
-          if (bodies[ci]) mountBody(bodies[ci], x.d, full);
-          ci++;
-        }
+        if (x.t !== 'c') return;
+        var box = bodies[ci];
+        ci++;
+        if (!box) return;
+        /* 一条评论渲染失败不能连累后面所有评论 —— 以前 mountBody 抛异常会
+           直接冲出这个 forEach，从出错那一条起，后面全部停在「空白气泡」上，
+           看起来就像评论凭空消失了。 */
+        try { mountBody(box, x.d, full); }
+        catch (e) { box.textContent = (x.d && x.d.body) || ''; }
       });
       window.bindHashLinks(tl);
       /* 用与 postMount 同一个入口绑（点 = 查看大图，长按 = 打开链接页）。
