@@ -1,5 +1,5 @@
-# 调试用构建工作流：构建 Debug / Release APK，并把构建日志与产物提交回仓库，
-# 方便在无法直接下载 Actions 日志/产物时排查问题。
+# 云端构建：编 Debug / Release APK，并通过 REST API 把产物与构建日志直接写回仓库
+# （绕开无法直接下载 Actions 日志/产物的限制）。
 name: Build Debug APK (log)
 
 on:
@@ -11,6 +11,11 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      OWNER: Buwrt
+      REPO: 1
+      BRANCH: main
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -40,30 +45,44 @@ jobs:
           ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee build-release.log
           echo "exit=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
 
-      - name: Collect artifacts and push
+      - name: Commit logs via API
         run: |
           set -e
-          mkdir -p ci
-          tail -n 400 build-debug.log > ci/build-debug.log 2>/dev/null || echo "no debug log" > ci/build-debug.log
-          tail -n 400 build-release.log > ci/build-release.log 2>/dev/null || echo "no release log" > ci/build-release.log
-          mkdir -p apk
-          if ls app/build/outputs/apk/debug/*.apk >/dev/null 2>&1; then
-            cp app/build/outputs/apk/debug/*.apk apk/githup-debug.apk
-            sha256sum apk/githup-debug.apk | awk '{print $1}' > apk/githup-debug.apk.sha256
-          fi
-          if ls app/build/outputs/apk/release/*.apk >/dev/null 2>&1; then
-            cp app/build/outputs/apk/release/*.apk apk/githup-release.apk
-            sha256sum apk/githup-release.apk | awk '{print $1}' > apk/githup-release.apk.sha256
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f ci/build-debug.log ci/build-release.log apk/githup-debug.apk apk/githup-debug.apk.sha256 apk/githup-release.apk apk/githup-release.apk.sha256 2>/dev/null || true
-          if git diff --cached --quiet; then
-            echo "nothing to commit"
-          else
-            git commit -m "ci: 构建日志与 APK 产物 (run ${{ github.run_number }})"
-            git push origin HEAD:main
-          fi
+          for f in build-debug.log build-release.log; do
+            [ -f "$f" ] || echo "(empty)" > "$f"
+            tail -n 400 "$f" > "tail-$f"
+            gh api -X PUT "repos/$OWNER/$REPO/contents/ci/$f" \
+              -f message="ci: 构建日志 $f (run ${GITHUB_RUN_NUMBER})" \
+              -f branch="$BRANCH" \
+              -F content=@"tail-$f" 2>/dev/null \
+              || gh api -X PUT "repos/$OWNER/$REPO/contents/ci/$f" \
+                   -f message="ci: 构建日志 $f (run ${GITHUB_RUN_NUMBER})" \
+                   -f branch="$BRANCH" \
+                   -f content="$(base64 -w0 tail-$f)"
+          done
+          echo "logs committed"
+
+      - name: Commit APKs via API
+        run: |
+          set -e
+          for pair in "debug:app/build/outputs/apk/debug:githup-debug.apk" "release:app/build/outputs/apk/release:githup-release.apk"; do
+            VARIANT=$(echo "$pair" | cut -d: -f1)
+            DIR=$(echo "$pair" | cut -d: -f2)
+            NAME=$(echo "$pair" | cut -d: -f3)
+            APK=$(ls "$DIR"/*.apk 2>/dev/null | head -1 || true)
+            if [ -z "$APK" ]; then echo "no $VARIANT apk"; continue; fi
+            echo "uploading $VARIANT: $APK ($(stat -c%s "$APK") bytes)"
+            gh api -X PUT "repos/$OWNER/$REPO/contents/apk/$NAME" \
+              -f message="ci: $VARIANT APK (run ${GITHUB_RUN_NUMBER})" \
+              -f branch="$BRANCH" \
+              -f content="$(base64 -w0 "$APK")"
+            sha256sum "$APK" | awk '{print $1}' > "$NAME.sha256"
+            gh api -X PUT "repos/$OWNER/$REPO/contents/apk/$NAME.sha256" \
+              -f message="ci: $NAME sha256" \
+              -f branch="$BRANCH" \
+              -f content="$(base64 -w0 "$NAME.sha256")"
+          done
+          echo "apks committed"
 
       - name: Upload APK artifact
         if: steps.d.outputs.exit == '0' || steps.r.outputs.exit == '0'
