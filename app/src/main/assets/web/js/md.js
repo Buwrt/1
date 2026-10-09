@@ -13,23 +13,22 @@
     code: function (a, b) {
       var code = (a && typeof a === 'object') ? a.text : a;
       var lang = (a && typeof a === 'object') ? a.lang : b;
-      var html;
-      try {
-        if (lang && window.hljs && hljs.getLanguage(lang)) {
-          html = hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
-        } else if (window.hljs) {
-          html = hljs.highlightAuto(code).value;
-        } else html = U.esc(code);
-      } catch (e) { html = U.esc(code); }
-      var lines = code.split('\n').length;
-      var gutter = '';
-      if (lines > 1 && lines < 400) {
-        for (var i = 1; i <= lines; i++) gutter += '<div>' + i + '</div>';
-      }
-      return '<pre class="md-code"' + (lang ? ' data-lang="' + U.esc(lang) + '"' : '') + '>' +
-        '<div class="code-lines">' +
-        (gutter ? '<div class="gutter">' + gutter + '</div>' : '') +
-        '<code class="hljs language-' + U.esc(lang || 'text') + '">' + html + '</code></div></pre>';
+      var lines = mdCodeLines(String(code == null ? '' : code).replace(/\n+$/, ''), lang);
+      var head = '<pre class="md-code"' + (lang ? ' data-lang="' + U.esc(lang) + '"' : '') + '>';
+      /*
+       * 行结构和代码查看器（page-repo.js）用的是同一套 .crow / .ln / .lc：
+       * 一个逻辑行一个 .crow，行号是这一行里面的 span。
+       *
+       * 以前是「左边一整列行号 div + 右边一整块 code」：行号那一列写满了
+       * 1、2、3…，代码是单独一块，两者只在行数刚好对得上时才看起来正常；
+       * 一旦某一行文字换行（目录树那种长行），列高就和代码块对不齐，
+       * 看到的就是「一堆数字竖着排、代码全被挤到下面」。
+       * 改成行内 span 之后，行号永远钉在它那一行的行首。
+       *
+       * 只有两行以上才带行号 —— 单行代码块挂一个「1」纯属噪音。
+       */
+      if (lines.length > 1 && lines.length < 400) return head + mdCodeRows(lines) + '</pre>';
+      return head + '<code class="hljs language-' + U.esc(lang || 'text') + '">' + lines[0] + '</code></pre>';
     },
     link: function (a, b, c) {
       var href = (a && typeof a === 'object') ? a.href : a;
@@ -43,7 +42,7 @@
        * 内置查看器只认 [data-zoom]，而 WebView 又没开多窗口、也没实现
        * onCreateWindow —— 点下去既不放大也不跳转，看起来就是「图片点不了」。
        * 现在不管内外链一律打上 data-zoom，点击走内置查看器。 */
-      return '<img class="md-img" src="' + U.esc(resolveImgUrl(href)) + '" alt="' + U.esc(text || '') +
+      return '<img class="md-img" src="' + U.esc(resolveImgUrl(href)) + '" alt="' + linkText(text || '') +
         '" loading="lazy" data-zoom="1">';
     },
     /* 原始 HTML：以前一律 return ''，于是 GitHub 上传的视频
@@ -538,8 +537,75 @@
       path.split('/').map(encodeURIComponent).join('/');
   }
 
+  /* ---- 代码块：高亮后按行拆分 ----
+   * 与 page-repo.js 的 splitHlLines 同一套算法：hljs 会给跨行的 token
+   * 套一层 <span>，按 \n 直接切会把标签切坏。这里逐字符走一遍，
+   * 记住当前开着几个 span，换行时先补闭合、下一行开头再补回来。 */
+  function mdCloseSpans(n) { var s = ''; for (var k = 0; k < n; k++) s += '</span>'; return s; }
+
+  function mdSplitLines(html) {
+    var lines = [], open = [], buf = '', i = 0, len = html.length;
+    while (i < len) {
+      var c = html.charAt(i);
+      if (c === '<') {
+        var end = html.indexOf('>', i);
+        if (end < 0) { buf += html.slice(i); break; }
+        var tag = html.slice(i, end + 1);
+        if (tag.charAt(1) === '/') { if (open.length) open.pop(); }
+        else if (tag.charAt(tag.length - 2) !== '/') open.push(tag);
+        buf += tag;
+        i = end + 1;
+      } else if (c === '\n') {
+        lines.push(buf + mdCloseSpans(open.length));
+        buf = open.join('');
+        i++;
+      } else { buf += c; i++; }
+    }
+    lines.push(buf + mdCloseSpans(open.length));
+    return lines;
+  }
+
+  function mdCodeLines(text, lang) {
+    var html;
+    try {
+      if (lang && window.hljs && hljs.getLanguage(lang)) {
+        html = hljs.highlight(text, { language: lang, ignoreIllegals: true }).value;
+      } else if (window.hljs && text.length < 200000) {
+        html = hljs.highlightAuto(text).value;
+      } else html = U.esc(text);
+    } catch (e) { html = U.esc(text); }
+    return mdSplitLines(html);
+  }
+
+  function mdCodeRows(lines) {
+    var h = '';
+    for (var i = 0; i < lines.length; i++) {
+      h += '<div class="crow"><span class="ln">' + (i + 1) + '</span>' +
+        '<code class="lc hljs">' + lines[i] + '</code></div>';
+    }
+    return h;
+  }
+
+  /**
+   * 链接文字要不要转义。
+   *
+   * marked 渲染 [![说明](图片)](链接) 这种「图片链接」时，会先把里面的图片
+   * 画成 <img …>，再把整段 HTML 当作链接文字传进来。
+   * 这里如果无脑 esc 一次，用户看到的就是一行
+   *     <img class="md-img" src="https://img.shields.io/badge/…">
+   * 这样的源码文本，而不是徽章 —— README 顶部那一排 shields.io 徽章
+   * 全是这种写法，于是整个「图片区」变成一堆错位的英文标签。
+   *
+   * 所以：文字已经是渲染好的内联 HTML 时原样放行。安全上不用担心，
+   * 后面 DOMPurify.sanitize 会按白名单过滤一遍。
+   */
+  function linkText(s) {
+    if (typeof s !== 'string' || !s) return '';
+    return /^\s*<(?:img|a|b|i|em|strong|code|span|br|svg)\b/i.test(s) ? s : U.esc(s);
+  }
+
   function mdLink(href, text) {
-    if (!href) return U.esc(text || '');
+    if (!href) return linkText(text || '');
     if (isVideo(href)) return videoTag(href, 'md-probe');      // 裸的视频链接 → 直接内嵌播放器
     if (ATTACH_RE.test(href)) return videoTag(href, 'md-probe'); // 无扩展名的上传附件 → 乐观当视频，失败自动降级
     /* 裸的图片链接 → 就地显示，可点开。
@@ -554,21 +620,21 @@
     if (/^https?:/i.test(href)) {
       var norm = normalizeLink(href);
       if (norm.charAt(0) === '#') {
-        return '<a href="' + U.esc(norm) + '">' + U.esc(text || href) + '</a>';
+        return '<a href="' + U.esc(norm) + '">' + linkText(text || href) + '</a>';
       }
-      return '<a href="' + U.esc(norm) + '" target="_blank" rel="noopener">' + U.esc(text || href) + '</a>';
+      return '<a href="' + U.esc(norm) + '" target="_blank" rel="noopener">' + linkText(text || href) + '</a>';
     }
-    if (/^#/.test(href)) return '<a href="' + U.esc(href) + '">' + U.esc(text || href) + '</a>';
+    if (/^#/.test(href)) return '<a href="' + U.esc(href) + '">' + linkText(text || href) + '</a>';
     /* 站内相对路径（x、./x、../x、/x）——以前这里写死 blob/HEAD 且不认
      * 「./ 开头」「/ 开头」，漏网的直接输出相对 href，就是 file:// 导航的源头之一。
      * 现在统一交给 normalizeLink：ref 用当前渲染上下文的，不再钉死 HEAD。 */
     if (window.MDContext.repo) {
       var nb = normalizeLink(href);
       if (nb && nb.charAt(0) === '#') {
-        return '<a href="' + U.esc(nb) + '">' + U.esc(text || href) + '</a>';
+        return '<a href="' + U.esc(nb) + '">' + linkText(text || href) + '</a>';
       }
     }
-    return '<a href="' + U.esc(href) + '">' + U.esc(text || href) + '</a>';
+    return '<a href="' + U.esc(href) + '">' + linkText(text || href) + '</a>';
   }
 
   function inlineExtras(src) {

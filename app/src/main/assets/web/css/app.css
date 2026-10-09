@@ -693,6 +693,13 @@ html[data-theme="dark"] .toast { background: #30363d; }
   margin: 0 0 12px; border: 1px solid var(--border-muted);
 }
 .md pre code { background: none; padding: 0; font-size: 12.5px; line-height: 1.5; }
+/* Markdown 代码块：和代码查看器共用 .crow 行结构（见 md.js 的 code renderer）。
+   行号是每一行里的 span，不是单独一列 —— 某一行文字换行时行号仍钉在行首，
+   不会退化成「左边一整列数字、代码全被挤到下面」。
+   行高必须和 .crow 的 1.6 一致，否则行号和代码会上下错开。 */
+.md pre.md-code { padding: 10px 0; background: var(--bg); line-height: 1.6; }
+.md pre.md-code > .crow .ln { background: var(--bg); }
+.md pre.md-code > code.hljs { display: block; padding: 0 14px; white-space: pre; font-size: 12.5px; line-height: 1.6; }
 .md img { max-width: 100%; border-radius: 6px; cursor: zoom-in; }
 /* 加载失败的图片：给它一个看得见的框，别只剩一块空白 */
 .md img.img-broken { min-width: 120px; min-height: 48px; border: 1px dashed var(--border); }
