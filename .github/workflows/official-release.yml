@@ -19,6 +19,7 @@ jobs:
       OWNER: Buwrt
       REPO: 1
       BRANCH: main
+      VERSION_NAME: '1.2.15'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -115,13 +116,21 @@ jobs:
           # APK + sha256（.gitignore 排除了 *.apk，这里走 API 直接写）
           apks = glob.glob("app/build/outputs/apk/release/*.apk")
           print("found:", apks)
+          VER = os.environ.get("VERSION_NAME", "1.2.15")
+          STD_NAME = f"githup-v{VER}.apk"
           for p in apks:
               d = open(p, "rb").read()
+              h = hashlib.sha256(d).hexdigest()
               name = os.path.basename(p)
               api_put(f"apk/{name}", d, f"ci: 官方签名 APK {name}")
-              api_put(f"apk/{name}.sha256",
-                      (hashlib.sha256(d).hexdigest() + "\n").encode(),
-                      f"ci: {name} sha256")
+              api_put(f"apk/{name}.sha256", (h + "\n").encode(), f"ci: {name} sha256")
+              # 同一个包再以「软件名-版本」的规范名存一份。
+              # 别人找安装包时认的是 githup-v1.2.15.apk，只有 app-release.apk
+              # 时常常被当成半成品 / 找不到。
+              if name != STD_NAME:
+                  api_put(f"apk/{STD_NAME}", d, f"ci: 官方签名安装包 {STD_NAME}")
+                  api_put(f"apk/{STD_NAME}.sha256", (h + "\n").encode(),
+                          f"ci: {STD_NAME} sha256")
 
           # 清场：密钥不留在工作区（本就是临时 runner，但多一道保险）
           import shutil
