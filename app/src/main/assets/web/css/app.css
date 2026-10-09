@@ -1,0 +1,2193 @@
+/* ============ 设计令牌 ============ */
+:root {
+  --bg: #ffffff;
+  --canvas: #f6f8fa;
+  --canvas-inset: #f6f8fa;
+  --border: #d0d7de;
+  --border-muted: #d8dee4;
+  --fg: #1f2328;
+  --fg-muted: #59636e;
+  --fg-subtle: #818b98;
+  --accent: #0969da;
+  --accent-emphasis: #0969da;
+  --accent-subtle: #ddf4ff;
+  --btn-bg: #f6f8fa;
+  --btn-bg-hover: #eef1f4;
+  --btn-border: rgba(31,35,40,0.15);
+  --btn-primary-bg: #1f883d;
+  --btn-primary-hover: #1a7f37;
+  --btn-primary-fg: #ffffff;
+  --btn-danger-fg: #cf222e;
+  --success: #1a7f37;
+  --success-emphasis: #1f883d;
+  --success-subtle: #dafbe1;
+  --danger: #cf222e;
+  --danger-subtle: #ffebe9;
+  --attention: #9a6700;
+  --attention-subtle: #fff8c5;
+  --done: #8250df;
+  --done-subtle: #fbefff;
+  --neutral-subtle: #eaeef2;
+  --neutral-emphasis: #6e7781;
+  --overlay-shadow: 0 8px 24px rgba(31,35,40,0.12);
+  --header-bg: #ffffff;
+  --tabbar-bg: #ffffff;
+  /* ⚠️ 这一版是照真机样板重做的，之前的思路错了两次，记在这免得再走回去：
+       错误一：纠结「面该多白」。把 alpha 压到 .30 → 白上加白，一片纯白。
+       错误二：纠结「面该多暗」。深色压到近黑 → 看不出是玻璃，像块黑板。
+       看样板才明白：**玻璃感不来自面的颜色，来自边缘的折射高光 + 背景的透出**。
+       样板实测：面 245~249，背景 250~253，两者色差只有 4~5 —— 面本身几乎
+       不参与「显不显眼」。真正撑起观感的是：
+         1. 边缘一圈很亮的高光（样板顶沿 254，内部 250）
+         2. 内部有自上而下的明暗渐变，不是平的
+         3. 背景内容的色彩被模糊后透出来（样板内部偏暖黄，那是背景的光晕）
+       ⚠️ 第四次修正（这次是把边缘结构整个看清楚之后重做的）。
+         前三次都把力气花在「描一圈亮边」上，怎么调都假。把样板沿径向
+         逐像素切开之后，才看清真正的结构 —— 边缘根本不是「一条亮边」，
+         而是**三段**，从外到内依次是：
+             外圈暗环（比背景暗 3~5）→ 顶部内高光（比背景亮 6）→ 主面
+         样板上沿实测（x=500 竖切）：
+             y=0..8   245→243   胶囊外的背景
+             y=9      240       ★ 外圈暗线，比背景暗 4
+             y=11     248       高光起
+             y=12..16 251→252   ★ 内高光峰，比背景亮 6
+             y=17..22 251→246   向下衰减
+             y=23+    246       主面
+         左端（y=120 横切）更说明问题：外面 229 → x=52~60 压到 **215~223**
+         → 内侧 232。**左右两端是暗的**，只有顶部是亮的。也就是说这圈
+         暗环是「玻璃厚度」造成的折射压暗，不是阴影。
+         我原来那圈 `inset 0 0 0 1px rgba(255,255,255,.8)` 四边一样亮，
+         既没有暗环、也没有方向感 —— 这就是「长条没有玻璃质感」的根因。 */
+  --nav-surface: rgba(233,237,245,.5);
+  /* 内部两层：一层向下渐弱的白色亮线（玻璃厚度），
+     一层很淡的深色罩（背景颜色很艳时给文字兜底，否则彩底上字发飘）。 */
+  --nav-inner: linear-gradient(180deg,
+      rgba(255,255,255,.34) 0%,
+      rgba(255,255,255,.15) 22%,
+      rgba(255,255,255,.05) 46%,
+      rgba(255,255,255,0) 72%,
+      rgba(12,16,24,.03) 100%),
+      linear-gradient(180deg,
+        rgba(18,22,30,.02) 0%, rgba(18,22,30,.05) 100%);
+  /* 液态高光层 —— 按样板的三段结构重建：
+       ① 外圈暗环：1px 实心暗线 + 1.5px 软扩散，四边都要，是「厚度」；
+       ② 顶部内高光：在暗环内侧再起一条亮线（打满）+ 向下衰减的光晕；
+       ③ 左右两端只给一点点内提亮（样板左右内侧 232 vs 面 246，
+          其实比面还暗，所以这里刻意压得很轻，不让它变「描边」）；
+       ④ 底部一条更弱的反光 + 暗环。 */
+  --nav-liquid:
+      inset 0 0 0 1px rgba(31,35,40,.10),
+      inset 0 0 2.5px 0 rgba(31,35,40,.07),
+      inset 0 3px 1.5px -0.5px rgba(255,255,255,1),
+      inset 0 6px 9px -2px rgba(255,255,255,.8),
+      inset 0 -2.5px 3px -1.5px rgba(255,255,255,.45),
+      inset 2px 0 3px -2.5px rgba(255,255,255,.5),
+      inset -2px 0 3px -2.5px rgba(255,255,255,.5);
+  --nav-shadow: 0 20px 44px rgba(31,35,40,.24), 0 6px 14px rgba(31,35,40,.13);
+  /* === 选中项 = 只有外圈玻璃环（用户指定）===
+     原来这里是「内圆 + 外玻璃环」两层：内圆是浅灰紫实心块（原型样板里
+     选中项确实有两层），外环是一圈近白半透明的玻璃环。
+     但两层叠在一起，在手机这块尺寸上看着就是**里面还套了一个圈**，
+     用户要的是「只有外面那圈透明的」—— 内圆不要。
+     所以内圆这一项直接置 transparent，只留 .tab-ind::before 那圈外环。
+     几何全都不用动：外环本来就是「本体向外扩 --nav-ring-inset」，
+     本体现在透明了，它的 999px 圆角仍然决定外环的形状，
+     最终视觉尺寸和原来那圈外环一模一样。 */
+  --nav-indicator: transparent;
+  --nav-indicator-edge: none;
+  --nav-ring-bg: rgba(252,252,254,.6);
+  --nav-ring-edge:
+      inset 0 2px 1.5px -0.5px rgba(255,255,255,.95),
+      inset 0 -2px 3px -1px rgba(255,255,255,.6),
+      inset 0 0 0 1px rgba(255,255,255,.75),
+      inset 0 0 2.5px 0.5px rgba(31,35,40,.06),
+      0 1px 4px rgba(31,35,40,.06);
+  /* 选中项的强调色只用在图标和文字上，不参与底栏底色 ——
+     原来把重紫铺在指示器上当底色，被误读成「深色模式」。
+     挪到字形上之后，底栏整体保持轻的，颜色反而更跳。 */
+  --nav-accent: #6a5cae;
+  --nav-sat: 2.1;
+  --skeleton: #eaeef2;
+  --code-bg: #f6f8fa;
+  --diff-add-bg: #e6ffec;
+  --diff-add-gutter: #ccffd8;
+  --diff-del-bg: #ffebe9;
+  --diff-del-gutter: #ffd7d5;
+  --diff-hunk-bg: #ddf4ff;
+  /* ⚠️ 安全区只在这里用 env() 兜底。运行时 app.js 的 applySafeInsets() 会用
+     原生量出来的**真实**状态栏/导航栏高度覆盖这两个变量。
+     为什么要覆盖：Android WebView 对 env(safe-area-inset-top) 支持不可靠，
+     多数机型返回 0 或返回「刘海高度」而不是「状态栏高度」。
+     本应用是 edge-to-edge，WebView 铺满含状态栏那一条 ——
+     拿不到高度时顶栏会被状态栏压住，标题位置就不对了。 */
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+  /* 底栏离屏幕底边的距离单独抽一条，不和 --safe-b 混着用。
+
+     ⚠️ 为什么要分开：--safe-b 是「整页底部要避开系统条多少」，底栏那一条
+     另有一层语义 —— 它要不要离开屏幕底边，**由样式形态决定**，不是由系统
+     条决定。
+       · 玻璃（glass）：本来就是浮在半空的胶囊，抬起来是设计的一部分；
+       · 朴素（classic）：语义就是「贴着屏幕底边的一条实心栏」，不该抬。
+
+     混着写的后果（「有的手机上底栏离家出走」）：classic 下 --nav-lift 是 0，
+     #tabbar 的 bottom 就等于整个 --safe-b，于是**所有误差都直接变成
+     「底栏到屏幕底边的那条缝」**。而 glass 有 14px 抬升垫着，同样的误差混在
+     悬浮感里根本看不出来 —— 所以同一个 bug 只在朴素样式下、只在部分机器上
+     看得见。详见 JsBridge.bottomInsetPx()。 */
+  --nav-bottom: var(--safe-b);
+  /* 左右安全区：横屏时刘海/挖孔在侧边，曲面屏左右本来就有弧面。
+     竖屏下恒为 0，不影响排版（用法见文件末尾「全机型适配」一节）。 */
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --appbar-h: 52px;
+  /* 胶囊本体 64 = 内衬 4 + 内容 56 + 内衬 4，与 violet_Box 的 64dp/56dp 一致 */
+  --tabbar-h: 64px;
+  --tabbar-lift: 14px;    /* 胶囊离屏幕底边的抬升 */
+  --tabbar-gutter: 16px;  /* 左右留白 */
+  --tabbar-max: 520px;    /* 平板/宽屏下不再整条拉通 */
+
+  --radius: 8px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+html[data-theme="dark"] {
+  --bg: #0d1117;
+  --canvas: #010409;
+  --canvas-inset: #010409;
+  --border: #30363d;
+  --border-muted: #21262d;
+  --fg: #e6edf3;
+  --fg-muted: #8b949e;
+  --fg-subtle: #6e7681;
+  --accent: #4493f8;
+  --accent-emphasis: #1f6feb;
+  --accent-subtle: rgba(56,139,253,0.15);
+  --btn-bg: #21262d;
+  --btn-bg-hover: #30363d;
+  --btn-border: rgba(240,246,252,0.1);
+  --btn-primary-bg: #238636;
+  --btn-primary-hover: #2ea043;
+  --btn-primary-fg: #ffffff;
+  --btn-danger-fg: #f85149;
+  --success: #3fb950;
+  --success-emphasis: #238636;
+  --success-subtle: rgba(46,160,67,0.15);
+  --danger: #f85149;
+  --danger-subtle: rgba(248,81,73,0.15);
+  --attention: #d29922;
+  --attention-subtle: rgba(210,153,34,0.15);
+  --done: #ab7df8;
+  --done-subtle: rgba(163,113,247,0.15);
+  --neutral-subtle: rgba(110,118,129,0.4);
+  --neutral-emphasis: #6e7681;
+  --overlay-shadow: 0 8px 24px rgba(1,4,9,0.6);
+  --header-bg: #010409;
+  --tabbar-bg: #010409;
+  /* 深色同样照样板重做。之前压到近黑是错的：深色下玻璃面本身没有亮度差，
+     唯一能交代「这是一块玻璃」的就是边缘折射高光和背景透出。
+     所以面取带蓝紫的深色（色相提供材质感），把重点放在高光层。 */
+  --nav-surface: rgba(26,25,38,.5);
+  --nav-inner: linear-gradient(180deg,
+      rgba(255,255,255,.11) 0%,
+      rgba(255,255,255,.04) 36%,
+      rgba(255,255,255,.01) 58%,
+      rgba(255,255,255,0) 100%),
+      linear-gradient(180deg,
+        rgba(0,0,0,.10) 0%, rgba(0,0,0,.16) 100%);
+  /* 深色下高光要更亮 —— 面暗，高光是唯一的轮廓来源 */
+  --nav-liquid:
+      inset 0 1.5px 2px -0.5px rgba(255,255,255,.4),
+      inset 0 -1.5px 2px -0.5px rgba(255,255,255,.16),
+      inset 1.5px 0 3px -1px rgba(255,255,255,.22),
+      inset -1.5px 0 3px -1px rgba(255,255,255,.22),
+      inset 0 0 0 1px rgba(255,255,255,.16),
+      inset 0 0 0 1.5px rgba(0,0,0,.35);
+  --nav-shadow: 0 22px 48px rgba(0,0,0,.72), 0 6px 16px rgba(0,0,0,.55);
+  /* 深色同浅色：只留外圈，内圆不要。
+     深色下外环是 rgba(255,255,255,.09) 的浅色薄雾 + 一圈亮边 ——
+     面本来就暗，这圈亮边就是轮廓的全部来源，去掉内圆之后它更干净。 */
+  --nav-indicator: transparent;
+  --nav-accent: #a99ce4;
+  --nav-indicator-edge: none;
+  --nav-ring-bg: rgba(255,255,255,.09);
+  --nav-ring-edge:
+      inset 0 2px 1.5px -0.5px rgba(255,255,255,.24),
+      inset 0 -2px 3px -1px rgba(255,255,255,.08),
+      inset 0 0 0 1px rgba(255,255,255,.14),
+      0 2px 6px rgba(0,0,0,.45);
+  --nav-sat: 1.5;
+  --skeleton: #21262d;
+  --code-bg: #161b22;
+  --diff-add-bg: rgba(46,160,67,0.15);
+  --diff-add-gutter: rgba(46,160,67,0.25);
+  --diff-del-bg: rgba(248,81,73,0.15);
+  --diff-del-gutter: rgba(248,81,73,0.25);
+  --diff-hunk-bg: rgba(56,139,253,0.15);
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+body {
+  margin: 0; font-family: var(--font); font-size: 14px; line-height: 1.5;
+  color: var(--fg); background: var(--canvas);
+  overscroll-behavior-y: none;
+}
+button { font-family: inherit; font-size: inherit; color: inherit; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+input, textarea, select { font-family: inherit; font-size: 16px; color: var(--fg); }
+svg { display: block; }
+
+/* ============ 启动屏 ============ */
+#splash {
+  position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 10px;
+  background: var(--bg); color: var(--fg);
+}
+.splash-logo { animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.45;transform:scale(.94)} }
+.splash-title { font-size: 20px; font-weight: 600; letter-spacing: .2px; }
+.splash-sub { font-size: 13px; color: var(--fg-muted); }
+
+/* ============ 应用骨架 ============ */
+#app { display: flex; flex-direction: column; height: 100dvh; }
+#appbar {
+  flex: none; background: var(--header-bg); border-bottom: 1px solid var(--border);
+  padding-top: var(--safe-t); position: relative; z-index: 30;
+}
+.appbar-inner { height: var(--appbar-h); display: flex; align-items: center; gap: 4px; padding: 0 6px; }
+.appbar-title {
+  flex: 1; min-width: 0; font-size: 16px; font-weight: 600; text-align: left;
+  padding-left: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.appbar-actions { display: flex; align-items: center; gap: 2px; }
+.icon-btn {
+  /* 40×40：安卓/iOS 双方规范都要求触控区不小于 44dp，这里给 40 是
+     在「52px 顶栏放得下」和「手指点得到」之间的折中。
+     之前是 36，在高分屏（魅族 20 这类 DPR≈3 的机器）上视觉只有指甲盖大。 */
+  width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: 0; border-radius: 6px; color: var(--fg-muted); cursor: pointer; flex: none;
+}
+.icon-btn:active { background: var(--btn-bg-hover); }
+.icon-btn[hidden] { display: none; }
+/* 图标按钮内的 svg 不拦截点击，保证点到图标本体也能触发按钮，
+   并且 :active 高亮作用在按钮上而不是 svg */
+.icon-btn > svg { pointer-events: none; }
+[data-close] svg { pointer-events: none; }
+.progress { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; overflow: hidden; }
+.progress-bar {
+  height: 100%; width: 40%; background: var(--accent); border-radius: 2px;
+  animation: slide 1s linear infinite;
+}
+@keyframes slide { 0%{transform:translateX(-100%)} 100%{transform:translateX(350%)} }
+
+#view {
+  flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch;
+  background: var(--canvas);
+  /* 底栏已脱离文档流悬浮，这里必须自己让出「胶囊总高 + 抬升 + 底栏离底距离」。
+     ⚠️ 最后一项必须跟 #tabbar 的 bottom 用同一个量（--nav-bottom），
+     否则 classic 下会出现「底栏贴住了底、内容却多空出一截」的错位。 */
+  padding-bottom: calc(var(--tabbar-h) + var(--nav-lift) + var(--nav-bottom) + 8px);
+}
+#view.no-tabbar { padding-bottom: 24px; }
+
+/* 悬浮胶囊底栏
+   形态对齐 violet_Box：外层 64px 胶囊（4px 内衬 + 56px 内容），内部等分 5 格，
+   选中项落在一枚滑动的胶囊指示器上。原来那条整宽、带 1px 上边框的实体底栏
+   在这里被换成脱离文档流的 fixed 胶囊，所以 #view 必须自己补上底部留白
+   （见上方 #view 规则），否则列表最后一项会被压在胶囊下面。 */
+#tabbar {
+  position: fixed; z-index: 30;
+  /* 这几个都用变量：玻璃是「悬浮胶囊」（左右留白、离底抬升、大圆角），
+     关掉之后回到「贴底实体栏」（三样全归零）。 */
+  left: max(var(--nav-gutter), env(safe-area-inset-left, 0px));
+  right: max(var(--nav-gutter), env(safe-area-inset-right, 0px));
+  bottom: calc(var(--nav-lift) + var(--nav-bottom));
+  max-width: var(--tabbar-max); margin-left: auto; margin-right: auto;
+  height: var(--tabbar-h); padding: var(--nav-pad);
+  display: flex; align-items: stretch;
+  border-radius: var(--nav-radius);
+  background: var(--nav-surface);
+  box-shadow: var(--nav-shadow), var(--nav-liquid);
+  /* 底栏整体接管横向拖动，禁掉浏览器的原生手势（否则横划会被当成滚动/缩放） */
+  touch-action: none;
+  /*
+    底栏风格开关。一层留给 glass 的取值：
+      · --nav-blur 由「底栏风格」那节按 data-nav 赋值；
+      · classic 下两者是 none / 1，等于没有玻璃。
+    ⚠️ 顺序不能换：标准属性必须写在 -webkit- 前缀**前面**。
+       倒过来的话，认标准的引擎会把前缀声明重置成 none（上一轮 #appbar 就是
+       这么把玻璃写没了），而只认前缀的老 WebView 又会丢掉模糊。
+  */
+  backdrop-filter: var(--nav-blur);
+  -webkit-backdrop-filter: var(--nav-blur);
+}
+#tabbar[hidden] { display: none; }
+/* 内部亮线：玻璃「厚度」的唯一来源，独立伪元素画在内容下面 */
+#tabbar::before {
+  content: ''; position: absolute; inset: 0; border-radius: inherit;
+  background: var(--nav-inner); pointer-events: none;
+}
+/* 指示器 —— 从「一层色块」改成「两个同心圆」，这是对着样板放大图才看出来的。
+   ⚠️ 为什么之前一直不像玻璃：
+      样板里选中项其实**不是一个圆，是两层**：
+        外层：一圈近白半透明的玻璃环（实测 253~254，比长条面 234 亮近 20），
+              它比长条本身更凸出，上下都顶出长条的边界；
+        内层：一块浅灰紫的实心圆（实测 233，带 R-B=-4 的冷紫调），装在外环里。
+      我原来只画了「内层那个圆」（一块浅灰/近白色块），所以就只是
+      「底栏上贴了个浅色圆角块」——纯色块自然没有玻璃质感。
+      把外环补上之后，内圆是被一圈亮玻璃包着的，玻璃感才立得住。
+
+   具体做法：外层用伪元素 ::before 撑到 -6px（比内容区更高更宽），
+   内层是本体的 background。
+      宽度仍是 (总宽 - 8px) / 格数 —— 与 violet_Box 的 (totalWidthPx - 8dp)/count 同源，
+      只有外层额外向外扩 6px。 */
+.tab-ind {
+  position: absolute; top: 4px; bottom: 4px; left: 4px;
+  width: calc((100% - 8px) / var(--tab-count, 5));
+  border-radius: 999px;
+  background: var(--nav-indicator);
+  box-shadow: var(--nav-indicator-edge);
+  transition: transform .44s cubic-bezier(.2,.9,.2,1), opacity .18s ease;
+  pointer-events: none;
+  will-change: transform;
+}
+/* 外层玻璃环：向外扩 6px，负 inset 让它在两个方向上同时超出本体，
+   得到样板那种「圆头比长条更高」的凸出感。 */
+.tab-ind::before {
+  content: ''; position: absolute; inset: calc(-1 * var(--nav-ring-inset));
+  border-radius: 999px;
+  background: var(--nav-ring-bg);
+  box-shadow: var(--nav-ring-edge);
+  pointer-events: none;
+}
+.tab-ind.idle { opacity: 0; }
+/* 拖动中：位移由 JS 逐帧直写，绝不能带过渡，否则指示器会「追着手指跑」而不是贴着手指 */
+#tabbar.dragging .tab-ind { transition: none; }
+.tab {
+  flex: 1 1 0; min-width: 0; position: relative;
+  background: none; border: 0; padding: 0 2px; height: 100%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  color: var(--fg-muted); cursor: pointer; -webkit-user-select: none; user-select: none;
+  transition: color .22s ease;
+  /* 手指在底栏上横划时，不能被浏览器当成选中/拖拽/原生滚动，否则会打断跟手拖动 */
+  -webkit-user-drag: none; touch-action: none;
+}
+/* 选中态靠「强调色 + 加重」表达，不再靠白字压深紫底。
+   样板 1 就是绿色图标 + 绿色文字的写法，浅色底上照样清楚。 */
+.tab.active { color: var(--nav-accent); font-weight: 600; }
+.tab-ico { height: 22px; display: flex; align-items: center; transition: transform .3s cubic-bezier(.2,.9,.2,1); }
+.tab-ico svg { width: 22px; height: 22px; }
+.tab-label { font-size: 10px; line-height: 1; transition: transform .3s cubic-bezier(.2,.9,.2,1); }
+/* 按压反馈：violet_Box 用 pressProgress 弹簧做挤压，这里用 scale 近似 */
+.tab.active .tab-ico { transform: translateY(-1px); }
+.tab:active .tab-ico { transform: scale(.86); }
+.tab:active .tab-label { transform: scale(.94); }
+.badge {
+  position: absolute; top: 5px; left: 50%; margin-left: 7px; min-width: 16px; height: 16px;
+  padding: 0 4px; border-radius: 8px; background: var(--danger); color: #fff;
+  font-size: 10px; font-style: normal; line-height: 16px; text-align: center; font-weight: 600;
+}
+.badge[hidden] { display: none; }
+.fab {
+  /* 贴着底栏上沿，跟 #tabbar 用同一套量 */
+  position: fixed; right: 16px; bottom: calc(var(--tabbar-h) + var(--nav-lift) + var(--nav-bottom) + 12px); z-index: 25;
+  width: 52px; height: 52px; border-radius: 26px; border: 0; background: var(--btn-primary-bg);
+  color: #fff; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 12px rgba(31,35,40,.28); cursor: pointer;
+}
+.fab[hidden] { display: none; }
+.fab:active { transform: scale(.94); }
+
+/* ============ 通用块 ============ */
+.page { padding: 8px 0 4px; }
+.section { margin: 0 0 12px; }
+.section-title {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 10px 14px 6px; font-size: 12px; font-weight: 600; color: var(--fg-muted);
+  text-transform: none;
+}
+.card {
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+  margin: 0 12px 12px; overflow: hidden;
+}
+.card.flat { border-radius: 0; margin-left: 0; margin-right: 0; border-left: 0; border-right: 0; }
+.list { background: var(--bg); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.list-row {
+  display: flex; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border-muted);
+  background: var(--bg); width: 100%; text-align: left; border-left: 0; border-right: 0; border-top: 0;
+  cursor: pointer; align-items: flex-start;
+}
+.list-row:last-child { border-bottom: 0; }
+.list-row:active { background: var(--btn-bg-hover); }
+.list-row.static { cursor: default; }
+.list-row.static:active { background: var(--bg); }
+.row-main { flex: 1; min-width: 0; display: block; }
+.row-main > * { display: block; }
+.row-title { font-weight: 600; word-break: break-word; }
+.row-title a { color: var(--fg); }
+.row-desc { color: var(--fg-muted); font-size: 13px; margin-top: 2px; word-break: break-word; }
+.row-meta { display: flex; flex-wrap: wrap; gap: 10px; color: var(--fg-muted); font-size: 12px; margin-top: 6px; align-items: center; }
+.row-meta > span { display: inline-flex; align-items: center; gap: 3px; }
+/* 行尾的操作区（如「收藏」）。list-row 是 align-items: flex-start ——
+   那是给多行文本准备的（标题在上、描述在下时不能把标题顶到中间），
+   但行尾这个按钮只有一行高，跟着顶部对齐就会悬在半空，所以自己居中。 */
+.row-side { flex: none; display: flex; align-items: center; gap: 6px; color: var(--fg-muted); align-self: center; }
+
+/* ============ 按钮 ============ */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 6px 12px; border-radius: 6px; border: 1px solid var(--btn-border);
+  background: var(--btn-bg); color: var(--fg); font-size: 14px; font-weight: 500;
+  cursor: pointer; min-height: 32px; white-space: nowrap;
+  max-width: 100%; overflow: hidden;
+}
+/* 允许长文本按钮换行（如消息、提示中的长文案） */
+.btn.wrap { white-space: normal; text-align: left; word-break: break-word; }
+.btn .ellip { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn:active { background: var(--btn-bg-hover); }
+.btn.primary { background: var(--btn-primary-bg); border-color: rgba(31,35,40,.15); color: var(--btn-primary-fg); }
+.btn.primary:active { background: var(--btn-primary-hover); }
+.btn.danger { color: var(--btn-danger-fg); }
+.btn.block { display: flex; width: 100%; }
+.btn.sm { padding: 3px 8px; min-height: 26px; font-size: 12px; }
+.btn.lg { padding: 10px 16px; min-height: 44px; font-size: 15px; }
+.btn[disabled] { opacity: .55; pointer-events: none; }
+.btn-group { display: flex; gap: 8px; }
+.btn-group .btn { flex: 1; }
+
+.seg { display: flex; background: var(--btn-bg); border: 1px solid var(--btn-border); border-radius: 6px; overflow: hidden; }
+.seg button {
+  flex: 1; padding: 6px 8px; background: none; border: 0; border-right: 1px solid var(--border-muted);
+  font-size: 13px; color: var(--fg-muted); cursor: pointer; min-height: 32px;
+  /* ⚠️ 不能省。排序那一栏（仓库 / 我的 Star）是「排序段控件 + 收藏夹段控件」
+     并排一行，按钮多、字也长。省掉这句，窄屏上 flex 会把按钮压窄，
+     中文就折成两行 —— 「收藏夹」竖着排成三个字，看着像坏了。
+     加了它按钮只会被撑开、不再折行，撑不下时交给外层 .filterbar 横向滑。 */
+  white-space: nowrap;
+}
+.seg button:last-child { border-right: 0; }
+/* 排序栏：段控件 + 后面的操作按钮并排一行，谁都不许换行。
+   撑不下时横向滑动（滚动条隐藏），而不是把文字折断或者挤到下一行。 */
+.filterbar {
+  display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; -ms-overflow-style: none;
+}
+.filterbar::-webkit-scrollbar { display: none; }
+.filterbar > .seg { flex: none; }
+.filterbar > .btn { flex: none; }
+.seg button.active { background: var(--bg); color: var(--fg); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--border); font-size: 12px; color: var(--fg-muted); background: var(--bg);
+}
+.chip.active { background: var(--accent-emphasis); border-color: var(--accent-emphasis); color: #fff; }
+.chips { display: flex; gap: 6px; overflow-x: auto; padding: 8px 12px; scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chips .chip { flex: none; white-space: nowrap; }
+
+/* 搜索结果页：排序说明 / 实际搜索式 */
+.fnote {
+  display: flex; align-items: center; gap: 5px; padding: 6px 12px;
+  font-size: 12px; color: var(--fg-muted); background: var(--bg-subtle, var(--bg));
+  border-bottom: 1px solid var(--border-muted);
+}
+.fnote .mono { word-break: break-all; }
+.fnote svg { flex: none; }
+
+/* 筛选面板：一组可选值 */
+.ffield { padding: 4px 12px 8px; border-top: 1px solid var(--border-muted); }
+.ffield > label {
+  display: block; font-size: 12px; font-weight: 600; color: var(--fg-muted); padding: 6px 0 0;
+}
+.ffield .chips { padding: 4px 0 0; }
+
+.label {
+  display: inline-block; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 500;
+  line-height: 18px; border: 1px solid transparent;
+}
+
+.input, .textarea, .select {
+  width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--fg); outline: none;
+}
+.input:focus, .textarea:focus { border-color: var(--accent-emphasis); box-shadow: 0 0 0 3px var(--accent-subtle); }
+.textarea { min-height: 120px; resize: vertical; font-family: var(--mono); font-size: 13px; line-height: 1.6; }
+.field { margin: 0 0 14px; }
+.field > label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.field .hint { font-size: 12px; color: var(--fg-muted); margin-top: 6px; }
+
+/* 令牌输入框：内嵌明文/隐藏切换按钮 */
+.tk-wrap { position: relative; display: flex; align-items: center; }
+.tk-wrap .input { padding-right: 40px; font-family: var(--mono); font-size: 13px; letter-spacing: 0.2px; }
+.tk-eye {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 30px; padding: 0;
+  background: none; border: 0; border-radius: 6px;
+  color: var(--fg-muted); cursor: pointer;
+}
+.tk-eye.on { color: var(--accent); }
+.tk-eye:active { background: var(--btn-bg); }
+
+/* ============ 头像 ============ */
+.avatar { border-radius: 50%; flex: none; background: var(--skeleton); display: block; }
+.avatar.sq { border-radius: 6px; }
+.av-20 { width: 20px; height: 20px; } .av-24 { width: 24px; height: 24px; }
+.av-32 { width: 32px; height: 32px; } .av-40 { width: 40px; height: 40px; }
+.av-48 { width: 48px; height: 48px; } .av-64 { width: 64px; height: 64px; }
+.av-80 { width: 80px; height: 80px; }
+
+/* ============ 状态徽章 ============ */
+.state {
+  display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; color: #fff;
+}
+.state.open { background: var(--success-emphasis); }
+.state.closed { background: var(--done); }
+.state.merged { background: var(--done); }
+.state.draft { background: var(--neutral-emphasis); }
+.state.reopened { background: var(--success-emphasis); }
+
+/* ============ 空状态 / 加载 ============ */
+.empty { padding: 48px 24px; text-align: center; color: var(--fg-muted); }
+.empty svg { margin: 0 auto 12px; opacity: .5; }
+.empty .t { font-size: 16px; font-weight: 600; color: var(--fg); margin-bottom: 6px; }
+.empty .d { font-size: 13px; }
+.skel { background: var(--skeleton); border-radius: 6px; animation: shimmer 1.4s infinite linear; }
+@keyframes shimmer { 0%{opacity:1} 50%{opacity:.55} 100%{opacity:1} }
+.skel-row { height: 16px; margin: 10px 14px; }
+.skel-row.w60 { width: 60%; } .skel-row.w40 { width: 40%; } .skel-row.w80 { width: 80%; }
+.loadmore { padding: 14px; text-align: center; color: var(--fg-muted); font-size: 13px; }
+.spinner {
+  width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent);
+  border-radius: 50%; animation: spin .7s linear infinite; margin: 0 auto;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ============ 提示条 ============ */
+#toast-root { position: fixed; left: 0; right: 0; bottom: calc(var(--tabbar-h) + var(--nav-lift) + var(--nav-bottom) + 12px); z-index: 200; pointer-events: none; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 0 24px; }
+.toast {
+  background: #1f2328; color: #fff; padding: 10px 16px; border-radius: 8px; font-size: 13px;
+  max-width: 100%; box-shadow: var(--overlay-shadow); animation: rise .22s ease-out;
+}
+html[data-theme="dark"] .toast { background: #30363d; }
+/* 确认类提示（如「您已是最新版本」）：多个绿勾，其余行为与普通提示一致 */
+.toast-ok { display: inline-flex; align-items: center; gap: 6px; padding-left: 13px; }
+.toast-ok .toast-ico { display: inline-flex; align-items: center; color: #3fb950; flex: 0 0 auto; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* ============ 底部弹层 ============ */
+/*
+  --kb 是键盘占用的高度（由 app.js 的键盘感知逻辑写入）。
+  Android 上键盘弹出时窗口会被 adjustPan 上移 / 视口被压缩，弹层若仍贴在
+  视口底部就会被键盘顶出屏幕，输入框看不见。这里把弹层整体抬到键盘之上，
+  并用 --vvh 兜底（visualViewport 高度）。
+*/
+#sheet-root { position: fixed; inset: 0; z-index: 150; display: none; }
+#sheet-root.show { display: block; }
+.sheet-mask { position: absolute; inset: 0; background: rgba(31,35,40,.5); animation: fade .2s; }
+@keyframes fade { from { opacity: 0 } to { opacity: 1 } }
+.sheet {
+  position: absolute; left: 0; right: 0;
+  bottom: var(--kb, 0px);
+  /*
+    高度基准统一用 --vvh（visualViewport 高度），app.js 里它已经扣除了键盘。
+    绝不能再减一次 --kb —— 会双重扣减：键盘 320px 时弹层只剩 196px，
+    内部滚动区被压到 76px，靠下的输入框永远滚不出来（这个坑踩过）。
+    --vvh 缺失时回退 100vh。
+    也不用百分比：绝对定位子元素的 % 高度以包含块为基准，而 #sheet-root
+    没有显式高度，% 会塌成内容高度。
+  */
+  height: 86vh;
+  height: calc(var(--vvh, 100vh) * 0.9);
+  max-height: calc(var(--vvh, 100vh) - 8px);
+  background: var(--canvas); border-radius: 14px 14px 0 0; display: flex; flex-direction: column;
+  animation: up .26s cubic-bezier(.2,.8,.3,1);
+  padding-bottom: calc(var(--kb, 0px) > 0px ? 8px : var(--safe-b));
+}
+.sheet.full { height: calc(var(--vvh, 100vh) - 8px); max-height: calc(var(--vvh, 100vh) - 8px); }
+@keyframes up { from { transform: translateY(100%) } to { transform: none } }
+.sheet-head {
+  flex: none; display: flex; align-items: center; gap: 8px; padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border); background: var(--canvas); border-radius: 14px 14px 0 0;
+}
+.sheet-head h3 { margin: 0; font-size: 16px; flex: 1; }
+.sheet-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 14px 16px 16px; }
+/* 键盘已弹出时，底部安全区不再重复占位 */
+.sheet-body { padding-bottom: calc(var(--kb, 0px) > 0px ? 12px : calc(16px + var(--safe-b))); }
+.sheet-foot { flex: none; padding: 12px 16px calc(12px + var(--safe-b)); border-top: 1px solid var(--border); display: flex; gap: 8px; }
+.sheet-foot .btn { flex: 1; }
+
+/*
+  弹层内输入框获得焦点时，往上滚出足够空间，避免被键盘压住。
+  用 scroll-margin 让浏览器的自动滚动预留底部空隙。
+*/
+.sheet-body .field, .sheet-body .upload-box { scroll-margin-bottom: 96px; }
+.sheet-body .input:focus, .sheet-body .textarea:focus { scroll-margin-bottom: 96px; }
+.opt {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 13px 16px;
+  background: var(--bg); border: 0; border-bottom: 1px solid var(--border-muted);
+  text-align: left; font-size: 14px; cursor: pointer;
+  /* 选项行支持长按手势（见 ui.js bindLongPress）：先把系统的长按选字压掉，
+   * 不然选中文本的高亮会和长按动作叠在一起。 */
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+}
+.opt:last-child { border-bottom: 0; }
+.opt:active { background: var(--btn-bg-hover); }
+.opt .opt-ico { color: var(--fg-muted); display: flex; }
+.opt .opt-check { margin-left: auto; color: var(--accent); }
+.opt.on { font-weight: 600; }
+
+/* ============ 图片查看 ============ */
+#viewer-root { position: fixed; inset: 0; z-index: 300; background: rgba(0,0,0,.92); display: none; }
+#viewer-root.show { display: flex; align-items: center; justify-content: center; }
+#viewer-root img { max-width: 100%; max-height: 100%; }
+#viewer-root .viewer-save {
+  position: absolute; top: 16px; right: 16px;
+  width: 44px; height: 44px; border-radius: 50%;
+  background: rgba(0,0,0,.55); color: #fff; border: none;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; z-index: 2;
+}
+#viewer-root .viewer-save:active { background: rgba(0,0,0,.8); }
+#viewer-root .viewer-save svg { display: block; }
+
+/* ============ 详情页 ============ */
+.detail-head { background: var(--bg); border-bottom: 1px solid var(--border); padding: 14px 16px 12px; }
+.detail-title { font-size: 20px; font-weight: 600; line-height: 1.3; word-break: break-word; }
+.detail-number { color: var(--fg-muted); font-weight: 400; }
+.detail-sub { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; color: var(--fg-muted); font-size: 13px; }
+
+.comment { display: flex; gap: 10px; padding: 12px 14px; border-top: 1px solid var(--border-muted); background: var(--bg); }
+.comment .bubble { flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: var(--radius); }
+.comment .bubble-head {
+  display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: var(--canvas);
+  border-bottom: 1px solid var(--border); border-radius: var(--radius) var(--radius) 0 0; font-size: 13px;
+}
+.comment .bubble-body { padding: 12px; }
+.comment.plain .bubble { border: 0; }
+.comment.plain .bubble-body { padding: 12px 0 0; }
+
+/* Markdown 正文 */
+.md { font-size: 14px; line-height: 1.62; word-break: break-word; }
+.md > *:first-child { margin-top: 0; }
+.md > *:last-child { margin-bottom: 0; }
+.md h1, .md h2, .md h3, .md h4 { margin: 20px 0 12px; font-weight: 600; line-height: 1.3; }
+.md h1 { font-size: 22px; border-bottom: 1px solid var(--border-muted); padding-bottom: 8px; }
+.md h2 { font-size: 18px; border-bottom: 1px solid var(--border-muted); padding-bottom: 6px; }
+.md h3 { font-size: 16px; } .md h4 { font-size: 14px; }
+.md p { margin: 0 0 12px; }
+.md ul, .md ol { margin: 0 0 12px; padding-left: 24px; }
+.md li { margin: 3px 0; }
+.md blockquote { margin: 0 0 12px; padding: 0 14px; color: var(--fg-muted); border-left: 3px solid var(--border); }
+.md code {
+  font-family: var(--mono); font-size: 85%; background: var(--neutral-subtle);
+  padding: .2em .4em; border-radius: 6px;
+}
+.md pre {
+  background: var(--code-bg); padding: 12px; border-radius: 6px; overflow-x: auto;
+  margin: 0 0 12px; border: 1px solid var(--border-muted);
+}
+.md pre code { background: none; padding: 0; font-size: 12.5px; line-height: 1.5; }
+.md img { max-width: 100%; border-radius: 6px; cursor: zoom-in; }
+/* 加载失败的图片：给它一个看得见的框，别只剩一块空白 */
+.md img.img-broken { min-width: 120px; min-height: 48px; border: 1px dashed var(--border); }
+/* issue / README 里上传的视频（user-attachments） */
+.md video {
+  display: block; width: 100%; max-width: 100%; max-height: 380px;
+  margin: 10px 0; background: #000; border-radius: 6px;
+}
+/* 无扩展名附件最终降级成的链接（视频、图片都放不出来时） */
+.md a.md-attach-link {
+  display: inline-block; margin: 10px 0; padding: 8px 14px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--fg-muted); background: var(--canvas);
+}
+.md table { border-collapse: collapse; margin: 0 0 12px; display: block; overflow-x: auto; max-width: 100%; }
+.md th, .md td { border: 1px solid var(--border); padding: 6px 12px; }
+.md th { background: var(--canvas); }
+.md hr { border: 0; border-top: 1px solid var(--border); margin: 16px 0; }
+.md a { text-decoration: none; }
+.md .task-list-item { list-style: none; margin-left: -20px; }
+.md .mention { font-weight: 600; }
+
+/* ============ 仓库页 ============ */
+.repo-head { background: var(--bg); border-bottom: 1px solid var(--border); padding: 12px 14px; }
+.repo-name { display: flex; align-items: center; gap: 6px; font-size: 15px; word-break: break-all; }
+.repo-name .owner { color: var(--accent); }
+.repo-name .slash { color: var(--fg-muted); }
+.repo-name .name { font-weight: 600; }
+.repo-desc { color: var(--fg-muted); font-size: 13px; margin-top: 6px; }
+.repo-stats { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; font-size: 12px; color: var(--fg-muted); }
+.repo-stats span { display: inline-flex; align-items: center; gap: 4px; }
+/* 只有 star/fork/关注三项可点（跳对应榜单），语言/许可证/分支/更新时间是纯展示 */
+.repo-stats span[data-act] { cursor: pointer; }
+/* 「关于」卡并进页首摘要条后，标签与主页链接的两段沿用原样式，间距压一点 */
+.repo-head .about-topics { margin-top: 8px; }
+.repo-head .about-link { margin-top: 8px; }
+.repo-actions { display: flex; gap: 8px; margin-top: 12px; }
+.repo-actions .btn { flex: 1; }
+.lang-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 10px 0 8px; background: var(--skeleton); }
+.lang-legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; }
+.lang-legend i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+
+/*
+  .tabs 这一排（代码/议题/拉取请求/Actions/发布/更多）在窄屏上总宽超出视口，
+  必须横向滚动。原来只写了 overflow-x: auto，少了三件事：
+
+    overscroll-behavior-x —— 没有它，横向滚到尽头后继续拖，滚动会「链式」
+      传给祖先 #view（scroll chaining），页面被带着动，观感就是「拉到头又
+      弹回来」。contain 把滚动锁在这一层里。
+    -webkit-overflow-scrolling: touch —— 让它走合成器线程，手指抬起后的惯性
+      滚动不掉帧（项目里 .sheet-body 等其它滚动容器都加了，这里漏了）。
+    will-change: scroll-position —— sticky + 自身又是滚动容器，这个组合在
+      WebView 里每次滚动都要重算层位置，提前提层可以避免滚动时反复重绘。
+
+  注意不要加 touch-action: pan-x —— 那会禁止在 tab 栏上竖向滚动页面，
+  手指落在这 44px 高的条上想上滑就会失灵，属于治好一个毛病换另一个。
+  横向手势的归属交给 app.js 里的方向判定去处理。
+
+  曾经这里还有一句 scroll-behavior: smooth，本意是「滑起来顺一点」，其实
+  是帮倒忙，而且正是「滚过去又弹回来」的元凶：
+    · 手指拖动 / 惯性滑动属于用户输入，CSS scroll-behavior 根本管不着，
+      加了对手感零收益；
+    · 但脚本赋值 scrollLeft 走的是这条通道 —— 本来是「一步到位」，被它
+      变成几百毫秒的动画。动画没跑完，接口回来触发的第二次渲染就把这一排
+      按钮整块重建（paint 里 host.innerHTML 是整块重写），新元素从 0 重新
+      开始 —— 用户看到的就是「滚过去一半又弹回最左」。接口快时必现，慢时
+      反而看不出来，正好对得上「有时候才回弹」。
+    · 动画期间 scroll 事件连着派发，中间值会被记成「用户滑到这儿」。
+  现在程序设置一律走 instant（见 page-repo.js 的 setTabScroll），所以这句
+  直接去掉：滚动手感由合成器线程保证，不依赖它。
+*/
+.tabs {
+  display: flex; background: var(--bg); border-bottom: 1px solid var(--border);
+  overflow-x: auto; scrollbar-width: none; position: sticky; top: 0; z-index: 10;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  will-change: scroll-position;
+  scroll-behavior: auto;
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tabs button {
+  flex: none; padding: 12px 14px; background: none; border: 0; border-bottom: 2px solid transparent;
+  color: var(--fg-muted); font-size: 14px; cursor: pointer; display: flex; align-items: center; gap: 6px;
+}
+.tabs button.active { color: var(--fg); font-weight: 600; border-bottom-color: #fd8c73; }
+.tabs .cnt {
+  background: var(--neutral-subtle); border-radius: 999px; padding: 1px 7px; font-size: 11px; font-weight: 500;
+}
+
+/* 文件树 */
+.file-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 14px; background: var(--bg);
+  border: 0; border-bottom: 1px solid var(--border-muted); text-align: left; font-size: 14px; cursor: pointer;
+}
+.file-row:active { background: var(--btn-bg-hover); }
+.file-row .fname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-row .fmeta { color: var(--fg-muted); font-size: 12px; flex: none; }
+.file-ico { flex: none; color: var(--fg-muted); }
+.file-ico.dir { color: #54aeff; }
+.breadcrumb { display: flex; align-items: center; gap: 4px; padding: 10px 14px; background: var(--canvas); font-size: 13px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; will-change: scroll-position; }
+.breadcrumb::-webkit-scrollbar { display: none; }
+.breadcrumb button { background: none; border: 0; padding: 0; color: var(--accent); font-size: 13px; cursor: pointer; white-space: nowrap; }
+.breadcrumb .sep { color: var(--fg-muted); }
+/* 路径层的面包屑：图标 + 名字，当前层用普通颜色表示不可点 */
+.breadcrumb .crumb-seg { display: inline-flex; align-items: center; gap: 2px; color: var(--fg-muted); }
+.breadcrumb .crumb-seg span { color: var(--accent); }
+
+/* ============ 仓库页首摘要（原「关于」卡已并入这里） ============ */
+.about-card { padding: 14px; }
+.about-topics { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.about-link {
+  display: flex; align-items: center; gap: 6px; margin-top: 10px;
+  font-size: 13px; color: var(--fg-muted); min-width: 0;
+}
+.about-link svg { flex: none; }
+.about-link a { color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 克隆地址框（对标 GitHub 官网 Clone 弹层） */
+.clone-box { margin-top: 14px; border-top: 1px solid var(--border-muted); padding-top: 12px; }
+.clone-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.clone-head .t { font-size: 13px; font-weight: 600; }
+.clone-seg { display: flex; border: 1px solid var(--btn-border); border-radius: 6px; overflow: hidden; margin-bottom: 8px; }
+.clone-seg button {
+  flex: 1; padding: 5px 8px; background: var(--btn-bg); border: 0; border-right: 1px solid var(--btn-border);
+  font-size: 12px; color: var(--fg-muted); cursor: pointer; min-height: 30px; white-space: nowrap;
+}
+.clone-seg button:last-child { border-right: 0; }
+.clone-seg button.active { background: var(--bg); color: var(--fg); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
+.clone-row { display: flex; align-items: stretch; gap: 6px; }
+.clone-row .input {
+  flex: 1; min-width: 0; font-family: var(--mono); font-size: 12px;
+  text-overflow: ellipsis; background: var(--btn-bg); color: var(--fg);
+}
+.clone-row .btn { flex: none; }
+.clone-tip { font-size: 11px; color: var(--fg-muted); margin-top: 6px; }
+
+/* ============ 上传文件 / 附件列表 ============ */
+.upload-box { border: 1px dashed var(--border); border-radius: 8px; padding: 12px; }
+.upload-list { margin-top: 10px; }
+.upload-item {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  background: var(--btn-bg); border: 1px solid var(--border-muted); border-radius: 6px; margin-bottom: 6px;
+}
+.upload-item:last-child { margin-bottom: 0; }
+.upload-item .fi { flex: none; color: var(--fg-muted); display: flex; }
+.upload-item .fn { display: block; font-size: 13px; font-weight: 500; word-break: break-all; }
+.upload-item .fs { display: block; font-size: 11px; color: var(--fg-muted); margin-top: 2px; }
+.upload-item .icon-btn { width: 28px; height: 28px; }
+
+/* 新建仓库表单 */
+.newrepo-radio { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px; cursor: pointer; }
+.newrepo-radio.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.newrepo-radio .dot { flex: none; width: 16px; height: 16px; border-radius: 50%; border: 4px solid transparent; background: var(--btn-bg); box-shadow: inset 0 0 0 1px var(--border); margin-top: 2px; }
+.newrepo-radio.on .dot { background: var(--accent); box-shadow: none; }
+.newrepo-radio .rt { font-weight: 600; font-size: 14px; display: block; }
+
+/* ============ 里程碑 ============ */
+.ms-row { padding: 12px; border-bottom: 1px solid var(--border-muted); cursor: pointer; }
+.ms-row:last-child { border-bottom: 0; }
+.ms-top { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.ms-top b { font-size: 14px; flex: 1; min-width: 0; word-break: break-word; }
+.ms-desc { font-size: 13px; color: var(--fg-muted); line-height: 1.6; margin-bottom: 8px; word-break: break-word; }
+.ms-bar {
+  display: block; height: 6px; border-radius: 3px; background: var(--btn-bg);
+  border: 1px solid var(--border-muted); overflow: hidden; margin-bottom: 8px;
+}
+.ms-bar > i { display: block; height: 100%; background: var(--success); border-radius: 3px; transition: width .2s; }
+.ms-bar.wide { flex: 1; }
+.ms-meta { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--fg-muted); }
+.ms-meta > span { display: inline-flex; align-items: center; gap: 4px; }
+.due-over, .ms-meta .due-over { color: var(--danger); font-weight: 600; }
+.ms-detail-head { padding: 12px; border-bottom: 1px solid var(--border-muted); margin-bottom: 4px; }
+.ms-detail-head .bar { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.ms-detail-head .bar b { font-size: 15px; flex: none; }
+.ms-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--border-muted); cursor: pointer; }
+.ms-item:last-child { border-bottom: 0; }
+.ms-ck { flex: none; color: var(--fg-muted); display: flex; margin-top: 1px; }
+.ms-item.done .ms-ck { color: var(--done); }
+.ms-item.done .row-title { color: var(--fg-muted); text-decoration: line-through; }
+.newrepo-radio .rd { font-size: 12px; color: var(--fg-muted); margin-top: 2px; line-height: 1.45; display: block; }
+.subfield { margin-top: 10px; }
+.subfield > label { display: block; margin-bottom: 4px; }
+.subfield select.input { width: 100%; }
+
+/* 成功对勾徽标 */
+.ok-badge {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--success); color: #fff;
+}
+
+.code-wrap { background: var(--bg); overflow-x: auto; }
+.code-wrap pre { margin: 0; padding: 12px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.55; }
+.code-lines { font-family: var(--mono); font-size: 12.5px; line-height: 1.6; background: var(--bg); overflow-x: auto; }
+.code-view { background: var(--bg); }
+.code-tools { display: flex; justify-content: flex-end; padding: 6px 10px; background: var(--canvas); border-bottom: 1px solid var(--border-muted); }
+/* 按行渲染：一行一个 .crow，左边行号右边代码 —— 换行时行号仍钉在逻辑行首，不会错位 */
+.crow { display: flex; align-items: flex-start; min-height: 1.6em; }
+.crow .ln { flex: none; box-sizing: border-box; width: 4em; text-align: right; padding: 0 10px 0 8px; color: var(--fg-subtle); user-select: none; position: sticky; left: 0; background: var(--bg); }
+.crow .lc { flex: 1; min-width: 0; padding: 0 14px; background: transparent; white-space: pre; }
+.code-view.wrap .code-lines { overflow-x: hidden; }
+.code-view.wrap .crow .lc { white-space: pre-wrap; word-break: break-word; }
+
+/* 编辑器：透明的 textarea 叠在高亮层上；两者字体 / 内边距 / 行高必须完全一致，
+   否则输入的文字和高亮底纹会对不齐。行号在高亮层里，跟着一起滚。 */
+.editor { position: relative; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); font-family: var(--mono); font-size: 13px; line-height: 1.6; }
+.editor .ed-hl { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.editor .ed-inner { padding: 10px 12px 10px 0; will-change: transform; }
+.editor .crow .ln { position: static; }
+.editor .crow .lc { padding: 0; }
+.editor .ed-ta { position: relative; display: block; width: 100%; box-sizing: border-box; min-height: 300px; max-height: 62vh; resize: vertical; padding: 10px 12px 10px 4em; border: 0; border-radius: 6px; background: transparent; color: transparent; caret-color: var(--fg); outline: none; overflow: auto; font-family: var(--mono); font-size: inherit; line-height: inherit; white-space: pre; }
+.editor.wrap .crow .lc { white-space: pre-wrap; word-break: break-word; }
+.editor.wrap .ed-ta { white-space: pre-wrap; word-break: break-word; overflow-x: hidden; }
+.sheet-body .editor .ed-ta:focus { scroll-margin-bottom: 96px; }
+.code-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 14px; background: var(--canvas); border-bottom: 1px solid var(--border); font-size: 12px; color: var(--fg-muted); overflow: hidden; }
+/* 文件名可以收缩省略，按钮组永远完整显示 —— 否则长路径会把「复制/下载」挤到屏幕外 */
+.code-meta > .mono { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.code-meta > .rowflex { flex-shrink: 0; }
+
+/* diff */
+.diff-file { background: var(--bg); border-bottom: 1px solid var(--border); }
+.diff-file-head {
+  display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: var(--canvas);
+  border-bottom: 1px solid var(--border-muted); font-size: 12px; word-break: break-all;
+}
+.diff-stat { font-family: var(--mono); font-size: 11px; flex: none; }
+.diff-add { color: var(--success); } .diff-del { color: var(--danger); }
+.diff-body { overflow-x: auto; font-family: var(--mono); font-size: 12px; line-height: 1.5; }
+.diff-body div { white-space: pre; padding: 0 10px; min-height: 1.5em; }
+.diff-body .add { background: var(--diff-add-bg); }
+.diff-body .add::before { content: '+'; position: sticky; left: 4px; }
+.diff-body .del { background: var(--diff-del-bg); }
+.diff-body .del::before { content: '-'; position: sticky; left: 4px; }
+.diff-body .hunk { background: var(--diff-hunk-bg); color: var(--fg-muted); }
+
+/* ============ 事件流 ============ */
+.event { display: flex; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border-muted); background: var(--bg); }
+.event-ico { flex: none; width: 28px; display: flex; justify-content: center; color: var(--fg-muted); }
+.event-body { flex: 1; min-width: 0; font-size: 13px; }
+.event-body .who { font-weight: 600; }
+.event-body .what { color: var(--fg-muted); }
+.event-body .when { color: var(--fg-subtle); font-size: 12px; margin-top: 2px; }
+.event-commits { margin-top: 6px; border-left: 2px solid var(--border); padding-left: 10px; }
+.event-commit { font-family: var(--mono); font-size: 12px; color: var(--fg-muted); padding: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ============ 通知 ============ */
+.notif { display: flex; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border-muted); background: var(--bg); cursor: pointer; width: 100%; text-align: left; border-left: 0; border-right: 0; border-top: 0; }
+.notif:active { background: var(--btn-bg-hover); }
+.notif.unread { background: var(--accent-subtle); }
+.notif-ico { flex: none; width: 26px; display: flex; justify-content: center; }
+.notif .row-main > * { display: block; }
+.notif-title { font-size: 14px; font-weight: 500; }
+.notif-desc { font-size: 12px; color: var(--fg-muted); margin-top: 2px; }
+
+/* ============ 用户页 ============ */
+.profile-head { background: var(--bg); padding: 16px 14px; border-bottom: 1px solid var(--border); }
+.profile-top { display: flex; gap: 14px; align-items: center; }
+.profile-name { font-size: 20px; font-weight: 600; line-height: 1.25; }
+.profile-login { font-size: 15px; color: var(--fg-muted); font-weight: 400; }
+.profile-bio { margin-top: 10px; font-size: 14px; }
+.profile-meta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; font-size: 13px; color: var(--fg-muted); }
+.profile-meta span { display: inline-flex; align-items: center; gap: 4px; }
+.stat-row { display: flex; gap: 0; margin-top: 12px; }
+.stat-row a { flex: 1; text-align: center; color: var(--fg-muted); font-size: 12px; }
+.stat-row b { display: block; color: var(--fg); font-size: 15px; }
+
+/* ============ 设置 ============ */
+.set-group { background: var(--bg); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.set-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 13px 14px; background: var(--bg);
+  border: 0; border-bottom: 1px solid var(--border-muted); text-align: left; font-size: 14px; cursor: pointer;
+}
+.set-row:last-child { border-bottom: 0; }
+.set-row:active { background: var(--btn-bg-hover); }
+.set-row .k { flex: 1; }
+.set-row .v { color: var(--fg-muted); font-size: 13px; }
+.set-row .ico { color: var(--fg-muted); display: flex; }
+.set-row.danger .k { color: var(--danger); }
+.set-row.static { cursor: default; }
+.set-row.static:active { background: var(--bg); }
+.set-note { padding: 8px 14px 12px; font-size: 12px; color: var(--fg-muted); background: var(--bg); border-bottom: 1px solid var(--border-muted); }
+.set-group-title { padding: 14px 14px 8px; font-size: 12px; font-weight: 600; color: var(--fg-muted); }
+
+/* 开关行（右侧是一枚会滑动的开关，不是箭头）
+   开关本身刻意做得素：设置页要的是「一眼看清现在是开还是关」，
+   跟底栏的玻璃取向不是一回事，别把它也玻璃化。 */
+.set-row .set-sub { display: block; font-size: 12px; color: var(--fg-muted); font-weight: 400; margin-top: 2px; }
+.switch {
+  flex: none; width: 40px; height: 24px; border-radius: 12px;
+  background: var(--btn-bg-hover); border: 1px solid var(--border);
+  position: relative; transition: background .18s ease, border-color .18s ease;
+}
+.switch .knob {
+  position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--bg); box-shadow: 0 1px 2px rgba(31,35,40,.28);
+  transition: transform .18s cubic-bezier(.2,.9,.2,1);
+}
+.switch.on { background: var(--btn-primary-bg); border-color: var(--btn-primary-bg); }
+.switch.on .knob { transform: translateX(16px); }
+
+/* ============ 登录 ============ */
+.login-wrap { padding: 24px 20px calc(24px + var(--safe-b)); }
+.login-logo { display: flex; justify-content: center; margin-bottom: 14px; color: var(--fg); }
+.login-title { text-align: center; font-size: 22px; font-weight: 600; }
+.login-sub { text-align: center; color: var(--fg-muted); font-size: 13px; margin: 6px 0 26px; }
+.login-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+.login-alt { text-align: center; margin-top: 16px; }
+.login-alt button { background: none; border: 0; color: var(--accent); font-size: 13px; cursor: pointer; padding: 6px; }
+
+/* ============ 搜索 ============ */
+.search-bar { display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: var(--bg); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
+.search-input {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  min-height: 40px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--canvas);
+}
+.search-input input { flex: 1; border: 0; background: none; outline: none; font-size: 16px; min-width: 0; }
+/* 清除按钮也要够大才点得中 */
+.search-input .clear { background: none; border: 0; color: var(--fg-muted); padding: 4px; display: flex; cursor: pointer; flex: none; }
+/* 「搜索」按钮：flex:none 是关键。
+   默认 flex-shrink 是 1，而 .search-input 的 flex-basis 是 0 —— 空间不够时
+   永远是被压缩的那一方，窄屏（魅族/小屏机）上就被挤成一条细缝。 */
+.search-bar > .btn { flex: none; min-height: 40px; padding: 8px 18px; font-size: 15px; }
+.hist-row { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--bg); border-bottom: 1px solid var(--border-muted); width: 100%; text-align: left; border-left: 0; border-right: 0; border-top: 0; cursor: pointer; font-size: 14px; }
+
+/* 搜索框里贴进来的 GitHub 链接：一条「直接打开」的提示
+   外观跟着 .hist-row 走（同样的高度和分隔线），但底色用强调色区分：
+   它不是一个结果条目，而是一次「要不要现在就去」的询问。
+   三个部分都必须 min-width:0 —— URL 很长，不截断会把整行撑破。 */
+.openlink { border-bottom: 1px solid var(--border-muted); background: var(--accent-subtle); }
+.openlink .ol-go {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px;
+  background: none; border: 0; text-align: left; cursor: pointer; color: var(--fg);
+}
+.openlink .ol-go svg:first-child { color: var(--accent); flex: none; }
+.openlink .ol-go svg:last-child { color: var(--fg-muted); flex: none; }
+.openlink .ol-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.openlink .ol-title { font-size: 14px; color: var(--accent); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.openlink .ol-sub { font-size: 11px; color: var(--fg-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.openlink .ol-alt {
+  display: block; width: 100%; padding: 6px 14px 8px; background: none; border: 0;
+  text-align: left; color: var(--fg-muted); font-size: 12px; cursor: pointer;
+}
+.openlink .ol-go:active { opacity: .7; }
+
+/* ============ 工具 ============ */
+.muted { color: var(--fg-muted); }
+.tiny { font-size: 12px; }
+.mono { font-family: var(--mono); }
+.center { text-align: center; }
+.nowrap { white-space: nowrap; }
+.mt8 { margin-top: 8px; } .mt12 { margin-top: 12px; } .mt16 { margin-top: 16px; }
+.mb8 { margin-bottom: 8px; } .mb12 { margin-bottom: 12px; }
+.rowflex { display: flex; align-items: center; gap: 8px; }
+.wrap { flex-wrap: wrap; }
+.grow { flex: 1; min-width: 0; }
+.pad { padding: 0 14px; }
+[hidden] { display: none !important; }
+.sep-line { height: 8px; background: var(--canvas); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+
+/* ============ 删除仓库确认 ============ */
+/* 明确展示「要删的是谁」，避免用户不知道要输入什么 */
+.del-target {
+  display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+  background: var(--canvas-inset); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--fg-muted); font-size: 13px;
+}
+.del-target .mono { color: var(--fg); font-weight: 600; word-break: break-all; }
+.field > label .mono {
+  font-family: var(--mono); background: var(--canvas-inset);
+  padding: 1px 5px; border-radius: 4px; font-size: 12px;
+}
+/* 校验通过：输入框转绿，给用户明确的正向反馈 */
+.input.ok { border-color: var(--success); box-shadow: 0 0 0 3px rgba(26,127,55,.12); }
+.hint.ok-hint { color: var(--success); font-weight: 600; }
+
+/* ============ 一键打包 APK / 工作流模板 ============ */
+/* 选中态：边框与底色一起变，避免只靠图标颜色区分 */
+.list-row.sel { border-color: var(--accent); background: var(--accent-subtle); }
+.list-row.sel .row-title { color: var(--accent); font-weight: 600; }
+.wf-preview { margin: 4px 0 0; }
+.wf-preview > summary {
+  cursor: pointer; padding: 8px 0; color: var(--accent);
+  font-size: 13px; font-weight: 600; list-style: none;
+}
+.wf-preview > summary::-webkit-details-marker { display: none; }
+.wf-preview > summary::before { content: '▸ '; }
+.wf-preview[open] > summary::before { content: '▾ '; }
+.code-block {
+  margin: 6px 0 0; padding: 10px 12px; max-height: 220px; overflow: auto;
+  background: var(--canvas-inset); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--fg-muted); line-height: 1.5;
+  white-space: pre; -webkit-overflow-scrolling: touch;
+}
+
+/* 行内操作按钮（构建产物：安装 / 下载 ZIP） */
+.row-acts { display: flex; align-items: center; gap: 2px; margin-left: 4px; flex: none; }
+.row-act {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: 6px; color: var(--fg-muted); flex: none;
+}
+.row-act:active { background: var(--canvas-inset); color: var(--accent); }
+.row-act svg { pointer-events: none; }
+
+/* ============ 打包向导：子标签 / 校验错误 ============ */
+.field > label.sub {
+  font-size: 12px; font-weight: 600; color: var(--fg-muted); margin-bottom: 4px;
+}
+/* 校验不通过的输入框：红框，一眼看出是哪一项没填 */
+.input.bad, .textarea.bad {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px rgba(207,34,46,.15);
+}
+.err-hint { color: var(--danger) !important; font-weight: 600; }
+.wf-preview #wf-code { min-height: 260px; }
+
+/* 通知多选（长按任意一条进入） */
+.notif { position: relative; }
+.notif-pick {
+  flex: none; width: 0; height: 18px; margin-right: 0; box-sizing: border-box;
+  border: 1.5px solid var(--border); border-radius: 50%;
+  display: none; align-items: center; justify-content: center;
+  transition: width .12s ease, margin-right .12s ease;
+}
+.notif.picking .notif-pick { display: flex; width: 18px; margin-right: 2px; }
+.notif.sel { background: var(--accent-subtle); }
+.notif.sel .notif-pick { background: var(--accent); border-color: var(--accent); }
+.notif.sel .notif-pick::after {
+  content: ''; width: 4px; height: 8px;
+  border: solid #fff; border-width: 0 2px 2px 0;
+  transform: rotate(45deg) translateY(-1px);
+}
+.sel-bar {
+  position: fixed; left: 0; right: 0;
+  bottom: calc(var(--tabbar-h) + var(--nav-lift) + var(--nav-bottom)); z-index: 60;
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 10px; background: var(--tabbar-bg);
+  border-top: 1px solid var(--border); box-shadow: 0 -2px 10px rgba(0,0,0,.08);
+}
+.sel-bar[hidden] { display: none; }
+.sel-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 7px 11px; font-size: 13px; line-height: 1;
+  color: var(--fg); background: var(--btn-bg);
+  border: 1px solid var(--btn-border); border-radius: 6px; cursor: pointer;
+}
+.sel-btn:active { background: var(--btn-bg-hover); }
+.sel-btn.danger { color: var(--btn-danger-fg); }
+.sel-count { flex: 1 1 auto; text-align: center; font-size: 13px; color: var(--fg-muted); }
+
+/* ============ 搜索结果「加载更多」============ */
+.load-more { padding: 16px 12px 28px; text-align: center; }
+.load-more .btn { min-width: 160px; }
+.load-more .done { font-size: 12px; color: var(--fg-muted); }
+
+/* ============ 平板 / 大屏适配（≥720px）============ */
+/*
+  手机上通栏流式布局没问题；但平板上直接拉伸会出现 20+ 词的超长行、
+  底部 5 个 tab 平分 1280px、弹层全屏宽这类观感问题。这里只做「限宽居中」，
+  不改 DOM 结构、不影响手机（断点以下一行都不生效）：
+  - 内容列（appbar / #view 里的页面）统一限宽居中
+  - 底部 tab 组居中不再平分全宽；悬浮按钮跟随内容列右缘
+  - 底部弹层限宽居中；提示条限宽
+  - 横屏时刘海/挖孔在左右两侧，给 appbar 和内容补 safe-area 左右内边距
+    （MainActivity 是 LAYOUT_FULLSCREEN + SHORT_EDGES，画面延伸到刘海底下）
+*/
+@media (min-width: 720px) {
+  #appbar .appbar-inner {
+    max-width: 900px; margin: 0 auto;
+    padding-left: max(12px, env(safe-area-inset-left, 0px));
+    padding-right: max(12px, env(safe-area-inset-right, 0px));
+  }
+  #view > * { max-width: 900px; margin-left: auto; margin-right: auto; }
+  /* 悬浮胶囊本身已靠 max-width + auto 外边距居中，这里只放宽一点，
+     不再 .tab 定宽（定宽会和指示器等分算法打架） */
+  #tabbar { max-width: 560px; }
+  .fab { right: max(16px, calc(50% - 450px + 16px)); }
+  .sheet { max-width: 640px; margin: 0 auto; }
+  .toast { max-width: 560px; }
+}
+/* 横屏（平板横持 / 手机横屏接键盘）：左右避开刘海 */
+@media (orientation: landscape) and (min-width: 720px) {
+  #view {
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  /* 胶囊的左右间距已经写成 max(var(--tabbar-gutter), env(safe-area-inset-*))，
+     这里不能再加 padding —— 绝对定位的指示器以「内边距盒」为基准，
+     加 padding 只会挤走 tab 内容、指示器却不动，两者就错位了。 */
+}
+
+/* ============================================================
+   底栏风格：玻璃 / classic
+   ------------------------------------------------------------
+   轴的划分（别混）：
+     data-theme = "light" | "dark"   深浅模式
+     data-nav   = "glass" | "classic" 底栏形态（设置页的开关）
+
+   为什么把玻璃做成**可关**的：
+     1. backdrop-filter 在部分 ROM 的 WebView 上会整页卡顿（模糊要逐帧重算
+        它覆盖的那块背景），这不是审美问题，是能不能用的问题；
+     2. 玻璃是「一眼看到」的取向，有人就想要朴素的一条 —— 偏好没必要统一。
+
+   默认 glass（打开）。这里只覆盖**与 classic 不同的那几项**，
+   其余（高度、分格、图标、选中色）两种风格共用，这样开关不会把别的东西一起改掉。
+   ============================================================ */
+
+/*
+  classic（关）——「玻璃那套出现之前」的原样：贴底的实体栏。
+
+  ⚠️ 这套值必须写成 data-nav 的**覆盖层**，不能塞进 :root 的默认值里。
+     之前就是塞进了浅色主题块（还排在玻璃原值之后），于是轴的逻辑被搞反了：
+     glass 得反过来去「抢回」被盖掉的值，而末尾只写了几何量和 blur，
+     结果浅色玻璃丢了观感 —— 面变成不透明纯白、厚度高光和悬浮投影全没，
+     只剩圆角和模糊，看上去是块白板而不是玻璃。
+     玻璃既然是默认打开的，就该让它稳稳躺在主题块里，由 classic 来覆盖。
+*/
+html[data-nav="classic"] {
+  --nav-surface: var(--bg);
+  --nav-blur: none;
+  --nav-inner: none;
+  --nav-liquid: none;
+  --nav-shadow: 0 1px 0 var(--border);
+  /* ⚠️ 这里必须是「一个看不见的阴影」，不能写 none。
+     #tabbar 是 `box-shadow: var(--nav-shadow), var(--nav-liquid)` —— 逗号列表里
+     只要有一项是 none，整条声明就不合法，连上面那条分隔线也一起没了。
+     （单值用的 --nav-indicator-edge / --nav-ring-edge 才可以安全地写 none。） */
+  --nav-liquid: 0 0 0 0 transparent;
+  --nav-indicator: rgba(31,35,40,.08);
+  --nav-indicator-edge: none;
+  --nav-ring-bg: transparent;
+  --nav-ring-edge: none;
+  --nav-ring-inset: 0px;
+  /* 悬浮感相关的三样也一并收进变量：classic 要的是「贴着屏幕底边的一条」，
+     不是浮在半空的胶囊。 */
+  --nav-radius: 0px;
+  --nav-lift: 0px;
+  --nav-gutter: 0px;
+  --nav-pad: 0px;
+  /* ⚠️ 朴素样式这一条要的就是「紧贴屏幕底边」—— 不要再把系统条的高度
+     加进来把它抬起来。
+     这是「恢复朴素样式之后底栏却还离屏幕底边一大截」的直接修法：
+     classic 下 --nav-lift 已经是 0，底栏到屏幕底边的距离就等于
+     --nav-bottom 一个数，把它钉成 0，无论原生报回来的 --safe-b 是多少、
+     报得准不准、甚至完全报不出来，底栏都稳稳贴在屏幕最底。
+
+     会不会被系统条压住？只有在「页面真的铺到屏幕最底 + 三键导航」时才可能，
+     而这时系统条是浮在页面之上的一层（MainActivity 已把导航栏设为透明），
+     底栏主体仍然是完整的；相比之下「离底一大截」是实实在在的错位，
+     两者不在一个量级上。 */
+  --nav-bottom: 0px;
+}
+/* 深色 classic 只需再改这一项：指示器是「浅灰斑」，深色下看不见，
+   得换成「浅色斑」。面/分隔线用的是 var(--bg)、var(--border)，跟着主题走，
+   不用在这里重写。 */
+html[data-nav="classic"][data-theme="dark"] {
+  --nav-indicator: rgba(255,255,255,.10);
+}
+
+html[data-nav="glass"] {
+  --nav-radius: calc(var(--tabbar-h) / 2);   /* 胶囊 */
+  --nav-lift: var(--tabbar-lift);            /* 离底抬升 */
+  --nav-gutter: var(--tabbar-gutter);        /* 左右留白 */
+  --nav-pad: 4px;                            /* 内衬 */
+  /* 外层玻璃环向外扩的量。
+     ⚠️ 这个值不能大于内衬（--nav-pad = 4px）的一半以上：外环是「本体向外扩
+        inset」，本体已经顶到内容区（高 64 - 4×2 = 56），再向外扩 6px 就是
+        68px —— 比胶囊本身的 64px 还高，上下各穿出 2px，选中态看着像从胶囊里
+        溢出来了（第一格还会往左边穿出 2px，正好压在圆角上，最明显）。
+        取 2px：外环 60px，比内容区凸出 4px（保留原设计那种「圆头比长条更高」
+        的凸出感），上下左右又都还留在胶囊里。 */
+  --nav-ring-inset: 2px;
+
+  /*
+    saturate 深浅两套取值不同（各主题块里已定义 --nav-sat）：
+      浅色要 2.1 提纯 ——「发灰发脏」的直接原因是背景色彩在模糊过程中被摊平，
+      violet_Box 有 vibrancy() 专做这步，CSS 里只有 saturate() 能对应；
+      深色要降到 1.5 —— 深色背景亮度极低，饱和度一拉高，亮部会被一起推上去，
+      底栏就比内容亮了，那正是「灰雾」的来源。
+  */
+  --nav-blur: saturate(var(--nav-sat, 1.8)) blur(22px);
+}
+
+/* ============================================================
+   iOS 风格（由设置里的「iOS风格」开关控制，开关的 data-s 仍是 glass）
+
+   开关打开 = glass = iOS 那一套：毛玻璃导航栏、inset 分组列表、
+   iOS 系统色、圆角胶囊控件。关掉就回到朴素的安卓样式。
+
+   ⚠️ 层叠顺序是这里最要紧的事，写错过一次，记下来免得再犯：
+      同特异性下后写覆盖先写。`html[data-theme="dark"]`（在文件前部）的
+      特异性是 (0,1,1)，如果 iOS 的深色值也只写成
+      `html[data-nav="glass"]`，同样 (0,1,1)，谁在后谁赢 —— 深色会被
+      浅色值盖掉，变成「深色模式下顶栏是白的」。所以深色那套必须
+      多带一个属性选择器，特异性 (0,2,1) 才压得住：
+
+        html[data-nav="glass"]                     浅色 iOS
+        html[data-nav="glass"][data-theme="dark"]  深色 iOS
+
+   ⚠️ 第二件要紧事：分隔线不能用 border-bottom 直接改颜色了事。
+      iOS 的 inset separator 是从文字左侧（约 15px）起画、末行不画的，
+      用 border 做不到，得改成伪元素。改了伪元素就得把原来的
+      border-bottom 去掉，否则会出现两条线。
+   ============================================================ */
+
+/* ---------- 浅色：iOS 系统色 ---------- */
+html[data-nav="glass"] {
+  /* iOS 系统色板（与 Xcode 的 System Colors 对齐） */
+  --accent: #007aff;
+  --accent-emphasis: #007aff;
+  --accent-subtle: rgba(0, 122, 255, .12);
+  --success: #34c759;
+  --success-emphasis: #34c759;
+  --success-subtle: rgba(52, 199, 89, .15);
+  --danger: #ff3b30;
+  --danger-subtle: rgba(255, 59, 48, .12);
+  --attention: #ff9500;
+  --attention-subtle: rgba(255, 149, 0, .14);
+  --done: #af52de;
+  --done-subtle: rgba(175, 82, 222, .14);
+  --neutral-emphasis: #8e8e93;
+  --neutral-subtle: rgba(142, 142, 147, .16);
+
+  /* 面：iOS 的分组背景是 #f2f2f7，卡片是纯白，靠这层灰把卡片托出来 */
+  --canvas: #f2f2f7;
+  --canvas-inset: #f2f2f7;
+  --bg: #ffffff;
+
+  /* 线：iOS 的 separator 是半透明黑，不是实色灰 —— 压在白底和灰底上都能看 */
+  --border: rgba(60, 60, 67, .18);
+  --border-muted: rgba(60, 60, 67, .13);
+
+  /* 字：iOS 的 Label / Secondary Label / Tertiary Label */
+  --fg: #000000;
+  --fg-muted: rgba(60, 60, 67, .60);
+  --fg-subtle: rgba(60, 60, 67, .35);
+
+  --btn-bg: #ffffff;
+  --btn-bg-hover: #e5e5ea;
+  --btn-border: rgba(60, 60, 67, .18);
+  --btn-primary-bg: #007aff;
+  --btn-primary-hover: #0060df;
+  --btn-danger-fg: #ff3b30;
+
+  --skeleton: #e5e5ea;
+  --overlay-shadow: 0 8px 28px rgba(0, 0, 0, .14);
+
+  /* 顶栏：iOS 的导航栏是毛玻璃，不是实色。alpha 别给满 ——
+     满 alpha 就没有「透过玻璃看见下面内容」这回事了。 */
+  --header-bg: rgba(255, 255, 255, .78);
+
+  /* iOS 的分组圆角是 10~12，比原来那套 8 更圆 */
+  --radius: 12px;
+}
+
+/* ---------- 深色：iOS 系统色（Dark Mode）---------- */
+html[data-nav="glass"][data-theme="dark"] {
+  --accent: #0a84ff;
+  --accent-emphasis: #0a84ff;
+  --accent-subtle: rgba(10, 132, 255, .18);
+  --success: #30d158;
+  --success-emphasis: #30d158;
+  --success-subtle: rgba(48, 209, 88, .18);
+  --danger: #ff453a;
+  --danger-subtle: rgba(255, 69, 58, .18);
+  --attention: #ff9f0a;
+  --attention-subtle: rgba(255, 159, 10, .18);
+  --done: #bf5af2;
+  --done-subtle: rgba(191, 90, 242, .18);
+  --neutral-emphasis: #8e8e93;
+
+  /* iOS 深色下：页面底是纯黑，卡片是 #1c1c1e（比底亮一点，靠明度分层） */
+  --canvas: #000000;
+  --canvas-inset: #000000;
+  --bg: #1c1c1e;
+
+  --border: rgba(84, 84, 88, .65);
+  --border-muted: rgba(84, 84, 88, .45);
+
+  --fg: #ffffff;
+  --fg-muted: rgba(235, 235, 245, .60);
+  --fg-subtle: rgba(235, 235, 245, .30);
+
+  --btn-bg: #2c2c2e;
+  --btn-bg-hover: #3a3a3c;
+  --btn-border: rgba(84, 84, 88, .65);
+  --btn-primary-bg: #0a84ff;
+  --btn-primary-hover: #3395ff;
+  --btn-danger-fg: #ff453a;
+
+  --skeleton: #2c2c2e;
+  --overlay-shadow: 0 8px 28px rgba(0, 0, 0, .5);
+  --header-bg: rgba(28, 28, 30, .76);
+}
+
+/* ---------- 顶栏：毛玻璃 + 左对齐标题 ---------- */
+html[data-nav="glass"] #appbar {
+  background: var(--header-bg);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid var(--border-muted);
+}
+html[data-nav="glass"] .appbar-title {
+  /* 标题统一靠左。
+     之前照 iOS 规范写成了居中，但真机上「居中」是相对于「标题还剩多少空间」
+     算的 —— 右上角每多一个按钮，标题就往左偏一点，五个标签页的标题各偏各的，
+     看起来像没对齐。用户明确要求首页/通知/探索/搜索/我的全部靠左，
+     所以这里回到左对齐，只保留 iOS 的字号与字重。 */
+  text-align: left;
+  padding-left: 8px;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -.2px;
+}
+html[data-nav="glass"] .appbar-inner { padding: 0 8px; }
+html[data-nav="glass"] .icon-btn { border-radius: 50%; }
+
+/* ---------- 分组容器：inset 圆角卡片 ---------- */
+html[data-nav="glass"] .card,
+html[data-nav="glass"] .set-group,
+html[data-nav="glass"] .list {
+  margin-left: 16px;
+  margin-right: 16px;
+  border-radius: var(--radius);
+  border: 0;
+  overflow: hidden;
+  /* ===== 卡片也做成水面 =====
+     ⚠️ 前提：这一段只有在前面给 #view 铺了背景层之后才有意义。
+        原来这里继承了 .card 的 `background: var(--bg)` 实色，而 #view
+        的画布又是一片实色 --canvas —— 实色透实色，加什么滤镜都一样，
+        这也正是液态玻璃最容易白做的地方。
+
+     ⚠️ 为什么用 #lens-soft 而不是 #lens（力度 26 → 12）：
+        列表是**滚动**的。惯性滚动期间每一帧都要为每张卡片重算一次
+        位移贴图，若干张同屏的话工作量大约是「每帧 × 张数」。这是
+        真真切切的掉帧来源，不是理论顾虑。所以这里按经验取一档：
+        形变量减半，配合下面偏厚的面罩，观感仍然统一，成本砍一半。
+
+     面罩 .62 是留给文字的底线：再薄，标题和正文就压不住底下的纹理，
+     读起来像隔着一层水印 —— 卡片毕竟是要读的，不是装饰面。 */
+  background: rgba(255, 255, 255, .62);
+  /* 双色边框：上缘受光、下缘背光。玻璃几乎不再有「自己的质感」之后，
+     撑住它厚度的就剩这两道 —— 少了它们，水面就退化成一块半透明色块。 */
+  box-shadow:
+    inset 0 1.5px 1px -0.5px rgba(255, 255, 255, .70),
+    inset 0 -1.5px 1px -0.5px rgba(24, 32, 46, .10),
+    0 10px 30px rgba(18, 28, 44, .06);
+  backdrop-filter: saturate(160%) blur(16px);
+  -webkit-backdrop-filter: saturate(160%) blur(16px);
+  backdrop-filter: url(#lens-soft) saturate(160%) blur(4px);
+  -webkit-backdrop-filter: url(#lens-soft) saturate(160%) blur(4px);
+}
+html[data-nav="glass"][data-theme="dark"] .card,
+html[data-nav="glass"][data-theme="dark"] .set-group,
+html[data-nav="glass"][data-theme="dark"] .list {
+  /* 深色下的纱必须更厚：薄纱等于让背景决定玻璃的颜色 ——
+     背后暗就死黑、背后亮就发飘。厚一点，玻璃才有自己的底色。 */
+  background: rgba(28, 28, 30, .68);
+  box-shadow:
+    inset 0 1.5px 1px -0.5px rgba(255, 255, 255, .14),
+    inset 0 -1.5px 1px -0.5px rgba(0, 0, 0, .30),
+    0 10px 30px rgba(0, 0, 0, .34);
+}
+/* .flat 是「有意通栏」的（比如代码 diff），别把它也变成卡片 */
+html[data-nav="glass"] .card.flat {
+  margin-left: 0;
+  margin-right: 0;
+  border-radius: 0;
+}
+html[data-nav="glass"] .card { margin-bottom: 12px; }
+html[data-nav="glass"] .set-group { margin-bottom: 12px; }
+
+/* ---------- 行：iOS 的 inset 分隔线 ---------- */
+html[data-nav="glass"] .list-row,
+html[data-nav="glass"] .set-row,
+html[data-nav="glass"] .hist-row {
+  position: relative;
+  border-bottom: 0;
+}
+html[data-nav="glass"] .list-row::after,
+html[data-nav="glass"] .set-row::after,
+html[data-nav="glass"] .hist-row::after {
+  content: '';
+  position: absolute;
+  left: 15px;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--border-muted);
+  /* 0.5px 的细线：1px 在 2x 屏上偏粗，iOS 那条是物理 0.5 */
+  transform: scaleY(.5);
+  transform-origin: 0 100%;
+  pointer-events: none;
+}
+/* 末行不画线 —— iOS 的分组最后一行是干净的 */
+html[data-nav="glass"] .list-row:last-child::after,
+html[data-nav="glass"] .set-row:last-child::after,
+html[data-nav="glass"] .hist-row:last-child::after { display: none; }
+
+/* 行按压反馈：iOS 是「闪一下灰」，不是安卓的水波纹 */
+html[data-nav="glass"] .list-row:active,
+html[data-nav="glass"] .set-row:active {
+  background: var(--btn-bg-hover);
+  transition: none;
+}
+html[data-nav="glass"] .list-row.static:active,
+html[data-nav="glass"] .set-row.static:active { background: var(--bg); }
+
+/* ---------- 分组标题 ---------- */
+html[data-nav="glass"] .section-title,
+html[data-nav="glass"] .set-group-title {
+  padding: 16px 16px 7px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--fg-muted);
+}
+html[data-nav="glass"] .set-note {
+  background: transparent;
+  border: 0;
+  padding: 7px 20px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+html[data-nav="glass"] .sep-line { background: transparent; border: 0; height: 8px; }
+
+/* ---------- 控件 ---------- */
+/* 开关：iOS 的 on 是系统绿，不是按钮绿 */
+html[data-nav="glass"] .switch.on {
+  background: var(--success);
+  border-color: var(--success);
+}
+html[data-nav="glass"] .switch .knob { box-shadow: 0 3px 8px rgba(0, 0, 0, .15), 0 1px 1px rgba(0, 0, 0, .16); }
+
+/* 按钮：iOS 的圆角更钝，字更重 */
+html[data-nav="glass"] .btn {
+  border-radius: 10px;
+  font-weight: 600;
+  border-color: transparent;
+  background: var(--btn-bg);
+}
+html[data-nav="glass"] .btn.primary { background: var(--accent); color: #fff; }
+html[data-nav="glass"] .btn.primary:active { background: var(--btn-primary-hover); }
+html[data-nav="glass"] .btn.sm { border-radius: 8px; }
+
+/* 分段控件：iOS 那枚是浅灰槽 + 白色滑块，滑块带阴影 */
+html[data-nav="glass"] .seg {
+  background: rgba(118, 118, 128, .12);
+  border: 0;
+  border-radius: 9px;
+  padding: 2px;
+  gap: 0;
+}
+html[data-nav="glass"] .seg button {
+  border: 0;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg);
+  min-height: 28px;
+}
+html[data-nav="glass"] .seg button.active {
+  background: var(--bg);
+  font-weight: 600;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, .12), 0 1px 1px rgba(0, 0, 0, .04);
+}
+
+/* 输入框：iOS 的圆角输入框，聚焦是蓝边而不是外发光 */
+html[data-nav="glass"] .input,
+html[data-nav="glass"] .textarea,
+html[data-nav="glass"] .select {
+  border-radius: 10px;
+  border: 1px solid var(--border-muted);
+  padding: 10px 12px;
+}
+html[data-nav="glass"] .input:focus,
+html[data-nav="glass"] .textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+
+/* 搜索框：iOS 的搜索栏是「没有边框的圆角灰槽」 */
+html[data-nav="glass"] .search-bar { background: transparent; border-bottom: 0; padding: 8px 16px; }
+html[data-nav="glass"] .search-input {
+  background: rgba(118, 118, 128, .12);
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 12px;
+  min-height: 44px;
+}
+html[data-nav="glass"] .search-input input { font-size: 17px; }
+/* iOS 的搜索栏右侧是「蓝色文字按钮」，不是描边方块。
+   去掉边框 + 用 accent 色 + 字号跟输入框一致，高度对齐后不再显得被挤扁。 */
+html[data-nav="glass"] .search-bar > .btn {
+  flex: none;
+  min-height: 44px;
+  padding: 10px 14px;
+  font-size: 17px;
+  font-weight: 600;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  border-radius: 12px;
+}
+html[data-nav="glass"] .search-bar > .btn:active { background: var(--accent-subtle); }
+
+/* 芯片：iOS 没有这种描边胶囊，做成浅灰圆角块更贴 */
+html[data-nav="glass"] .chip {
+  border: 0;
+  background: rgba(118, 118, 128, .12);
+  border-radius: 10px;
+  padding: 5px 10px;
+  font-weight: 500;
+}
+html[data-nav="glass"] .chip.active { background: var(--accent); color: #fff; }
+
+/* ---------- 弹层：iOS 的 Action Sheet ---------- */
+html[data-nav="glass"] .sheet-mask { background: rgba(0, 0, 0, .4); }
+html[data-nav="glass"] .sheet {
+  /* iOS 13+ 的 sheet 是「左右留 8、圆角 14、离底一小段」的浮起卡片，
+     不是贴着屏幕边缘的通栏抽屉 */
+  left: 8px;
+  right: 8px;
+  bottom: calc(8px + var(--kb, 0px));
+  border-radius: 14px;
+  max-height: calc(var(--vvh, 100vh) - 24px);
+  overflow: hidden;
+}
+/* .full 是「就要占满」的那些（编辑器、详情页），别动 */
+html[data-nav="glass"] .sheet.full {
+  left: 0;
+  right: 0;
+  bottom: var(--kb, 0px);
+  border-radius: 14px 14px 0 0;
+  max-height: calc(var(--vvh, 100vh) - 8px);
+}
+html[data-nav="glass"] .sheet-head {
+  border-bottom: 1px solid var(--border-muted);
+  padding: 14px 16px;
+}
+html[data-nav="glass"] .sheet-head h3 { font-size: 17px; font-weight: 600; text-align: center; }
+html[data-nav="glass"] .sheet-foot { border-top: 1px solid var(--border-muted); }
+
+/* ---------- 提示条：iOS 是胶囊形 + 毛玻璃 ---------- */
+html[data-nav="glass"] .toast {
+  border-radius: 999px;
+  /* 从 .82 薄到 .68：不薄一点，折射进来的东西根本看不见 */
+  background: rgba(0, 0, 0, .68);
+  /* ⚠️ 顺序统一：标准属性在前、-webkit- 在后，和 #appbar、#tabbar 一致。
+     这里原来把前缀写在前面了（和其它几处不一致），既然认定了那条
+     「倒过来会被后面的前缀声明重置」的教训，就不该留这个例外。 */
+  backdrop-filter: saturate(150%) blur(12px);
+  -webkit-backdrop-filter: saturate(150%) blur(12px);
+  backdrop-filter: url(#lens) saturate(150%) blur(4px);
+  -webkit-backdrop-filter: url(#lens) saturate(150%) blur(4px);
+  font-size: 14px;
+  padding: 11px 18px;
+}
+html[data-nav="glass"][data-theme="dark"] .toast {
+  background: rgba(58, 58, 60, .68);
+}
+
+/* ---------- 头像：iOS 的方形头像是连续圆角，不是 6px 硬切 ---------- */
+html[data-nav="glass"] .avatar.sq { border-radius: 22%; }
+
+/* ---------- 状态徽章：iOS 的字重更轻、圆角更钝 ---------- */
+html[data-nav="glass"] .state { border-radius: 8px; font-weight: 500; padding: 3px 9px; }
+html[data-nav="glass"] .label { border-radius: 6px; }
+
+/* ---------- 骨架屏 / 加载 ---------- */
+html[data-nav="glass"] .skel { border-radius: 8px; }
+html[data-nav="glass"] .spinner { border-width: 2.5px; }
+
+/* ---------- 页面留白：iOS 的页面边距是 16，不是 12 ---------- */
+html[data-nav="glass"] .page { padding: 4px 0 8px; }
+html[data-nav="glass"] .pad { padding: 0 16px; }
+html[data-nav="glass"] .chips { padding: 8px 16px; }
+html[data-nav="glass"] .fnote { background: transparent; padding: 8px 16px; border-bottom: 0; }
+html[data-nav="glass"] .ffield { padding: 4px 16px 8px; border-top: 0; }
+
+/* ---------- 动态响应：「液」的最后一块 ----------
+   玻璃画得再像，按下去是硬的就还是一块塑料 —— 水的手感是**回弹**。
+   原来的.2,.9,.2,1 是标准的减速到底，按时稳但不活；
+   这里换成 .34,1.56,.64,1（末段 > 1 会冲过头再收回），
+   按一下有弹性，跟前面的位移、双色边框合起来才是一整套。
+
+   ⚠️ 只给这三类：**独立控件**（fab / btn / icon-btn）和底栏 tab。
+      .list-row **不加** —— 它在 overflow:hidden 的卡片里，缩放会被裁
+      出一道白边；而且一行的缩放会顶着相邻行，整列看着像在抖。
+      列表行保持原来的换底色反馈，那本来就是 iOS 列表的做法。 */
+html[data-nav="glass"] .fab,
+html[data-nav="glass"] .btn,
+html[data-nav="glass"] .icon-btn,
+html[data-nav="glass"] .tab-ico,
+html[data-nav="glass"] .tab-label {
+  transition: transform .34s cubic-bezier(.34, 1.56, .64, 1);
+}
+html[data-nav="glass"] .fab:active { transform: scale(.93); }
+html[data-nav="glass"] .btn:active { transform: scale(.95); }
+html[data-nav="glass"] .icon-btn:active { transform: scale(.90); }
+
+
+/* ============================================================
+   iOS 材质（Materials）—— 真正的磨砂
+
+   上一版把顶栏写成「半透明白 + backdrop-filter: blur(20px)」，
+   看着还是块白板。原因是**它背后根本没有东西可模糊**：#appbar 是
+   flex 列里的一个块，#view 从它下沿开始（实测 appbar.bottom=53、
+   view.top=53，一点不重叠），于是 blur 的输入永远是 body 的纯色 ——
+   模糊纯色还是纯色。底栏之所以「像 iOS」，恰恰因为它是 fixed，
+   内容滚动时会从它下面穿过。
+
+   所以要补两件事，缺一不可：
+     ① 让内容真的从顶栏下面穿过（顶栏改浮层，#view 让出顶部空间）
+     ② 给玻璃加上噪点（下面说）
+
+   关于 ② —— iOS 的 UIBlurEffect 不是「一次高斯模糊」就完事。它叠出来的是：
+       背景内容 → 模糊（降采样多次，等效半径很大）
+              → vibrancy：饱和度大幅提升 + 亮度微调
+              → 半透明色罩（白，alpha 随材质厚度变）
+              → 噪点（dither）
+   绝大多数 CSS 仿写只做前三层，于是得到一块「干净的模糊」——
+   像塑料，不像玻璃。真实观感里那层**噪点**才是关键：大幅模糊会把渐变压成
+   色带（banding），噪点打散色带的同时，也给了磨砂面该有的颗粒感。
+   这里用 feTurbulence 生成分形噪声（去色），以几个百分点的透明度铺上去。
+   ============================================================ */
+
+/* 噪点图：分形噪声 + 去色。做成变量，多处材质共用 */
+html[data-nav="glass"] {
+  /* ⚠️ 这里踩过两个大坑，都记一下：
+
+     坑一：tile 太小 + opacity 太低 → 真机上根本看不见。
+     原来写的是 140×140 tile、opacity .045。DPR=1 的桌面上有颗粒，但真机
+     （DPR 2.75~3）上噪声点被放大成 3×3 物理像素、高频直接被抹平，
+     加上 .045 的白噪声对比度不到 1 级 —— 眼睛和相机都分辨不出来。
+
+     坑二：mix-blend-mode: overlay → 把颗粒压没了。
+     overlay 在接近白色的底上输出恒等于白（公式：底>0.5 时走 screen 分支，
+     越白越放大），而顶栏面罩本来就是白的，于是噪点全被吃掉。
+     实测对比（背后纯灰、DPR 2.75）：
+        overlay  .13  → 颗粒感 1.166
+        normal   .13  → 颗粒感 1.166
+        overlay  .30  → 颗粒感 1.358
+        normal   .30  → 颗粒感 3.106   ← 用这个
+     结论：噪点就该老老实实 normal 混合，别想着「叠加」。
+
+     最终参数：baseFrequency=0.8、tile 200、opacity .22
+     （DPR 2.75 下实测颗粒感 2.79，肉眼刚好是「磨砂」而不是「噪点噪」）。 */
+  --ios-noise: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'200'%20height%3D'200'%3E%3Cfilter%20id%3D'n'%20x%3D'0'%20y%3D'0'%20width%3D'100%25'%20height%3D'100%25'%3E%3CfeTurbulence%20type%3D'fractalNoise'%20baseFrequency%3D'0.8'%20numOctaves%3D'4'%20stitchTiles%3D'stitch'%2F%3E%3CfeColorMatrix%20type%3D'saturate'%20values%3D'0'%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D'200'%20height%3D'200'%20filter%3D'url(%23n)'%2F%3E%3C%2Fsvg%3E");
+  --ios-noise-size: 100px 100px;
+  /* ⚠️ 液态档把噪点从 .22 压到 .06 —— 这不是随手调的。
+     毛玻璃里噪点是灵魂（它打散了大幅模糊挤出来的色带）；
+     液态玻璃里噪点是敌人：水面之所以看着是水，全靠背后那块
+     扭曲的图案**看得清**。铺一层颗粒上去，等于给这块图案蒙上一层雾，
+     位移滤镜每帧照旧算，但肉眼再也看不见波纹。留 .06 只是为了让
+     大面积纯色区域不出现渐变色带，够用了。 */
+  --ios-noise-opacity: .06;
+  /* ===== 材质的厚度 =====
+     ⚠️ 上一版这里的目标是「毛玻璃」，这一版换成了「液态玻璃」，
+        两者逻辑相反，改任何数字之前请先把这段读完：
+
+     毛玻璃（原）：**大模糊 + 厚面罩**。它要的是把背景「揉掉」——
+        背景内容只提供颜色和亮度，本身不需要看清。blur 30、veil .62。
+     液态玻璃（现）：**几乎不模糊 + 极薄面罩**。它要的是背景保持清晰，
+        只在**边缘附近被折弯**——看得见的形变才是「水」，看不见形变就
+        只是一次昂贵的模糊。
+
+        正因为要「看得清」，面罩也不能厚：薄到看得见背景，才谈得上
+        「看背景被扭」。veil 从 .62 降到 .30。
+
+     ⚠️ 最关键的一条：blur 是折射的天敌，一旦超过约 6px，位移出来的
+        形变立刻被抹平。所以 --material-blur-liquid 只能是 2~4px。
+        谁要是觉得「不够柔」把它提回去，会得到最坏的组合：
+        滤镜还在、GPU 照旧每帧重算位移，屏幕上却什么都看不到。 */
+  --material-blur: 20px;        /* 回落值：给不认 url() 滤镜的 WebView */
+  --material-blur-liquid: 3px;  /* 液态档：必须 ≤ 4px，这条线不能碰 */
+  --material-sat: 180%;
+  /* 面罩的 alpha。
+     ⚠️ 这个值是「两边都能看」的折中，别按纯液态的 .10~.15 去写。
+        为什么不能只取一边：面罩写在 background 上，而 CSS 无法按
+        「设备认不认 backdrop-filter 的 url()」来分流 background ——
+        取 .12 的话，不支持折射的那批老 WebView 会拿到「几乎不糊的
+        一层纱」，背后内容直接穿透顶栏，标题就没法读了。
+        .30 是实测的安全线：认的设备上仍能看清背景在被折弯，
+        不认的设备上是一块标准的 iOS thin material。 */
+  --material-veil: .30;
+}
+
+/* ---------- 顶栏：改成浮层，让内容从下面穿过 ---------- */
+html[data-nav="glass"] #appbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  /* ⚠️ 高度必须显式写死。原来只靠 .appbar-inner 的 height 撑着，
+     一旦 #appbar 脱离文档流，它的高度就变成「内容高度」——
+     而 .appbar-inner 是 flex item，父级不定高时它的 height 会被内容压成
+     auto，于是顶栏在真机上被撑高、#view 让位量（52px）对不上，
+     屏幕上方就出现一大块空白。写死总高最稳。 */
+  height: calc(var(--appbar-h) + var(--safe-t));
+  box-sizing: border-box;
+  padding-top: var(--safe-t);
+  background: rgba(255, 255, 255, var(--material-veil));
+  /*
+     ⚠️ 这里是整个液态改造里最容易写错的地方，四行都有各自的来历：
+
+     ① 前两行是**兜底**：给「不认 backdrop-filter 里的 url() 」的 WebView
+        用的毛玻璃（IOS Safari 和一些老版本 Chromium 都不认）。
+     ② 后两行才是**真折射**：带 #lens 的那片位移滤镜。
+
+     ⚠️ 教训一（上一轮在这里交过学费）：**标准属性必须写在 -webkit- 前面**。
+        倒过来的话，认标准的引擎会被后面的前缀声明覆盖，玻璃当场消失。
+
+     ⚠️ 教训二（这一轮新踩的）：**含 url() 的那两行必须字面写，不能包
+        var()**。看着想把 `saturate(...) blur(...)` 抽成变量省几行 ——
+        不行。自定义属性一旦替换出来的值无效，规范规定这条声明是
+        "invalid at computed-value time"，属性会掉回 inherit/initial，
+        **不会**回落到同属性的前一条声明。也就是说老 WebView 会直接
+        得到一个「没有 backdrop-filter」的顶栏，而不是你要的兜底。
+        字面写的话，不认得的引擎当作解析失败整条丢掉，前一条自然留下。
+  */
+  backdrop-filter: saturate(var(--material-sat)) blur(var(--material-blur));
+  -webkit-backdrop-filter: saturate(var(--material-sat)) blur(var(--material-blur));
+  backdrop-filter: url(#lens) saturate(var(--material-sat)) blur(var(--material-blur-liquid));
+  -webkit-backdrop-filter: url(#lens) saturate(var(--material-sat)) blur(var(--material-blur-liquid));
+}
+/* 深色下换个面罩颜色，alpha 跟浅色一致 */
+html[data-nav="glass"][data-theme="dark"] #appbar {
+  background: rgba(28, 28, 30, calc(var(--material-veil) + .10));
+}
+/* 噪点：铺在毛玻璃之上、文字之下。黑噪 + 白噪两层，才是「磨砂」而不是「提亮」 */
+html[data-nav="glass"] #appbar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: var(--ios-noise);
+  background-size: var(--ios-noise-size);
+  opacity: var(--ios-noise-opacity);
+  pointer-events: none;
+}
+/* 内容区让出顶栏的空间。用 padding 而不是 margin ——
+   padding 会随内容一起滚走，滚起来之后内容就从顶栏下面穿过去了，
+   这正是 iOS 导航栏的行为。 */
+html[data-nav="glass"] #view {
+  padding-top: calc(var(--appbar-h) + var(--safe-t));
+}
+
+/* ---------- 背景层：给折射一点东西看得见 ----------
+   ⚠️ 这一整段是「全界面液态玻璃」的**前提条件**，不是装饰。
+
+   位移滤镜折的是「背后那位」，而原来 App 的背景是纯色：
+     .card / .list / .set-group 的底是 var(--bg) 的一片实色，
+     #view 的画布 --canvas 也是一片实色。
+   在这个组合下不管加什么滤镜，输入都是同一块颜色 —— 把纯色扭
+   多少个像素它还是纯色，屏幕上一点变化都没有（上一版顶栏的
+   「#view 不重叠，blur 的输入永远是 body 纯色」是同一个坑）。
+
+   所以要让卡片的玻璃有东西可透，得先给底下铺一层**有起伏的内容**：
+     ① 三团很淡的色晕 —— 提供大块的明暗变化
+     ② 一层极淡的斜纹 —— 提供**能被看出弯曲**的纹理，
+        这是关键：折射看不看得出来，取决于背后有没有高频图案，
+        光是平滑渐变，扭了多少像素也看不出来。
+
+   ⚠️ background-attachment: fixed 必须留着：它让背景不跟着内容滚动，
+      卡片从它上面滚过去时，背后的图案相对卡片是在移动的 ——
+      这才是「内容从水面下流过」的观感。去掉的话背景跟着一起滚，
+      图案和卡片相对静止，水面当场变回塑料片。 */
+html[data-nav="glass"] #view {
+  background-image:
+    repeating-linear-gradient(45deg,
+      rgba(9, 106, 218, .030) 0 1.5px,
+      rgba(9, 106, 218, 0) 1.5px 13px),
+    radial-gradient(115% 58% at 10% -12%, rgba(0, 122, 255, .13), transparent 58%),
+    radial-gradient(96% 52% at 94% 6%, rgba(88, 86, 214, .12), transparent 60%),
+    radial-gradient(130% 66% at 46% 108%, rgba(255, 149, 0, .10), transparent 62%),
+    linear-gradient(180deg, var(--canvas), var(--canvas));
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  background-size: cover, cover, cover, cover, cover;
+}
+html[data-nav="glass"][data-theme="dark"] #view {
+  background-image:
+    repeating-linear-gradient(45deg,
+      rgba(255, 255, 255, .028) 0 1.5px,
+      rgba(255, 255, 255, 0) 1.5px 13px),
+    radial-gradient(115% 58% at 10% -12%, rgba(10, 132, 255, .16), transparent 58%),
+    radial-gradient(96% 52% at 94% 6%, rgba(94, 92, 230, .15), transparent 60%),
+    radial-gradient(130% 66% at 46% 108%, rgba(255, 179, 64, .10), transparent 62%),
+    linear-gradient(180deg, var(--canvas), var(--canvas));
+}
+
+/*
+  ⚠️ 这里**不能**给 sticky 元素加 top —— 曾经加过，是个 bug。
+
+  当时的注释写的是「sticky 的 top 相对滚动容器的 padding box 算，所以要往下挪」，
+  前半句对，结论错了。sticky 的 top 确实是相对滚动容器（这里是 #view）的
+  padding box 算的，而 #view 自己已经有
+
+      padding-top: calc(var(--appbar-h) + var(--safe-t))
+
+  把顶栏的位置让出来了。也就是说 padding box 的顶边**本来就在顶栏底边**，
+  再给 .tabs 一个同样的 top，等于把同一个 52px 让了两次 ——
+  实测 iOS 风格下页签吸附点是「顶栏底 + 52」，永远飘在内容中间，
+  看上去就是「代码 / 议题」这一行插在文件夹列表中间。
+  朴素模式之所以正常：它 #view 没有 padding-top（view 自己在 53 处开始），
+  于是 .tabs 的 top: 0 恰好贴合顶栏底边 —— 两种风格的正确取值都是 0。
+
+  所以这条规则整段留空不用写，基础规则 .search-bar / .tabs 的 top: 0 就是对的。
+  保留这段注释，是防止有人看到「top 是相对 padding box」这句话又想去加值。
+*/
+
+/* ---------- 底栏：材质 + 噪点 ---------- */
+/* 底栏本来就是 fixed，玻璃是真的（内容会从它下面穿过），
+   问题出在**面罩太白**：--nav-surface 是 rgba(233,237,245,.5)，
+   一层偏白的浅灰盖上去，把背后颜色的饱和度冲掉了一大半
+   （实测：背后纯黄饱和度 184 → 胶囊里只剩 80，亮度反而从 151 涨到 174）。
+   那就是「发灰发白的塑料」，不是玻璃。
+   iOS 的做法是：面罩用**中性白 + 较低 alpha**，饱和度交给 vibrancy 去补。
+   这里把面罩换成 rgba(255,255,255,.30)，并补一层 saturate 拔饱和度。 */
+html[data-nav="glass"] #tabbar {
+  --nav-surface: rgba(255, 255, 255, .30);
+  /* 这里是**兜底值**：classic 通过自己的 --nav-blur: none 关掉它，
+     glass 下留给不认 url() 滤镜的设备。真正的水在下面那两行。 */
+  --nav-blur: saturate(var(--material-sat)) blur(var(--material-blur));
+  /*
+     ⚠️ 为什么折射要单独写在这条 glass 专属规则里，而不是直接改上面
+        `--nav-blur` 的值 —— 因为含 url() 的值一旦包进 var()，被判
+        无效时会把整个 backdrop-filter 打回 initial（等于 none），
+        兜底那行也一起没了。字面写在这里，不认的引擎整条丢掉即可。
+        底栏是 fixed，内容滚动时从它下面穿过，是全场最适合挂真折射的
+        位置 —— 这里的形变量最能被看见。 */
+  backdrop-filter: url(#lens) saturate(var(--material-sat)) blur(var(--material-blur-liquid));
+  -webkit-backdrop-filter: url(#lens) saturate(var(--material-sat)) blur(var(--material-blur-liquid));
+  /* 玻璃边缘的亮环：iOS 的玻璃片有一圈极淡的高光描边，缺了就显得像贴纸。
+     ⚠️ 用 box-shadow 的 inset 而不是 border —— border 会占掉盒模型尺寸，
+        胶囊的 (总宽-8)/格数 那套等分算法会跟着错位，指示器就飘了。
+     ⚠️ 液态档这一圈变得比以前重要得多：面罩从 .62 薄到 .30、噪点从 .22
+        压到 .06 之后，玻璃几乎不再有「自己的质感」了，撑住它形状的
+        就只剩这几道 inset —— 别在这里省。 */
+  box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .55), var(--nav-shadow),
+              var(--nav-liquid);
+}
+html[data-nav="glass"][data-theme="dark"] #tabbar {
+  --nav-surface: rgba(30, 30, 34, .46);
+  box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .14), var(--nav-shadow),
+              var(--nav-liquid);
+}
+html[data-nav="glass"] #tabbar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-image: var(--ios-noise);
+  background-size: var(--ios-noise-size);
+  opacity: calc(var(--ios-noise-opacity) - .02);
+  pointer-events: none;
+}
+
+/* ---------- 弹层：材质 + 噪点 ---------- */
+/* 弹层是**阅读面**：底下全是扭动的图案会让人读不进去。
+   按经验给它单独一档「退水」：
+     ① 面罩加厚（+ .28）—— 让内容稳得住，因为它是要读的；
+     ② 折射减半 —— 换成 #lens-soft（scale 12，不再是 26）；
+     ③ 补一层 brightness(1.18) —— 抵消 .sheet-mask 那层 50% 压暗，
+        不补的话折射进来的全是暗色，水面看着是脏的而不是透的。 */
+html[data-nav="glass"] .sheet {
+  background: rgba(255, 255, 255, calc(var(--material-veil) + .28));
+  backdrop-filter: saturate(var(--material-sat)) blur(var(--material-blur));
+  -webkit-backdrop-filter: saturate(var(--material-sat)) blur(var(--material-blur));
+  backdrop-filter: url(#lens-soft) saturate(var(--material-sat))
+                   brightness(1.18) blur(var(--material-blur-liquid));
+  -webkit-backdrop-filter: url(#lens-soft) saturate(var(--material-sat))
+                           brightness(1.18) blur(var(--material-blur-liquid));
+}
+html[data-nav="glass"][data-theme="dark"] .sheet {
+  background: rgba(28, 28, 30, calc(var(--material-veil) + .40));
+}
+html[data-nav="glass"] .sheet::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: var(--ios-noise);
+  background-size: var(--ios-noise-size);
+  opacity: calc(var(--ios-noise-opacity) - .04);
+  pointer-events: none;
+  z-index: 0;
+}
+/* 弹层内容要盖在噪点之上 */
+html[data-nav="glass"] .sheet-head,
+html[data-nav="glass"] .sheet-body,
+html[data-nav="glass"] .sheet-foot {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}
+
+/* ---------- 提示条 ---------- */
+html[data-nav="glass"] .toast {
+  backdrop-filter: saturate(var(--material-sat)) blur(20px);
+  -webkit-backdrop-filter: saturate(var(--material-sat)) blur(20px);
+}
+html[data-nav="glass"] .toast::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-image: var(--ios-noise);
+  background-size: var(--ios-noise-size);
+  opacity: calc(var(--ios-noise-opacity) - .02);
+  pointer-events: none;
+}
+
+/* ---------- 顶栏发丝线：只在内容滚到它下面之后才出现 ----------
+   iOS 15 之后的导航栏，顶部跟背景是融成一片的、没有下边框；
+   只有内容开始从底下滑过去，底边才浮出一条 0.5px 的发丝线。
+   类名由 app.js 跟着 #view 的滚动位置开关，这里只负责画。
+   ::before 已经被噪点占了，这条线画在 ::after 上。 */
+html[data-nav="glass"] #appbar {
+  /* iOS 导航栏不画实体 1px 边框，底边那条线换成上面的发丝线。
+     不置 0 的话会和发丝线叠成两条（上一节的老规则带 border-bottom）。 */
+  border-bottom: 0;
+}
+html[data-nav="glass"] #appbar::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: .5px;
+  background: var(--line, rgba(60, 60, 67, .29));
+  opacity: 0;
+  transition: opacity .18s ease;
+  pointer-events: none;
+}
+html[data-nav="glass"] #appbar.is-scrolled::after { opacity: 1; }
+/* 深色下发丝线要更淡一点，iOS 用的是半透明白而不是黑 */
+html[data-nav="glass"][data-theme="dark"] #appbar::after {
+  background: rgba(255, 255, 255, .18);
+}
+
+/* ============================================================
+   全机型适配
+   ------------------------------------------------------------
+   目标：同一份 CSS 在 320dp 小屏机、6.7" 大屏机、刘海/挖孔/曲面屏、
+   横屏、以及魅族 Flyme 这类定制 WebView 上都不出现「被系统区压住 /
+   被挤成一条缝 / 透明到看不清」。
+
+   机型差异一共就这几种，逐一处理：
+     1. 状态栏/导航栏高度不同   → 原生注入真实高度（--safe-t/--safe-b）
+     2. 刘海、挖孔、曲面屏      → 左右安全区（--safe-l/--safe-r）
+     3. 屏幕宽度不同           → 窄屏断点压缩留白，宽屏断点限宽居中
+     4. 屏幕比例不同           → 100dvh（带 100vh 回退）
+     5. 系统字体被用户放大      → text-size-adjust: 100%
+     6. WebView 版本差异       → 玻璃能力检测，不支持就降级为近实色
+     7. 横屏                   → 压缩顶栏/底栏高度
+   ============================================================ */
+
+/* 5. 系统字体缩放：
+   Flyme / MIUI 允许用户在系统设置里放大字体，部分 ROM 会把这个缩放透
+   传给 WebView，导致 16px 的正文被撑成 20px，卡片内文字换行、按钮高度
+   失控。锁死 100% 后页面按自己的 px 走，跟系统字体大小解耦。 */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* 4. 100dvh 在 Chromium 108 以下（老机型、没更新的 System WebView）不认，
+   整条声明会被丢掉，#app 就没有高度、页面只能靠内容撑 —— 直接多加一行
+   100vh 做回退：认 dvh 的用后一条，不认的用前一条。 */
+#app { height: 100vh; height: 100dvh; }
+
+/* 2. 左右安全区：横屏时刘海/挖孔跑到侧边，曲面屏（部分魅族、华为）左右
+   本来就有不可触控的弧面。竖屏下这两个值恒为 0，不影响现有排版。 */
+#appbar {
+  padding-left: var(--safe-l, 0px);
+  padding-right: var(--safe-r, 0px);
+}
+#view {
+  padding-left: var(--safe-l, 0px);
+  padding-right: var(--safe-r, 0px);
+}
+#tabbar {
+  left: max(var(--nav-gutter), var(--safe-l, 0px));
+  right: max(var(--nav-gutter), var(--safe-r, 0px));
+}
+
+/* 6. 玻璃能力降级。
+   老 WebView / 部分定制 ROM 的 WebView（老款 Flyme、运营商定制机）不认
+   backdrop-filter，此时玻璃层只剩一层半透明色罩，底下滚过的列表会直接
+   透上来，顶栏文字压着列表一起晃 —— 比没有玻璃还难看。
+   data-glass-support 由 app.js 用 CSS.supports 在启动时实测（标准属性和
+   -webkit- 前缀任一认即可），认不出来才置 0，此时把色罩提到接近不透明。 */
+html[data-glass-support="0"][data-nav="glass"] #appbar {
+  background: rgba(255, 255, 255, .94);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+html[data-glass-support="0"][data-nav="glass"][data-theme="dark"] #appbar {
+  background: rgba(28, 28, 30, .94);
+}
+html[data-glass-support="0"][data-nav="glass"] #tabbar {
+  --nav-surface: rgba(255, 255, 255, .96);
+  --nav-blur: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+html[data-glass-support="0"][data-nav="glass"][data-theme="dark"] #tabbar {
+  --nav-surface: rgba(28, 28, 30, .96);
+}
+html[data-glass-support="0"][data-nav="glass"] .toast {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* 3a. 窄屏（≤360dp：iPhone SE 一档、老安卓小屏机、魅族 16T 之外的多数老机）
+   留白整体收紧一档，顶栏按钮也缩回 36px，给标题腾出宽度。 */
+@media (max-width: 360px) {
+  /* ⚠️ 必须用 :root 而不是 html：:root 是伪类，特异性 (0,1,0) 高于 html 的
+     (0,0,1)。写成 html 会被文件开头 :root 里那一份同名变量压掉，
+     实测横屏那档 --appbar-h 就是这么没生效的。 */
+  :root { --tabbar-gutter: 10px; --tabbar-lift: 10px; }
+  .appbar-inner { padding: 0 2px; gap: 0; }
+  html[data-nav="glass"] .appbar-inner { padding: 0 4px; }
+  html[data-nav="glass"] .appbar-title { padding-left: 4px; font-size: 16px; }
+  .icon-btn { width: 36px; height: 36px; }
+  .search-bar { padding: 8px 10px; gap: 6px; }
+  .search-bar > .btn { padding: 8px 12px; }
+  html[data-nav="glass"] .search-bar { padding: 8px 12px; }
+  html[data-nav="glass"] .search-bar > .btn { padding: 10px 10px; }
+  html[data-nav="glass"] .card,
+  html[data-nav="glass"] .set-group,
+  html[data-nav="glass"] .list { margin-left: 12px; margin-right: 12px; }
+}
+
+/* 3b. 大屏（≥400dp：6.5"+ 的全面屏机）留白放宽一点，别让内容贴边。 */
+@media (min-width: 400px) and (max-width: 719px) {
+  html[data-nav="glass"] .card,
+  html[data-nav="glass"] .set-group,
+  html[data-nav="glass"] .list { margin-left: 20px; margin-right: 20px; }
+}
+
+/* 7. 手机横屏：竖向空间一下子少了近一半，顶栏/底栏必须跟着收，
+   否则一屏只放得下三行内容。 */
+@media (orientation: landscape) and (max-height: 520px) {
+  :root { --appbar-h: 44px; --tabbar-h: 52px; --tabbar-lift: 8px; }
+  .appbar-title { font-size: 15px; }
+  html[data-nav="glass"] .appbar-title { font-size: 16px; }
+  #view { padding-bottom: calc(var(--tabbar-h) + var(--nav-lift) + var(--nav-bottom) + 4px); }
+}
+
+/* ============================================================
+   分支 / 标签切换（代码页与文件页共用）
+   ------------------------------------------------------------
+   · .ref-note   「正在看 X，不是默认分支」那条提示
+   · #refbtn.alt 当前不是默认分支时，按钮换成强调色描边
+   · .ref-pick   切换弹层里的提示行
+   ============================================================ */
+
+/* 切到别的分支后目录会长得不一样，很容易被当成「仓库少了文件」。
+   这句提示和按钮一起出现，点一下就回默认分支。
+   面包屑下方独立一行：面包屑本身是单行横向滚动的，挤进去会被推出视野。 */
+.ref-note {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin: 0 14px 8px; padding: 7px 10px; border-radius: 8px;
+  background: var(--accent-subtle); color: var(--fg-muted);
+  font-size: 12px; line-height: 1.5; cursor: pointer;
+}
+.ref-note b { color: var(--fg); font-weight: 600; word-break: break-all; }
+.ref-note .ref-note-go { color: var(--accent); font-weight: 600; margin-left: auto; white-space: nowrap; }
+.ref-note:active { opacity: .8; }
+
+/* 非默认分支：按钮描边变强调色，一眼看出「你现在不在主分支上」 */
+#refbtn.alt {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* 切换弹层顶部的「当前：main · 切完仍停在 src/x.js」 */
+.ref-pick .ref-hint {
+  padding: 0 0 10px;
+  font-size: 13px; color: var(--fg-muted); line-height: 1.5;
+}
+.ref-pick .ref-hint b { color: var(--fg); }
+.ref-pick #refq::-webkit-search-cancel-button { -webkit-appearance: none; }
+
+/* 加载中：给个转圈 + 一句话。原来这里是一片空白，跟「这个仓库真没有标签」
+   长得一模一样，用户分不清是在加载还是真的空。 */
+.ref-loading {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 28px 16px; color: var(--fg-muted); font-size: 13px;
+}
+.ref-loading .spinner { width: 16px; height: 16px; flex: none; }
+
+/* 列表加载到底的提示（议题/PR 分页用）。居中、小字、弱化色，不抢视觉焦点。 */
+.list-end {
+  text-align: center;
+  padding: 14px 12px 18px;
+  font-size: 12px;
+  color: var(--fg-muted);
+}

@@ -1,0 +1,120 @@
+plugins {
+    id 'com.android.application'
+}
+
+/*
+ * ---- 版本锁定 ----
+ *
+ * 版本号由仓库根目录的 version.lock 钉死：这里的值必须和它一致，
+ * 不一致直接构建失败。
+ *
+ * 目的是杜绝「顺手把版本号改了」—— 1.1.4 那次就是这么来的：
+ * build.gradle 改了，防护链常量（GuardKeys）没跟上，包一启动就被
+ * 官方校验拦下。现在改成「必须先改 version.lock」这样一个显式的、
+ * 单独的动作，改版本再也绕不过去。
+ */
+def lockProps = [:]
+def lockFile = rootProject.file('version.lock')
+if (lockFile.exists()) {
+    lockFile.eachLine { line ->
+        def s = line.trim()
+        if (!s || s.startsWith('#')) return
+        def kv = s.split('=', 2)
+        if (kv.length == 2) lockProps[kv[0].trim()] = kv[1].trim()
+    }
+}
+ext.LOCK_NAME = lockProps['version'] ?: ''
+ext.LOCK_CODE = lockProps['versionCode'] ?: ''
+
+android {
+    namespace 'com.hubmobile.app'
+    compileSdk 34
+    buildToolsVersion '34.0.0'
+
+    defaultConfig {
+        applicationId 'com.hubmobile.app'
+        minSdk 24
+        targetSdk 34
+        versionCode 1002015
+        versionName '1.2.15'
+    }
+
+    signingConfigs {
+        // 正式签名：只属于本项目的密钥。
+        // 口令与密钥文件放在 keystore/ 下且已被 .gitignore 排除 —— 绝不能进仓库，
+        // 否则任何人拿到它就能签一个「同名同包」的假 APK 冒充更新。
+        release {
+            def ks = rootProject.file('keystore/githup-release.jks')
+            def pf = rootProject.file('keystore/pass.txt')
+            if (ks.exists() && pf.exists()) {
+                storeFile ks
+                storePassword pf.text.trim()
+                keyAlias 'githup'
+                keyPassword pf.text.trim()
+            } else {
+                // 密钥不在（比如别人 clone 了仓库）：退回 debug 签名，
+                // 只影响自己本地能不能装，不影响你发布的包。
+                storeFile file("${System.properties['user.home']}/.android/debug.keystore")
+                storePassword 'android'
+                keyAlias 'androiddebugkey'
+                keyPassword 'android'
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            /*
+              本库是「未加密未加固」版本：不开混淆、不删资源，
+              反编译出来就是能读的源码，方便对照阅读。
+              加固与混淆只在 Buwrt/githup 那个库里做。
+            */
+            minifyEnabled false
+            shrinkResources false
+            // 用专属密钥签，不再是人人可用的 debug 签名
+            signingConfig signingConfigs.release
+        }
+        debug {
+            applicationIdSuffix '.debug'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    packagingOptions {
+        exclude 'META-INF/*.kotlin_module'
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+}
+
+// ---- 版本锁定校验：与 version.lock 对不上就别想构建 ----
+if (ext.LOCK_NAME || ext.LOCK_CODE) {
+    def actualName = String.valueOf(android.defaultConfig.versionName)
+    def actualCode = String.valueOf(android.defaultConfig.versionCode)
+    if (ext.LOCK_NAME && actualName != ext.LOCK_NAME) {
+        throw new GradleException(
+            "\n[版本锁定] 构建脚本里的 versionName 是 '${actualName}'，version.lock 锁的是 '${ext.LOCK_NAME}'。\n"
+            + "版本号已锁定，不允许改动。确需发新版：先改 version.lock，再改这里，最后重跑 tools/gen-guard.py。")
+    }
+    if (ext.LOCK_CODE && actualCode != ext.LOCK_CODE) {
+        throw new GradleException(
+            "\n[版本锁定] 构建脚本里的 versionCode 是 '${actualCode}'，version.lock 锁的是 '${ext.LOCK_CODE}'。\n"
+            + "版本号已锁定，不允许改动。确需发新版：先改 version.lock，再改这里，最后重跑 tools/gen-guard.py。")
+    }
+}
+logger.lifecycle("[版本锁定] versionName=${android.defaultConfig.versionName} versionCode=${android.defaultConfig.versionCode}（已与 version.lock 核对一致）")
+
+// 无第三方依赖：仅使用 Android 框架 API
+dependencies {
+}

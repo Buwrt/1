@@ -1,0 +1,96 @@
+/* ============================================================
+ * downloads-page.css — 下载管理页（js/page-downloads.js 的外观）
+ * 复用 app.css 里的 list / list-row / row-* 系列，这里只补
+ * 状态徽标、进度线、清空按钮、空态，以及右上角常驻入口的角标。
+ * ============================================================ */
+
+#dl-page { padding-bottom: calc(var(--tabbar-h, 56px) + var(--safe-b, 0px) + 16px); }
+
+/* 区块标题右侧的小字与「清空记录」 */
+#dl-page .section-title { display: flex; align-items: center; gap: 6px; }
+#dl-page .dl-count { color: var(--fg-muted, #59636e); font-weight: 400; }
+#dl-page .dl-clear {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  color: var(--fg-muted, #59636e);
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+#dl-page .dl-clear:active { background: var(--canvas-inset, #f6f8fa); color: var(--danger, #cf222e); }
+
+/* 行首状态徽标 */
+#dl-page .dlh-ico {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  line-height: 26px;
+  border-radius: 50%;
+  text-align: center;
+}
+#dl-page .dlh-ico svg { vertical-align: -3px; }
+#dl-page .dlh-ico.run { background: color-mix(in srgb, var(--accent, #0969da) 14%, transparent); color: var(--accent, #0969da); }
+#dl-page .dlh-ico.ok  { background: color-mix(in srgb, var(--success, #1a7f37) 14%, transparent); color: var(--success, #1a7f37); }
+#dl-page .dlh-ico.bad { background: color-mix(in srgb, var(--danger, #cf222e) 12%, transparent); color: var(--danger, #cf222e); }
+
+/* 行内进度线（比悬浮条的细一点，贴在文字下面） */
+#dl-page .dlh-track {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border, #e1e4e8);
+  overflow: hidden;
+  margin-top: 6px;
+}
+#dl-page .dlh-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent, #0969da);
+  transition: width .4s;
+}
+#dl-page .dlh-fill.indeterminate { width: 30% !important; animation: dlpg-slide 1.2s ease-in-out infinite; }
+@keyframes dlpg-slide {
+  0% { margin-left: -30%; }
+  100% { margin-left: 100%; }
+}
+
+/* 文字按钮（打开 / 重试） */
+#dl-page .row-act { font-size: 12px; }
+#dl-page .row-act.danger { color: var(--danger, #cf222e); }
+
+/* 底部说明 */
+#dl-page .dl-note {
+  margin: 12px 16px 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--fg-subtle, #6e7781);
+}
+
+/* 空态 */
+#dl-page .dl-empty, .dl-empty {
+  padding: 72px 24px;
+  text-align: center;
+  color: var(--fg-subtle, #6e7781);
+  font-size: 13px;
+}
+#dl-page .dl-empty svg, .dl-empty svg { opacity: .4; margin-bottom: 8px; }
+
+/* ---- 右上角常驻的「下载管理」入口（app.js 挂在 appbar-actions 末尾） ---- */
+.appbar-actions .dl-action { position: relative; }
+.appbar-actions .dl-badge {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  box-sizing: border-box;
+  border-radius: 7px;
+  background: var(--danger, #cf222e);
+  color: #fff;
+  font-size: 10px;
+  font-style: normal;
+  line-height: 14px;
+  text-align: center;
+  pointer-events: none;
+}

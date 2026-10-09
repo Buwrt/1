@@ -1,0 +1,137 @@
+# 用官方密钥打包正式版 Release APK
+#
+# 密钥本身不进仓库 —— 它以加密的 Repository Secret 形式存在（KEYSTORE_B64 / KEYSTORE_PASS），
+# 构建时才在这里还原成 keystore/ 目录，用完即随 runner 销毁。
+# 这样源码可以公开，但签名权始终只在持有密钥的人手里。
+name: Official Release APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      OWNER: Buwrt
+      REPO: 1
+      BRANCH: main
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Restore official keystore
+        run: |
+          set -e
+          mkdir -p keystore
+          echo "$KEYSTORE_B64" | base64 -d > keystore/githup-release.jks
+          printf '%s' "$KEYSTORE_PASS" > keystore/pass.txt
+          # 只确认文件到位与别名正确，绝不打印密钥内容
+          ls -la keystore/
+          keytool -list -keystore keystore/githup-release.jks \
+                  -storepass "$KEYSTORE_PASS" -alias githup | head -3
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew || true
+
+      - name: Build Release APK
+        id: b
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log
+          echo "exit=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Report cert fingerprint
+        if: steps.b.outputs.exit == '0'
+        run: |
+          set -e
+          APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
+          echo "产物: $APK ($(stat -c%s "$APK") 字节)"
+          # 解出签名证书指纹，用来核对是否等于 SignCheck.EXPECTED_SHA256
+          keytool -exportcert -keystore keystore/githup-release.jks \
+                  -storepass "$KEYSTORE_PASS" -alias githup -rfc \
+            | openssl x509 -noout -fingerprint -sha256
+        env:
+          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
+
+      - name: Commit log and APK via API
+        run: |
+          python3 - <<'PYEOF'
+          import base64, glob, hashlib, json, os, urllib.error, urllib.parse, urllib.request
+
+          TOKEN = os.environ["GH_TOKEN"]
+          OWNER = os.environ["OWNER"]; REPO = os.environ["REPO"]; BRANCH = os.environ["BRANCH"]
+          API = "https://api.github.com"
+
+
+          def api_put(path, data, msg):
+              body = {"message": msg, "branch": BRANCH,
+                      "content": base64.b64encode(data).decode()}
+              try:
+                  r = urllib.request.Request(
+                      f"{API}/repos/{OWNER}/{REPO}/contents/{urllib.parse.quote(path)}?ref={BRANCH}",
+                      headers={"Authorization": "Bearer " + TOKEN,
+                               "Accept": "application/vnd.github+json", "User-Agent": "ci"})
+                  with urllib.request.urlopen(r, timeout=60) as z:
+                      sha = json.loads(z.read().decode()).get("sha")
+                  if sha:
+                      body["sha"] = sha
+              except Exception:
+                  pass
+              req = urllib.request.Request(
+                  f"{API}/repos/{OWNER}/{REPO}/contents/{urllib.parse.quote(path)}",
+                  data=json.dumps(body).encode(), method="PUT",
+                  headers={"Authorization": "Bearer " + TOKEN,
+                           "Accept": "application/vnd.github+json",
+                           "Content-Type": "application/json", "User-Agent": "ci"})
+              try:
+                  with urllib.request.urlopen(req, timeout=240) as z:
+                      print("uploaded", path, len(data))
+              except urllib.error.HTTPError as e:
+                  print("FAILED", path, e.code, e.read().decode()[:200])
+
+
+          # 构建日志
+          try:
+              log = open("build.log", "rb").read()
+              api_put("ci/build-official.log", b"\n".join(log.split(b"\n")[-400:]),
+                      "ci: 官方密钥构建日志")
+          except Exception as e:
+              print("log skip", e)
+
+          # APK + sha256（.gitignore 排除了 *.apk，这里走 API 直接写）
+          apks = glob.glob("app/build/outputs/apk/release/*.apk")
+          print("found:", apks)
+          for p in apks:
+              d = open(p, "rb").read()
+              name = os.path.basename(p)
+              api_put(f"apk/{name}", d, f"ci: 官方签名 APK {name}")
+              api_put(f"apk/{name}.sha256",
+                      (hashlib.sha256(d).hexdigest() + "\n").encode(),
+                      f"ci: {name} sha256")
+
+          # 清场：密钥不留在工作区（本就是临时 runner，但多一道保险）
+          import shutil
+          shutil.rmtree("keystore", ignore_errors=True)
+          PYEOF
+
+      - name: Upload artifact
+        if: steps.b.outputs.exit == '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: githup-official-apk
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: warn

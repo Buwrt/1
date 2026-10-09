@@ -1,0 +1,298 @@
+/* ============================================================
+ * totp-page.css — 两步验证器页面样式
+ *
+ * 沿用 app.css 里的设计变量，明暗主题自动跟随，
+ * 不引入任何新色值（除了动态码本身的状态色）。
+ * ============================================================ */
+
+/* ---------- 顶部说明条 ---------- */
+.totp-tip {
+  display: flex; align-items: center; gap: 8px;
+  margin: 10px 12px 0;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+  background: var(--accent-subtle);
+  border-radius: 8px;
+}
+.totp-tip svg { flex: none; color: var(--accent); }
+
+/* ---------- 账户列表 ---------- */
+.totp-list {
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.totp-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.ti-main { flex: 1; min-width: 0; }
+
+.ti-head { display: flex; align-items: center; gap: 8px; }
+.ti-issuer {
+  font-size: 14px; font-weight: 600; color: var(--fg);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ti-name {
+  margin-top: 2px; font-size: 12px; color: var(--fg-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* 倒计时环：conic-gradient 画的，外圈随剩余秒数收缩 */
+.ti-ring {
+  flex: none;
+  width: 14px; height: 14px; border-radius: 50%;
+  position: relative;
+  transition: background .25s linear;
+}
+.ti-ring::after {
+  content: ''; position: absolute; inset: 3px;
+  border-radius: 50%; background: var(--bg);
+}
+
+/* 动态码本体：
+   数字用等宽字体 + 固定字距，不然每秒重画会左右抖动。
+   tabular-nums 让每个数字占同样宽度，换数字时整块不跳。 */
+.ti-code {
+  margin-top: 8px;
+  display: flex; align-items: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+  line-height: 1.1;
+}
+.ti-code .sp { display: inline-block; width: 10px; }
+.ti-code .d { display: inline-block; min-width: .62em; text-align: center; }
+
+/* ---------- 恢复密钥 ---------- */
+/* 长按账户导入 txt 后出现：一行一条，跟 GitHub 给的
+   github-recovery-codes.txt 同款排版。每行可点（复制那条）。 */
+.ti-recovery {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--canvas-inset);
+  border: 1px solid var(--border-muted);
+  border-radius: 8px;
+}
+.ti-recovery .tr-lb {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  color: var(--fg-subtle);
+}
+.ti-recovery .tr-row {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 2px 0;
+  text-align: left;
+  background: none;
+  border: 0;
+  outline: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--fg-muted);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ti-recovery .tr-row:active { color: var(--accent); }
+
+/* 操作按钮 */
+.ti-actions { display: flex; flex-direction: column; gap: 8px; flex: none; }
+.ti-btn {
+  width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 8px;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+.ti-btn:active { background: var(--btn-bg-hover); color: var(--fg); }
+
+.totp-foot { padding: 16px 14px 24px; }
+.totp-foot .btn { width: 100%; }
+
+/* ---------- 空状态 ---------- */
+.totp-empty {
+  margin: 24px 12px;
+  padding: 28px 20px;
+  text-align: center;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.te-ico { color: var(--fg-subtle); margin-bottom: 12px; }
+.te-title { font-size: 15px; font-weight: 600; color: var(--fg); }
+.te-desc {
+  margin: 8px 0 20px;
+  font-size: 13px; line-height: 1.6; color: var(--fg-muted);
+}
+.totp-empty .btn { margin-bottom: 8px; }
+
+/* ---------- 表单 ---------- */
+.totp-form { padding: 2px 0; }
+.totp-field { display: block; margin-bottom: 12px; }
+.totp-field .lb {
+  display: block; margin-bottom: 6px;
+  font-size: 12px; font-weight: 600; color: var(--fg-muted);
+}
+.totp-field textarea,
+.totp-field input,
+.totp-field select {
+  width: 100%; box-sizing: border-box;
+  padding: 9px 10px;
+  font-size: 14px;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  outline: none;
+}
+.totp-field textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px; line-height: 1.5;
+  resize: vertical;
+}
+.totp-field input:focus,
+.totp-field textarea:focus,
+.totp-field select:focus { border-color: var(--accent); }
+
+.totp-row2 { display: flex; gap: 10px; }
+.totp-row2 .totp-field { flex: 1; }
+
+.totp-hint {
+  font-size: 12px; line-height: 1.5; color: var(--fg-muted);
+  padding: 2px 0;
+}
+
+/* 实时预览：输入密钥时立刻能看到码，填错了一眼就发现 */
+.totp-preview {
+  margin-top: 6px;
+  padding: 12px;
+  text-align: center;
+  background: var(--canvas-inset);
+  border: 1px solid var(--border-muted);
+  border-radius: 10px;
+}
+.pv-label { font-size: 11px; color: var(--fg-subtle); margin-bottom: 6px; }
+.pv-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 24px; font-weight: 600; letter-spacing: 2px;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 使用说明 ---------- */
+.totp-help { font-size: 14px; line-height: 1.7; color: var(--fg); }
+.totp-help p { margin: 0 0 14px; }
+.totp-help p:last-child { margin-bottom: 0; }
+.totp-help b { color: var(--fg); }
+
+/* ---------- 「从图片识别二维码」按钮 ---------- */
+/* 和上面的输入框拉开一点距离，让它看起来是「另一种填法」，
+   而不是表单的必填项 —— 用户既可以粘贴，也可以扫图，二选一即可。 */
+#tp-scan,
+#tp-live {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.tp-scan-ico {
+  font-size: 15px;
+  line-height: 1;
+  opacity: .85;
+}
+
+/* ---------- 「扫一扫」取景层 ---------- */
+/* 全屏黑底 + 中央透窗。暗角不是贴图，是一圈 box-shadow 从透窗边缘
+   铺出去 —— 窗口尺寸跟着屏幕走，不用算任何像素。 */
+.qrl-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: #000;
+  overflow: hidden;
+}
+.qrl-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #000;
+}
+.qrl-frame {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  transform: translate(-50%, -50%);
+  width: min(72vw, 300px);
+  aspect-ratio: 1 / 1;
+  border-radius: 14px;
+  box-shadow: 0 0 0 200vmax rgba(0, 0, 0, .45);
+  pointer-events: none;
+}
+/* 四角标：每个角只画两条边，比整圈描边更像「取景框」 */
+.qrl-frame i {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border: 0 solid #4ade80;
+}
+.qrl-frame .qrl-c0 { left: 0;   top: 0;    border-left-width: 3px; border-top-width: 3px;    border-top-left-radius: 14px; }
+.qrl-frame .qrl-c1 { right: 0;  top: 0;    border-right-width: 3px; border-top-width: 3px;  border-top-right-radius: 14px; }
+.qrl-frame .qrl-c2 { left: 0;   bottom: 0; border-left-width: 3px; border-bottom-width: 3px; border-bottom-left-radius: 14px; }
+.qrl-frame .qrl-c3 { right: 0;  bottom: 0; border-right-width: 3px; border-bottom-width: 3px; border-bottom-right-radius: 14px; }
+/* 扫描线：上下往返，给用户「正在扫」的动感 */
+.qrl-laser {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #4ade80 30%, #4ade80 70%, transparent);
+  opacity: .9;
+  animation: qrl-sweep 2.2s ease-in-out infinite alternate;
+}
+@keyframes qrl-sweep {
+  from { top: 6%; }
+  to   { top: 92%; }
+}
+.qrl-tip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(42% - min(36vw, 150px) - 44px);
+  text-align: center;
+  color: #fff;
+  font-size: 14px;
+  line-height: 1.5;
+  padding: 0 24px;
+  text-shadow: 0 1px 3px rgba(0,0,0,.8);
+  pointer-events: none;
+}
+.qrl-close {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: max(28px, env(safe-area-inset-bottom, 0px) + 20px);
+  padding: 10px 26px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.35);
+  background: rgba(0,0,0,.55);
+  color: #fff;
+  font-size: 15px;
+  -webkit-tap-highlight-color: transparent;
+}
+.qrl-close:active { background: rgba(255,255,255,.18); }
