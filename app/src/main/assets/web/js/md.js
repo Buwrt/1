@@ -813,13 +813,7 @@
        * 没有 controls 就是一块按不动的黑砖 —— 和 Markdown 那条路一样补上。 */
       clean = clean.replace(/<video\b(?![^>]*\bcontrols\b)([^>]*)>/g,
         '<video controls playsinline preload="metadata"$1>');
-      /* 官方明明给了内容、清理之后却成了空串 —— 那是清理这一步出了问题
-         （sanitize 抛错、或者整个结构被判为不安全被扒光）。这种时候显示
-         「（无内容）」等于骗人：内容就在那儿，只是没渲染出来。
-         退一步，把原文转义后原样显示，至少看得见。 */
-      var raw = String(html == null ? '' : html);
-      container.innerHTML = clean
-        || (raw.trim() ? '<pre>' + U.esc(raw) + '</pre>' : '<p class="muted">（无内容）</p>');
+      container.innerHTML = clean || '<p class="muted">（无内容）</p>';
       container.classList.add('md');
       /* 先把带签名的图床地址换回稳定的那份，再交给 postMount：
        * 预热和磁盘缓存都是按 URL 做 key 的，用带 jwt 的地址等于每 5 分钟
@@ -853,9 +847,6 @@
           if (String(n.tagName).toLowerCase() === 'video') attachVideoSources(n);
         }
       } catch (e) {}
-      /* postMount 里要绑图片点击、补懒加载、回填视频源 —— 任何一步抛错，
-       * 以前都会一路冲到调用方：议题页是一条条评论顺序渲染的，第一条炸了，
-       * 后面所有评论就都停在空白气泡上。裹起来，最坏只是这一条少个特效。 */
       try { postMount(container, ctx); } catch (e) { }
     },
 

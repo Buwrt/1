@@ -14,10 +14,34 @@
 
   /* 正文渲染：有官方渲染好的 HTML 就用它（类型、宽高都是现成的），
    * 没有（老缓存、接口没给）就退回自己渲染 Markdown —— 行为与以前一致。 */
-  function mountBody(el, it, full) {
+  /**
+   * 正文为空时显示什么。
+   *
+   * 以前一律是「（无内容）」四个字 —— 看着跟「内容没加载出来」一模一样，
+   * 其实只是作者没写：PR 的说明是可填项，空着是常态（#14 就是这样）。
+   * 把话说完整，用户就不会以为是 App 没把内容渲染出来。
+   */
+  function emptyBodyHtml(kind) {
+    var t = kind === 'pr' ? '这个拉取请求没有填写说明'
+      : kind === 'issue' ? '这个议题没有填写正文'
+      : '没有填写内容';
+    return '<p class="muted">（' + t + '）</p>';
+  }
+
+  /**
+   * @param kind  'pr' / 'issue' / 'comment'，只影响空正文那句话怎么写
+   */
+  function mountBody(el, it, full, kind) {
     if (!el) return;
-    if (it && it.body_html) window.MD.mountHtml(el, it.body_html, { repo: full });
-    else window.MD.mount(el, (it && it.body) || '', { repo: full });
+    var html = String((it && it.body_html) || '');
+    var body = String((it && it.body) || '');
+    if (!html.trim() && !body.trim()) {
+      el.innerHTML = emptyBodyHtml(kind);
+      el.className = 'bubble-body md';
+      return;
+    }
+    if (html) window.MD.mountHtml(el, html, { repo: full });
+    else window.MD.mount(el, body, { repo: full });
   }
 
   /* =================== 议题 / PR 详情 =================== */
@@ -110,15 +134,42 @@
     document.getElementById('fab').onclick = function () { commentBox(full, n); };
   }
 
+  /**
+   * 「重新打开」在两种状态下是**注定失败**的。
+   *
+   * 与其等服务端甩一句 422 Validation Failed 回来，不如点之前就说清楚
+   * 为什么打不开 —— 这两种情况在响应里都写着，不用额外打接口。
+   *
+   * @return 打不开的原因；null 表示可以正常发起请求
+   */
+  function reopenBlockReason(it, isPR) {
+    if (!isPR) return null;
+    if (it.merged || it.merged_at) return '这个拉取请求已经合并了，不能再重新打开';
+    /*
+     * 源分支所在的仓库（多半是一个 fork）被删掉之后，GitHub 就不允许
+     * 重新打开了 —— 服务端一律回 422，而且 errors 是空的，什么线索都不给。
+     * 但这一点在请求之前就能看出来：head 里的 repo 是 null 就是它的信号。
+     */
+    var head = it.head;
+    if (!head || !head.repo) {
+      return '这个拉取请求重新打开不了：它的源分支「' + ((head && head.ref) || '未知') +
+        '」所在的仓库已经不存在了（分支或 fork 被删掉后，GitHub 不允许重新打开）';
+    }
+    return null;
+  }
+
   function toggleState(full, n, it, isPR) {
     var next = it.state === 'open' ? 'closed' : 'open';
+    if (next === 'open') {
+      var blocked = reopenBlockReason(it, isPR);
+      if (blocked) return UI.toast(blocked);
+    }
     /*
      * 拉取请求必须走 /pulls 端点。
      *
-     * GitHub 里 PR 确实也是一种 issue，所以 /issues/{n} 能读到它，但
-     * 「改状态」这件事在 PR 上只认 /pulls/{n} —— 用 /issues 端点去改，
-     * 服务端一律回 422 Validation Failed（而且 errors 是空的，什么都看不出来），
-     * 用户看到的就是一句不明所以的英文报错。
+     * GitHub 里 PR 确实也是一种 issue，所以 /issues/{n} 能「读」到它，
+     * 但「改状态」这件事只认 /pulls/{n} —— 拿 /issues 端点去改，
+     * 服务端一律回 422 Validation Failed。
      */
     var path = '/repos/' + full + (isPR ? '/pulls/' : '/issues/') + n;
     window.API.patch(path, { state: next }).then(function () {
@@ -126,15 +177,19 @@
       window.Router.reload();
     }).catch(function (e) {
       var m = String((e && e.message) || '未知错误');
-      /*
-       * 「重新打开」还有一种注定失败的情况：PR 的源分支已经被删掉了。
-       * GitHub 不允许重新打开这种 PR，同样回一个空的 422。
-       * 这时候再显示英文没有意义 —— 直接说清楚为什么打不开、怎么办。
-       */
-      if (m.indexOf('Validation Failed') >= 0 && next === 'open') {
-        m = isPR
-          ? '这个拉取请求重新打开不了：它的源分支多半已被删除（GitHub 不允许重新打开）'
-          : '这个议题重新打开不了：GitHub 拒绝了这次修改';
+      /* GitHub 有时会在 errors 里给出具体原因，比那一句 Validation Failed
+         有用得多（比如「head repository is missing」）—— 有就一起说出来。 */
+      var detail = '';
+      try {
+        var errs = e && e.data && e.data.errors;
+        if (errs && errs.length) {
+          detail = errs.map(function (x) { return x && (x.message || x.code); })
+            .filter(Boolean).join('；');
+        }
+      } catch (ignore) { }
+      if (m.indexOf('Validation Failed') >= 0) {
+        m = (isPR ? '这个拉取请求' : '这个议题') + '改不了状态：GitHub 拒绝了这次修改'
+          + (detail ? '（' + detail + '）' : '');
       }
       UI.toast('操作失败：' + m);
     });
@@ -282,7 +337,7 @@
       (it.author_association ? '<span class="chip" style="padding:0 6px">' + assocText(it.author_association) + '</span>' : '') + '</div>' +
       '<div class="bubble-body" id="main-body"></div></div></div>' +
       '<div id="tl"><div style="padding:16px"><div class="spinner"></div></div></div>';
-    mountBody(UI.$('#main-body', box), it, full);
+    mountBody(UI.$('#main-body', box), it, full, isPR ? 'pr' : 'issue');
     /* 正文跟 README 一样是「骨架先到、内容后填」的，翻译的第一轮看不见它。
      * 打一声招呼，让翻译按整篇模式接上（详情见 ui.js 的 noticeRefresh）。 */
     if (window.UI) UI.noticeRefresh(UI.$('#main-body', box));
@@ -313,7 +368,7 @@
         /* 一条评论渲染失败不能连累后面所有评论 —— 以前 mountBody 抛异常会
            直接冲出这个 forEach，从出错那一条起，后面全部停在「空白气泡」上，
            看起来就像评论凭空消失了。 */
-        try { mountBody(box, x.d, full); }
+        try { mountBody(box, x.d, full, 'comment'); }
         catch (e) { box.textContent = (x.d && x.d.body) || ''; }
       });
       window.bindHashLinks(tl);
