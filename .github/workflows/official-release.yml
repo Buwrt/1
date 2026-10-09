@@ -16,8 +16,10 @@ jobs:
       contents: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      OWNER: Buwrt
-      REPO: 1
+      # 两个库共用同一份工作流，所以归属不能写死 —— 各自在谁家跑就提交到谁家。
+      # 以前这里写死 REPO: 1，githup 跑一次构建就把包提交到 Buwrt/1 去了。
+      OWNER: ${{ github.repository_owner }}
+      REPO: ${{ github.event.repository.name }}
       BRANCH: main
     steps:
       - name: Checkout
@@ -115,13 +117,22 @@ jobs:
           # APK + sha256（.gitignore 排除了 *.apk，这里走 API 直接写）
           apks = glob.glob("app/build/outputs/apk/release/*.apk")
           print("found:", apks)
+          VER = os.path.basename(os.path.dirname(os.path.dirname(os.path.dirname(
+              os.path.dirname(os.path.dirname(apks[0])))))) if apks else ""
+          STD_NAME = "githup-v1.2.15.apk"
           for p in apks:
               d = open(p, "rb").read()
+              h = hashlib.sha256(d).hexdigest()
               name = os.path.basename(p)
               api_put(f"apk/{name}", d, f"ci: 官方签名 APK {name}")
-              api_put(f"apk/{name}.sha256",
-                      (hashlib.sha256(d).hexdigest() + "\n").encode(),
+              api_put(f"apk/{name}.sha256", (h + "\n").encode(),
                       f"ci: {name} sha256")
+              # 同一个包再以「软件名-版本」的规范名存一份：找安装包的人认的是
+              # githup-v1.2.15.apk，只有 app-release.apk 时常被当成半成品。
+              if name != STD_NAME:
+                  api_put(f"apk/{STD_NAME}", d, f"ci: 官方签名安装包 {STD_NAME}")
+                  api_put(f"apk/{STD_NAME}.sha256", (h + "\n").encode(),
+                          f"ci: {STD_NAME} sha256")
 
           # 清场：密钥不留在工作区（本就是临时 runner，但多一道保险）
           import shutil
