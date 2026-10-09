@@ -1,0 +1,43 @@
+/* ============================================================
+ * translate.css — 「翻译本页」按钮的样式
+ * 只用 githup 已有的设计变量，深色模式自动跟随，不需要额外适配。
+ * ============================================================ */
+
+/* App 内：右上角图标按钮（.icon-btn 的样式由 app.css 提供） */
+.tr-btn { position: relative; }
+
+.tr-btn.on { color: var(--accent); }
+
+/* 翻译中：图标缓慢旋转，给用户一个「在动了」的反馈。
+ *
+ * ⚠️ 这里**绝不能**加 pointer-events: none —— 以前就是这么写的，
+ * 结果翻译一开始就点不动这个按钮，想中途叫停只能干等它翻完
+ * （或者等 45 秒看门狗超时），表现就是「暂停不了」。
+ * 重复点开的风险由 translatePage() 里的 state.busy 拦着，不需要在 CSS 层挡。 */
+.tr-btn.busy { opacity: .85; }
+.tr-btn.busy > * { animation: tr-spin 1s linear infinite; }
+@keyframes tr-spin { to { transform: rotate(360deg); } }
+
+/* Demo / 没有 appbar 时：右下角悬浮按钮 */
+.tr-fab {
+  position: fixed;
+  right: 16px;
+  bottom: calc(var(--tabbar-h, 56px) + var(--safe-b, 0px) + 16px);
+  z-index: 26;
+  width: 52px; height: 52px;
+  border-radius: 26px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 15px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 12px rgba(31, 35, 40, .18);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.tr-fab:active { transform: scale(.94); }
+.tr-fab.on { background: var(--accent-subtle); color: var(--accent-emphasis); border-color: var(--accent); }
+
+/* 译文：给被翻译过的段落一个极淡的底色，方便一眼看出哪些是译文。
+ * 想要「完全看不出痕迹」就把下面这段删掉。 */
+[data-tr="1"] { background: transparent; }

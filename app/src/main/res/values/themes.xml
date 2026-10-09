@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="AppTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@android:color/white</item>
+        <!--
+          ⚠️ 状态栏/导航栏必须**透明**，不能写实色。
+          这里是本轮「顶栏上面一条死白」的根因：
+          原来写的是 #ffffff，运行时前端又用 NativeBridge.setStatusBar()
+          按主题刷成「实色白 / #010409」—— 那是一条**不透明**的色带，
+          盖在 WebView 之上，所以无论 CSS 里的毛玻璃怎么做，
+          状态栏那一条永远是实心的白/黑，跟下面的玻璃接不上，看着就像
+          「顶栏被顶下去了一大块」。
+
+          改成透明之后，状态栏区域露出的是 WebView 自己的内容，
+          也就是顶栏那层毛玻璃 —— 玻璃才能一直糊到屏幕最顶上，
+          这才是 iOS 的样子（iOS 导航栏本来就是延伸到状态栏底下的）。
+
+          注意：不要再往 setStatusBar 传实色。要传就传 #00000000。
+        -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <!--
+          键盘弹出时使用 adjustPan：现代 Android 上 WebView 的渲染器在独立 Surface 中，
+          adjustResize 不会真正改变 WebView 高度，但会让 position:fixed 的弹层按「被压扁」
+          的视口布局，导致底部表单被键盘顶出屏幕（输入框看不见）。adjustPan 会整体上移窗口，
+          配合前端的 kb 变量做补偿，保证弹层与输入框始终可见。
+        -->
+        <item name="android:windowSoftInputMode">adjustPan|stateHidden</item>
+    </style>
+</resources>

@@ -1,0 +1,18 @@
+build/
+.gradle/
+local.properties
+.cxx/
+.idea/
+*.iml
+*.keystore
+.DS_Store
+
+# 签名密钥与口令：绝对不能进仓库，进了仓库等于把签名权送给所有人
+*.jks
+*.p12
+keystore/
+signing.properties
+
+# 安装包只作为 Release 附件发布，不提交进仓库
+*.apk
+apk/

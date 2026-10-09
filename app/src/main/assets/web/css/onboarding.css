@@ -1,0 +1,289 @@
+/* ============================================================
+ * onboarding.css — 新手指导（游戏式高亮引导）
+ * ------------------------------------------------------------
+ * 结构：
+ *   #ob-root   全屏层，拦截所有点击（引导期间不该点到别的东西）
+ *   #ob-hole   「洞」，靠一圈巨大的 box-shadow 把其余部分压暗
+ *   #ob-ring   洞的描边，带呼吸动画（游戏引导里那个会闪的框）
+ *   #ob-tip    说明气泡，自动在洞的上/下方挑空间大的一边
+ * ============================================================ */
+
+#ob-root {
+  position: fixed;
+  inset: 0;
+  z-index: 400;              /* 比图片查看器(300)、弹层(150)都高 */
+  display: none;
+  font-family: var(--font);
+  touch-action: none;
+  /* ⚠️ 遮罩自己不能吃点击。
+     「边做边学」的步骤要让人真的点到界面上的按钮，被这层挡住就做不了；
+     误触由 onboarding.js 里的 guard 在捕获阶段按「是不是这一步的目标」
+     精确拦，比整层拦死更好用（能操作、又跳不走）。 */
+  pointer-events: none;
+}
+#ob-root.show { display: block; }
+
+/* 长按翻译按钮这类步骤做完会弹出真实菜单。遮罩整层退到弹层后面，
+   让用户把弹出来的东西看清楚 —— 气泡和「跳过」挂在 body 上，不受影响。 */
+#ob-root.behind { z-index: 140; }
+#ob-root.behind #ob-hole { box-shadow: none; }
+#ob-root.behind #ob-ring { display: none; }
+
+/* ---- 洞 + 压暗 ----
+   挖洞最省事的做法：一个透明的元素，用超大扩散的 box-shadow 当遮罩。
+   元素自身背景透明，所以「洞」里能看到底下的真实界面。
+   ⚠️ 不能用 background + clip-path：那样洞口边缘在老 WebView 上会锯齿。 */
+#ob-hole {
+  position: absolute;
+  left: 0; top: 0; width: 0; height: 0;
+  border-radius: 12px;
+  background: transparent;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, .66);
+  pointer-events: none;
+  transition: left .26s cubic-bezier(.2, .9, .2, 1),
+              top .26s cubic-bezier(.2, .9, .2, 1),
+              width .26s cubic-bezier(.2, .9, .2, 1),
+              height .26s cubic-bezier(.2, .9, .2, 1),
+              border-radius .26s cubic-bezier(.2, .9, .2, 1);
+}
+/* 圆形目标（图标按钮、角标这类）用胶囊洞，看起来更像游戏引导 */
+#ob-hole.round { border-radius: 999px; }
+
+/* 没有目标的那一步（欢迎 / 结束）：洞缩到 0，整屏均匀压暗 */
+#ob-root.no-target #ob-hole {
+  left: 50%; top: 50%; width: 0; height: 0;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, .72);
+}
+
+/* ---- 呼吸描边 ---- */
+#ob-ring {
+  position: absolute;
+  left: 0; top: 0; width: 0; height: 0;
+  border-radius: 12px;
+  border: 2px solid var(--accent);
+  pointer-events: none;
+  animation: ob-pulse 1.6s ease-in-out infinite;
+  transition: left .26s cubic-bezier(.2, .9, .2, 1),
+              top .26s cubic-bezier(.2, .9, .2, 1),
+              width .26s cubic-bezier(.2, .9, .2, 1),
+              height .26s cubic-bezier(.2, .9, .2, 1),
+              border-radius .26s cubic-bezier(.2, .9, .2, 1);
+}
+#ob-ring.round { border-radius: 999px; }
+#ob-root.no-target #ob-ring { display: none; }
+@keyframes ob-pulse {
+  0%, 100% { opacity: 1;   box-shadow: 0 0 0 0 rgba(10, 130, 255, .45); }
+  50%      { opacity: .55; box-shadow: 0 0 0 8px rgba(10, 130, 255, 0); }
+}
+
+/* ---- 气泡 ----
+   气泡和「跳过」是 #ob-root 的兄弟节点而不是子节点：root 需要在弹层
+   弹出时整层退到 140，而 fixed 元素自成层叠上下文，子元素逃不出去，
+   一退就全被盖住。挂在外面才能「遮罩退下去、气泡照常在最上面」。 */
+#ob-tip {
+  position: fixed;
+  display: none;
+  z-index: 402;
+  font-family: var(--font);
+  left: 16px; top: 40%;
+  width: min(320px, calc(100vw - 32px));
+  box-sizing: border-box;
+  background: var(--bg);
+  color: var(--fg);
+  border-radius: 16px;
+  padding: 16px 16px 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .38);
+  transition: left .26s cubic-bezier(.2, .9, .2, 1),
+              top .26s cubic-bezier(.2, .9, .2, 1);
+  animation: ob-tip-in .22s ease both;
+}
+/* 显示由 root 的 show 说了算（兄弟选择器） */
+#ob-root.show ~ #ob-tip { display: block; }
+
+/* 没有目标时气泡居中（欢迎 / 结束那两步） */
+#ob-root.no-target ~ #ob-tip {
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  transition: none;
+}
+@keyframes ob-tip-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+#ob-root.no-target ~ #ob-tip { animation: ob-tip-in-center .24s ease both; }
+@keyframes ob-tip-in-center {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+#ob-step {
+  font-size: 12px;
+  color: var(--fg-muted);
+  font-weight: 600;
+  letter-spacing: .4px;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+#ob-progress {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+#ob-progress > i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width .26s ease;
+}
+#ob-title {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -.2px;
+  margin-bottom: 6px;
+}
+#ob-body {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--fg-muted);
+}
+#ob-body b { color: var(--fg); font-weight: 600; }
+
+/* ---- 「动手试试」提示条 ----
+   这一步要用户真的做点什么。做成一条独立的胶囊而不是写在正文里：
+   正文是「这是什么」，这条是「你现在该干什么」，长得不一样才不会看漏。 */
+#ob-hint {
+  margin-top: 12px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--fg);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  border-left: 3px solid var(--accent);
+}
+#ob-hint[hidden] { display: none; }
+/* 老 WebView 不认 color-mix 时退回纯色，别让提示条变成透明一片 */
+@supports not (background: color-mix(in srgb, red 10%, transparent)) {
+  #ob-hint { background: rgba(10, 130, 255, .12); }
+}
+
+/* ---- 「✓ 就是这个」反馈 ----
+   做对了给一句带颜色的确认，并把功能再讲一遍 —— 人对着屏幕长按半天
+   什么都没等到，会以为自己按错了。 */
+#ob-win {
+  margin-top: 12px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: rgba(52, 199, 89, .14);
+  color: #1a7f37;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  animation: ob-win-in .22s ease both;
+}
+#ob-win[hidden] { display: none; }
+html[data-theme="dark"] #ob-win { color: #4ade80; background: rgba(52, 199, 89, .18); }
+@keyframes ob-win-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- 底部按钮行 ---- */
+#ob-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+#ob-actions .ob-btn {
+  border: 0;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 10px 16px;
+  min-height: 40px;
+  cursor: pointer;
+  font-family: inherit;
+}
+/* 次要按钮：一颗药丸描边，不用蓝色实心 —— 主按钮是「下一步」，
+   和它抢视觉的都不该是实心蓝。 */
+#ob-prev,
+#ob-skip {
+  background: transparent;
+  color: var(--fg-muted);
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px var(--border);
+  font-size: 14px;
+}
+#ob-prev { padding-left: 14px; padding-right: 14px; }
+#ob-prev[hidden] { display: none; }
+
+/* 「跳过」就待在按钮行最右边：以前它是常驻右上角的一枚独立胶囊，
+   正好压着顶栏的菜单/下载/翻译三个图标（真机反馈「有点挡」）——
+   而引导恰恰要求用户去点那里。收进卡片后不再遮挡任何东西，
+   系统返回键在任何一步也等同跳过，逃生口没堵。 */
+#ob-skip {
+  order: 3;                /* 排在「下一步」后面，永远在最右 */
+  margin-left: 0;
+  padding-left: 14px;
+  padding-right: 14px;
+}
+#ob-skip:active { background: var(--border); }
+
+/* 主按钮：右对齐。前面有几个次要按钮都不影响它靠右 */
+#ob-next {
+  order: 2;
+  margin-left: auto;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 10px;
+}
+#ob-next:active { opacity: .8; }
+/* 动手步骤里的「下一步」降级成次要按钮：主路径是去操作界面，不是点这里 */
+#ob-next.ghost {
+  order: 1;
+  margin-left: 0;
+  background: transparent;
+  color: var(--fg-muted);
+  box-shadow: inset 0 0 0 1px var(--border);
+  border-radius: 999px;
+  font-size: 14px;
+}
+
+/* ---- 深色 ---- */
+html[data-theme="dark"] #ob-tip {
+  background: #1c1c1e;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .7);
+}
+html[data-theme="dark"] #ob-hole { box-shadow: 0 0 0 9999px rgba(0, 0, 0, .74); }
+
+/* ---- 玻璃风格下气泡也带一点磨砂，和全站一致 ---- */
+html[data-nav="glass"] #ob-tip {
+  background: rgba(255, 255, 255, .82);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+html[data-nav="glass"][data-theme="dark"] #ob-tip {
+  background: rgba(44, 44, 46, .86);
+}
+
+/* ---- 窄屏：气泡窄一点，别顶到屏幕边 ---- */
+@media (max-width: 360px) {
+  #ob-tip { width: calc(100vw - 24px); left: 12px; padding: 14px 14px 10px; }
+  #ob-title { font-size: 16px; }
+  #ob-body { font-size: 13px; }
+}
+
+/* ---- 横屏：竖向空间紧，气泡贴底放，别被顶栏压住 ---- */
+@media (orientation: landscape) and (max-height: 520px) {
+  #ob-tip { width: min(420px, calc(100vw - 32px)); }
+  #ob-body { line-height: 1.45; }
+}

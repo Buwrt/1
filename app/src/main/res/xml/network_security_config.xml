@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  网络安全配置。
+
+  1) 全面禁止明文流量：任何 http:// 请求直接失败，防止被中间人降级。
+  2) 只信任系统内置 CA，不信任用户安装的证书 —— 这样即使设备上被装了
+     流氓根证书（抓包工具的常见做法），也无法解密本应用的 HTTPS 流量。
+     这一条直接封掉审计里提到的「设备被装流氓根证书做 MITM」场景。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

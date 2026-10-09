@@ -1,0 +1,20 @@
+# 版本锁定文件 —— 版本号由这里钉死，别处改不动
+#
+# 为什么要有这个文件：
+#   1.1.4 那次事故就是版本号被顺手改出来的 —— build.gradle 里改成 1.1.4，
+#   而防护链常量（tools/gen-guard.py 生成）还停在 1.1.3，烙进包里的身份
+#   和包内实际版本对不上，装上去直接被官方校验拦下（「版本号被改过」）。
+#
+# 现在版本号锁在这里，形成两道闸：
+#   1. app/build.gradle —— 构建时会读本文件比对，对不上直接构建失败
+#   2. build-apk.sh / release.sh —— 传别的版本号会被拒绝
+#
+# 本库当前锁定：1.2.15（versionCode 1002015）
+#
+# 确需发新版（用户明确要求改版本号时）才动这里，顺序是：
+#   1. 改下面的 version / versionCode
+#   2. 改 app/build.gradle 里对应的 versionName / versionCode
+#   3. 重跑 tools/gen-guard.py（防护链常量要跟着变，否则启动被拦）
+#   4. 更新 version.json
+version=1.2.15
+versionCode=1002015

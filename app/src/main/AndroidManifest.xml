@@ -2,28 +2,176 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+    <!-- 读取本地文件（上传文件到仓库 / 上传 Release 附件如 APK） -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <!--
+      Android 14+ 的「仅允许选中的照片 / 视频」权限。
+      用户选了这一项时，相册里依然能看到内容（只是只有他挑过的那些），
+      不会出现「此应用只能访问您选择的照片」的空白界面。
+    -->
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <!-- 下载 APK（Actions 构建产物 / Release 资产）后直接拉起安装 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!--
+      两步验证器的「后台常驻动态码」用它挂一条常驻通知。
+      Android 8+ 的后台进程会被系统冻结，定时器跑不准、码会停在旧值，
+      只有前台服务能持续刷新 —— 而前台服务按系统规定必须显示通知，
+      这跟「用户要能在通知栏看到码」正好是一回事。
+    -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Android 14 起，前台服务要声明属于哪一类；这里是数据同步性质 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- 通知权限：Android 13+ 需要用户授权才能发通知 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 开机后把动态码通知恢复出来（仅对开过开关的用户生效） -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!--
+      两步验证器「扫一扫」用：网页里 getUserMedia 开后置摄像头读二维码。
+      WebView 的授权链是「App 先持有 CAMERA → 页面发起请求 →
+      WebChromeClient.onPermissionRequest 批给渲染进程」，App 自己没这个权限时
+      WebView 连问都不问直接拒绝，所以必须声明。
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- 相机是可选硬件：没摄像头的设备（平板/盒子）照样能装能用，扫一扫按钮会自动隐藏 -->
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera.autofocus"
+        android:required="false" />
 
     <application
-        android:allowBackup="false"
-        android:icon="@drawable/ic_launcher"
+        android:allowBackup="true"
+        android:fullBackupContent="true"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:hardwareAccelerated="true"
+        android:theme="@style/AppTheme"
+        android:usesCleartextTraffic="false">
 
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:resizeableActivity="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation|uiMode|density|fontScale"
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustPan|stateHidden"
+            android:screenOrientation="unspecified">
+            <!--
+              方向 unspecified（原来是锁死 portrait）：平板横持 / 分屏 / 折叠屏展开时
+              跟随系统旋转。configChanges 已声明全部尺寸相关变化，转屏不会重建
+              Activity，WebView 状态（登录态、翻译开关、滚动位置）零丢失。
+              resizeableActivity 让系统在平板/折叠屏上允许自由窗口与分屏。
+              windowSoftInputMode 保持 adjustPan：前端弹层用 visualViewport 变量
+              （CSS 里的 vvh）自己扣键盘高度，页面本身不 resize，
+              改 adjustResize 会双重扣减。
+            -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!--
+              接收外部分享 / 打开的 GitHub 链接。
+              从浏览器、微信、其他 App 点「分享」或「打开方式」时，
+              githup 会出现在候选列表里，选中后直接跳到对应页面。
+              覆盖 github.com 及其常用子域（gist / raw / codeload）。
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:host="github.com" />
+                <data android:host="www.github.com" />
+                <data android:host="gist.github.com" />
+                <data android:host="raw.githubusercontent.com" />
+                <data android:host="codeload.github.com" />
+                <data android:host="user-images.githubusercontent.com" />
+                <data android:host="avatars.githubusercontent.com" />
+            </intent-filter>
+            <!--
+              "分享"面板入口：别的 App（浏览器/微信/Telegram 等）点分享时，
+              githup 出现在候选列表里。
+              只接 text/plain：分享面板里绝大多数是文字（链接、标题+链接、纯文本）。
+              图片/文件不走这里。
+              不带 scheme/host 过滤：分享进来的内容可能是"标题 + 链接"的混排文本，
+              系统只看 mimeType，加 host 过滤会直接把整条 intent-filter 过滤掉。
+              真正是不是 GitHub 链接，由 MainActivity 里提取 URL 后再判断。
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <!--
+              多选分享（ACTION_SEND_MULTIPLE）：少数 App 分享多条文本时用这个。
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
         </activity>
 
-        <service
-            android:name=".TOTPService"
-            android:exported="false" />
+        <!-- 应用内浏览器：用于打开 GitHub 网页（如创建访问令牌） -->
+        <activity
+            android:name=".WebViewActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|uiMode|density|fontScale"
+            android:windowSoftInputMode="adjustResize|stateHidden"
+            android:label="@string/app_name" />
 
+        <!--
+          从构建产物 ZIP 里解压出的 APK 存在私有目录，
+          通过它授予系统安装器临时读权限（不引入 androidx 依赖）。
+        -->
+        <provider
+            android:name=".ApkProvider"
+            android:authorities="${applicationId}.apks"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
+        <!--
+          下载到公共目录 Download/githup/ 的文件（APK / 附件），
+          通过它授权给系统安装器与查看器 —— Android 7+ 不认 file://。
+        -->
+        <provider
+            android:name=".DownloadProvider"
+            android:authorities="${applicationId}.downloads"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
+        <!--
+          两步验证器的后台常驻通知。
+          exported=false：只由本应用启动，外部拉不起来。
+        -->
+        <service
+            android:name=".TotpService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- 开机 / 覆盖安装后把动态码通知恢复出来 -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

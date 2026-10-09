@@ -1,50 +1,36 @@
-# TOTP 两步验证器（通知倒计时版）
+# githup（两步验证器改动版）
 
-Android 端两步验证器，针对 GitHub TOTP。通知栏常驻显示 **6 位验证码 + 30 秒倒计时**，到期自动刷新。
+本仓库存放 **Buwrt/githup** 修改两步验证器后的完整源码。
 
-## 修复的问题
-通知中曾出现**两排相同数字**（`GitHub 794 407` 出现两次），原因与修复：
+改动内容见 `修改说明.md`，一句话概括：
+**修掉通知栏「两排一模一样的动态码」，并给常驻通知加上 30 秒倒计时。**
 
-| 原因 | 修复 |
+## 改了哪些文件
+
+| 文件 | 改动 |
 |---|---|
-| 每次发送用了不同通知 ID / Tag，系统并排展示 | 固定 `NOTIFICATION_ID = 1001`，新通知覆盖旧通知 |
-| 同一账号重复触发发送 | 前台服务单例 + 去重，不再重复 notify |
-| 每次刷新都响铃/震动 | `setOnlyAlertOnce(true)` |
+| `app/src/main/java/com/hubmobile/app/TotpService.java` | 去重 + 倒计时（主要改动） |
+| `app/src/main/java/com/hubmobile/app/Totp.java` | 新增 `normalizeSecret()` |
+| `app/src/main/java/com/hubmobile/app/JsBridge.java` | `totpSync()` 写入缓存前去重复 |
+| `app/src/main/assets/web/js/page-totp.js` | `load()` / `save()` 两端去重 |
 
-## TOTP 参数（与 GitHub 一致）
-- 算法：HMAC-SHA1
-- 位数：6 位
-- 周期：30 秒
-- Base32 密钥解码后参与 HMAC 运算（RFC 6238）
+## 编译
 
-## 目录
-```
-app/src/main/java/com/example/totp/
-├── TOTPService.java   前台服务：TOTP 计算 + CountDownTimer 每秒刷新 + 通知倒计时
-├── Prefs.java         密钥存储（SharedPreferences，可换 AndroidKeyStore）
-└── MainActivity.java  界面：输入密钥 / 启动停止服务 / 实时显示验证码与倒计时
-.github/workflows/build-apk.yml   云端编译 → APK 回传仓库 → 自动发布 Release
-apk/totp-verifier-debug.apk       编译产物（含 .sha256 校验值）
+```bash
+python3 tools/gen-guard.py      # 改过前端文件，必须重算防护链常量与资源清单
+bash build-apk.sh 1.2.9         # 产物输出到上层目录
 ```
 
-## 下载安装
-- 最新版 APK：Releases → `totp-verifier-debug.apk`
-- 仓库内直取：`apk/totp-verifier-debug.apk`
-- 最低系统：Android 7.0（API 24）
+一键发版：
 
-## 使用
-1. 安装 APK，授予通知权限
-2. 打开 App，粘贴 GitHub 两步验证的 Base32 密钥（GitHub → Settings → Password and authentication → 恢复/密钥）
-3. 点「启动通知」，通知栏即显示 `验证码 · 剩余秒数`
-4. 需要停止时点「停止」
+```bash
+bash release.sh 1.2.9 "修复验证器重复码 + 通知倒计时"
+```
 
-## 云端编译
-推送到 `main` 分支后，Actions 自动：
-1. 准备 Android SDK + JDK 17 + Gradle 8.2
-2. `gradle :app:assembleDebug` 编译
-3. 把 APK 提交回仓库 `apk/` 目录
-4. 发布 / 更新 Release 附件
+要求 Android 7.0（API 24）及以上，JDK 17 + Android SDK。
 
-## 安全提示
-- 密钥当前存于 SharedPreferences，生产环境建议改存 `AndroidKeyStore` + AES（参考 githup 的 `SecurePrefs`）
-- 通知内容含验证码，建议按需加生物识别锁、禁止截图、自动清除剪贴板
+## 关于原仓库
+
+原项目：https://github.com/Buwrt/githup
+轻量 Android 第三方 GitHub 客户端，WebView 前端 + 原生扩展，约 350 KB。
+本仓库仅在其基础上修改两步验证器部分，其余功能与结构保持原样。
