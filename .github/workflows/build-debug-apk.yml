@@ -1,0 +1,61 @@
+# 调试用构建工作流：构建 Debug APK，并把构建日志与产物提交回仓库，
+# 方便在无法直接下载 Actions 日志/产物时排查问题。
+name: Build Debug APK (log)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew || true
+
+      - name: Build Debug APK
+        id: b
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee build.log
+          echo "exit=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Collect artifacts and push log
+        run: |
+          set -e
+          mkdir -p ci
+          tail -n 400 build.log > ci/build.log
+          if ls app/build/outputs/apk/debug/*.apk >/dev/null 2>&1; then
+            mkdir -p apk
+            cp app/build/outputs/apk/debug/*.apk apk/githup-debug.apk
+            sha256sum apk/githup-debug.apk | awk '{print $1}' > apk/githup-debug.apk.sha256
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ci/build.log apk/githup-debug.apk apk/githup-debug.apk.sha256 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+          else
+            git commit -m "ci: 构建日志与 Debug APK (run ${{ github.run_number }})"
+            git push origin HEAD:main
+          fi
+
+      - name: Upload APK artifact
+        if: steps.b.outputs.exit == '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: githup-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
