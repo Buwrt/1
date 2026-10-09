@@ -77,6 +77,18 @@ android {
         }
         debug {
             applicationIdSuffix '.debug'
+
+            /*
+             * 补上 DEBUG_BUILD。
+             *
+             * 这个字段以前只在 release 里声明，而原生层的 SignCheck 是
+             * 无条件引用 BuildConfig.DEBUG_BUILD 的 —— 于是一编译 debug
+             * 变体就报「cannot find symbol」，整个 debug 构建过不去
+             * （Android Studio 里点 Run 也是同一个错）。
+             *
+             * debug 变体本来就该放行，这里给 true；release 那边保持 false。
+             */
+            buildConfigField "boolean", "DEBUG_BUILD", "true"
         }
     }
 
