@@ -1,4 +1,4 @@
-# 调试用构建工作流：构建 Debug APK，并把构建日志与产物提交回仓库，
+# 调试用构建工作流：构建 Debug / Release APK，并把构建日志与产物提交回仓库，
 # 方便在无法直接下载 Actions 日志/产物时排查问题。
 name: Build Debug APK (log)
 
@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     permissions:
       contents: write
     steps:
@@ -25,37 +25,52 @@ jobs:
         run: chmod +x ./gradlew || true
 
       - name: Build Debug APK
-        id: b
+        id: d
         continue-on-error: true
         run: |
           set -o pipefail
-          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee build.log
+          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee build-debug.log
           echo "exit=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
 
-      - name: Collect artifacts and push log
+      - name: Build Release APK
+        id: r
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee build-release.log
+          echo "exit=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Collect artifacts and push
         run: |
           set -e
           mkdir -p ci
-          tail -n 400 build.log > ci/build.log
+          tail -n 400 build-debug.log > ci/build-debug.log 2>/dev/null || echo "no debug log" > ci/build-debug.log
+          tail -n 400 build-release.log > ci/build-release.log 2>/dev/null || echo "no release log" > ci/build-release.log
+          mkdir -p apk
           if ls app/build/outputs/apk/debug/*.apk >/dev/null 2>&1; then
-            mkdir -p apk
             cp app/build/outputs/apk/debug/*.apk apk/githup-debug.apk
             sha256sum apk/githup-debug.apk | awk '{print $1}' > apk/githup-debug.apk.sha256
           fi
+          if ls app/build/outputs/apk/release/*.apk >/dev/null 2>&1; then
+            cp app/build/outputs/apk/release/*.apk apk/githup-release.apk
+            sha256sum apk/githup-release.apk | awk '{print $1}' > apk/githup-release.apk.sha256
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add ci/build.log apk/githup-debug.apk apk/githup-debug.apk.sha256 2>/dev/null || true
+          git add -f ci/build-debug.log ci/build-release.log apk/githup-debug.apk apk/githup-debug.apk.sha256 apk/githup-release.apk apk/githup-release.apk.sha256 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "nothing to commit"
           else
-            git commit -m "ci: 构建日志与 Debug APK (run ${{ github.run_number }})"
+            git commit -m "ci: 构建日志与 APK 产物 (run ${{ github.run_number }})"
             git push origin HEAD:main
           fi
 
       - name: Upload APK artifact
-        if: steps.b.outputs.exit == '0'
+        if: steps.d.outputs.exit == '0' || steps.r.outputs.exit == '0'
         uses: actions/upload-artifact@v4
         with:
-          name: githup-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: githup-apks
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
           if-no-files-found: warn
