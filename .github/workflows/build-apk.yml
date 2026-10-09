@@ -9,6 +9,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -59,3 +61,34 @@ jobs:
           name: app-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Commit APK back to repo
+        run: |
+          set -e
+          mkdir -p apk
+          cp app/build/outputs/apk/debug/app-debug.apk apk/totp-verifier-debug.apk
+          sha256sum apk/totp-verifier-debug.apk | awk '{print $1}' > apk/totp-verifier-debug.apk.sha256
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add apk/totp-verifier-debug.apk apk/totp-verifier-debug.apk.sha256
+          if git diff --cached --quiet; then
+            echo "APK unchanged, skip commit"
+          else
+            git commit -m "chore: 更新编译产物 APK (run ${{ github.run_number }})"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
+
+      - name: Publish Release with APK
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          TAG=v1.0.0
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" apk/totp-verifier-debug.apk --clobber
+          else
+            gh release create "$TAG" apk/totp-verifier-debug.apk \
+              --title "TOTP 两步验证器 v1.0.0" \
+              --notes "通知栏显示 6 位验证码 + 30 秒倒计时；固定通知 ID 修复重复显示两排数字"
+          fi
+          echo "release done"
