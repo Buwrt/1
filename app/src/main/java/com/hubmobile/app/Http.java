@@ -37,6 +37,15 @@ import javax.net.ssl.SSLSocketFactory;
 public final class Http {
 
     private static final String TAG = "HubHttp";
+
+    /** 上传时的读写缓冲：64KB。
+     *  以前是 8KB —— TLS 记录上限 16KB，8KB 的写只填得满半条，
+     *  系统调用次数还多一个数量级。64KB 一次凑够多条满额记录。 */
+    static final int UPLOAD_BUF = 64 * 1024;
+
+    /** 内核发送缓冲区：256KB。
+     *  默认通常只有几十 KB，在移动网络（RTT 高）下会成为带宽瓶颈。 */
+    static final int SEND_BUF = 256 * 1024;
     /* 连接超时 12s：太长的话，连不上的目标（被墙的域名）会把工作线程
      * 白白占住 20s —— 线程池就那么大，页面自己的请求全在后面排队。 */
     private static final int CONNECT_TIMEOUT = 12000;
@@ -237,6 +246,28 @@ public final class Http {
         String methodU = method.toUpperCase(Locale.US);
         String current = urlStr;
         for (int i = 0; i <= MAX_REDIRECT; i++) {
+            /*
+              ═══ 每一轮都要重新校验目标主机 ═══
+
+              以前只在调用方（saveImage 的 hasHost）校验**第一个** URL，
+              重定向之后就不管了。而图片恰恰是最爱重定向的 ——
+              GitHub 的图基本都是 302 跳到 CDN。
+
+              实测（真实 java.net.URL），base = https://github.com/a/b.png：
+
+                  Location: https:///y.png  →  https:/y.png        host=""  port=443
+                  Location: ///z.png        →  https:/z.png        host=""  port=443
+
+              空 host 经 InetAddress.getByName("") 解析成回环地址，于是报错写成
+              `failed to connect to localhost/127.0.0.1 (port 443)` ——
+              **第一跳明明是合法地址，错却出在跳完之后**，所以在入口怎么查都查不到。
+
+              这里每一轮（含第一跳）都验一次，跳到无效地址就直接停，
+              不再去连本机。
+            */
+            if (!hostUsable(current)) {
+                throw new IOException("目标地址无效，已放弃：" + current);
+            }
             Raw raw = execBytes(methodU, current, null, headers);
             String loc = header(raw, "Location");
             if (raw.code >= 300 && raw.code < 400 && loc != null && loc.length() > 0) {
@@ -251,6 +282,38 @@ public final class Http {
             return r;
         }
         throw new IOException("重定向次数过多");
+    }
+
+    /**
+     * 这个地址值得去连吗？
+     *
+     * <p>两条判据，缺一不可：
+     *
+     * <p><b>1. 主机不能为空。</b> `https:///x` 这类「有协议没主机」的残缺串，
+     * 空 host 会被解析成回环地址 —— 也就是那句
+     * `failed to connect to localhost/127.0.0.1`。
+     *
+     * <p><b>2. 主机不能是本机。</b> 光判非空还不够：`localhost`、`127.0.0.1`、
+     * `0.0.0.0`、`[::1]` 的 getHost() 全都非空，能顺利通过第 1 条，
+     * 然后照样连到 127.0.0.1。
+     * 而 `InetAddress.getByName("localhost").toString()` 恰好就是
+     * `localhost/127.0.0.1` —— 和报错里那串一字不差。
+     *
+     * <p>所以两条合起来才是「值得连」。data: / assets / 相对路径不走这里。
+     */
+    public static boolean hostUsable(String url) {
+        if (url == null) return false;
+        String host;
+        try {
+            host = new URL(url).getHost();
+        } catch (Throwable ignored) {
+            return false;                      // 连解析都失败，更不该去连
+        }
+        if (host == null || host.length() == 0) return false;
+        String h = host.toLowerCase(Locale.US);
+        if (h.equals("localhost") || h.equals("0.0.0.0") || h.equals("[::1]") || h.equals("::1")) return false;
+        if (h.startsWith("127.")) return false;
+        return true;
     }
 
     /** 响应头打包成小写 key 的 JSON，供桥接层透传给前端 */
@@ -470,10 +533,17 @@ public final class Http {
     /** 新建一条连接：DNS 解析 + TCP + TLS 握手 */
     private static Socket connect(String host, int port, boolean secure, int readTimeout)
             throws IOException {
+        InetAddress addr = addressFor(host, port);
         if (secure) {
             SSLSocketFactory f = (SSLSocketFactory) SSLSocketFactory.getDefault();
             Socket plain = new Socket();
-            plain.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT);
+            plain.connect(addr != null ? new InetSocketAddress(addr, port)
+                                       : new InetSocketAddress(host, port), CONNECT_TIMEOUT);
+            /*
+              注意：即使下面连的是** IP**（绕过 hosts 拿到的真地址），
+              这里穿进去的仍是**主机名** —— SNI 与证书校验都靠它。
+              连 IP、报主机名，两件事各归各，不能混。
+            */
             SSLSocket ssl = (SSLSocket) f.createSocket(plain, host, port, true);
             ssl.setSoTimeout(readTimeout);
             ssl.startHandshake();
@@ -485,9 +555,145 @@ public final class Http {
             return ssl;
         }
         Socket socket = new Socket();
-        socket.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT);
+        socket.connect(addr != null ? new InetSocketAddress(addr, port)
+                                    : new InetSocketAddress(host, port), CONNECT_TIMEOUT);
         socket.setSoTimeout(readTimeout);
         return socket;
+    }
+
+    /* ============================================================
+     * 域名在本机上被解析成了 127.0.0.1 —— 绕过去
+     * ============================================================
+     *
+     * 日志里的真相（用户导出，2026-10-13 14:17）：
+     *
+     *   保存图片出错。ConnectException: failed to connect to
+     *   localhost/127.0.0.1 (port 443) from /127.0.0.1 (port 52900)
+     *   地址=https://raw.githubusercontent.com/Buwrt/githup/main/docs/tips.png
+     *
+     * 地址**完全正常**：主机 raw.githubusercontent.com，既非空也不是本机。
+     * 可它连的是 127.0.0.1。
+     *
+     * 那 `localhost/127.0.0.1` 是谁？是**解析结果**。
+     * `new InetSocketAddress(host, port)` 会先做 DNS 解析；InetAddress 的
+     * toString() 是 `主机名/IP`，而 127.0.0.1 的反查名恰好就是 localhost ——
+     * 于是打印成 `localhost/127.0.0.1`。**它描述的是解析出来的地址，
+     * 不是我们写死的地址。**
+     *
+     * 也就是说：这台手机上，raw.githubusercontent.com 被解析到了 127.0.0.1。
+     * 常见来源：hosts 文件被改（各类「GitHub 加速 / hosts 修改器 / 去广告」
+     * 工具都会往 /system/etc/hosts 里写 127.0.0.1）、或 VPN 的 DNS 劫持。
+     *
+     * 为什么浏览器照样能下载：Chrome 自带解析器（并可选 DoH），
+     * **不读系统的 hosts 文件**；我们走 InetAddress，会读。
+     * 同一个域名，两边问到的是两个不同的地方。
+     *
+     * 所以前面几轮按「地址写得不对」去猜（data:、协议相对、重定向、
+     * loopback 字面量）全猜错了 —— 地址从头到尾都是对的，
+     * 错的是**解析结果**。这次不再猜，按解析结果处理：
+     *
+     *   ① 解析结果里有非本机地址 → 用它（正常情况，行为不变）
+     *   ② 全是本机 → 走 DNS-over-HTTPS 问一次真实 IP（不读 hosts）
+     *   ③ 还拿不到 → 明确报错，把「被解析到本机」这件事说清楚
+     *
+     * 三条都只在**解析结果是本机**时才动，正常网络下第一步就返回原行为。
+     */
+    private static InetAddress addressFor(String host, int port) throws IOException {
+        if (host == null || host.isEmpty()) return null;
+        /* 字面 IP 不查 DNS，也就没有 hosts 的问题 */
+        if (isLiteralIp(host)) return null;
+
+        InetAddress[] all;
+        try {
+            all = InetAddress.getAllByName(host);
+        } catch (Throwable t) {
+            return null;                        // 解析失败：交给系统按主机名再试一次
+        }
+        InetAddress loopback = null;
+        if (all != null) {
+            for (InetAddress a : all) {
+                if (a == null) continue;
+                if (isLoopbackAddr(a)) {
+                    if (loopback == null) loopback = a;
+                    continue;
+                }
+                return a;                       // ① 有正常地址，用它
+            }
+        }
+        if (loopback == null) return null;      // 没解析出东西，照旧
+
+        /* ② 全是本机 —— 问 DoH */
+        InetAddress real = dohResolve(host);
+        if (real != null) return real;
+
+        /* ③ 说清楚，别再让人猜 */
+        throw new IOException("域名 " + host + " 被解析到本机 127.0.0.1"
+                + "（手机上的 hosts / 加速工具 / VPN 可能改了解析），"
+                + "已尝试绕过仍未成功");
+    }
+
+    private static boolean isLiteralIp(String host) {
+        return host.length() > 0 && (host.charAt(0) == '['
+                || (host.charAt(0) >= '0' && host.charAt(0) <= '9'
+                    && host.indexOf(':') < 0));
+    }
+
+    private static boolean isLoopbackAddr(InetAddress a) {
+        if (a == null) return false;
+        if (a.isLoopbackAddress()) return true;
+        String ip = a.getHostAddress();
+        if (ip == null) return false;
+        return ip.startsWith("127.") || ip.equals("0.0.0.0") || ip.equals("::1");
+    }
+
+    /** 正在做 DoH 的线程 —— 防止兜底查询自己也走 connect 造成来回递归 */
+    private static final ThreadLocal<Boolean> IN_DOH = new ThreadLocal<Boolean>() {
+        @Override protected Boolean initialValue() { return Boolean.FALSE; }
+    };
+
+    /**
+     * 用 DNS-over-HTTPS 问一次真实 IP。
+     *
+     * <p>DoH 走的是 HTTPS 明文查询接口，**不经过系统 hosts**，所以能拿到
+     * 被 hosts 改掉之前的答案。两个端点都试：阿里在国内可达，Google 兜底。
+     *
+     * @return 真实 IP；拿不到返回 null
+     */
+    private static InetAddress dohResolve(String host) {
+        if (Boolean.TRUE.equals(IN_DOH.get())) return null;
+        IN_DOH.set(Boolean.TRUE);
+        try {
+            String[] endpoints = {
+                "https://dns.alidns.com/resolve?name=%s&type=A",
+                "https://dns.google/resolve?name=%s&type=A"
+            };
+            for (String ep : endpoints) {
+                try {
+                    String url = String.format(Locale.US, ep,
+                            java.net.URLEncoder.encode(host, "UTF-8"));
+                    java.util.Map<String, String> headers = new java.util.HashMap<>();
+                    headers.put("Accept", "application/dns-json");
+                    RawResponse r = requestRaw("GET", url, headers);
+                    if (r == null || r.code != 200 || r.body == null) continue;
+                    String json = new String(r.body, StandardCharsets.UTF_8);
+                    /*
+                      只认 Answer 段里的 A 记录。Status 非 0（域名不存在等）
+                      就换下一个端点。
+                    */
+                    java.util.regex.Matcher m = java.util.regex.Pattern
+                            .compile("\"data\"\\s*:\\s*\"([0-9]{1,3}(?:\\.[0-9]{1,3}){3})\"")
+                            .matcher(json);
+                    while (m.find()) {
+                        InetAddress a = InetAddress.getByName(m.group(1));  // 字面 IP，不查 hosts
+                        if (!isLoopbackAddr(a)) return a;
+                    }
+                } catch (Throwable ignored) {
+                }
+            }
+        } finally {
+            IN_DOH.set(Boolean.FALSE);
+        }
+        return null;
     }
 
     /** 预热 DNS：把常用的 GitHub 域名提前解析掉，省掉首屏那次解析等待 */
@@ -634,18 +840,38 @@ public final class Http {
 
         Socket socket = openSocket(secure, host, port);
         try {
+            /* 上传是大块连续写：调大内核发送缓冲区，让 TCP 窗口撑得满
+               移动网络这种高延迟链路；关掉 Nagle，免得小包被攒着等 ACK。
+               弱网下这两项对吞吐的影响格外明显。 */
+            try { socket.setSendBufferSize(SEND_BUF); } catch (Throwable ignored) { }
+            try { socket.setTcpNoDelay(true); } catch (Throwable ignored) { }
+
             StringBuilder req = new StringBuilder();
             req.append(method).append(' ').append(path).append(" HTTP/1.1\r\n");
             buildHead(req, host, port, secure, headers, contentLength, contentType);
             req.append("\r\n");
 
-            OutputStream os = socket.getOutputStream();
+            /* ── 上传为什么比下载慢那么多 ──────────────────────
+             * 下载走系统 DownloadManager：原生实现、多线程、大缓冲、
+             * 系统级调优，基本是能跑多快跑多快。
+             *
+             * 上传以前是把 8KB 小块直接写进裸 socket —— 每次 write
+             * 一次系统调用，TLS 下还要封一条 TLS 记录（上限 16KB），
+             * 8KB 只能填一半。记录又多又小、系统调用成倍，
+             * 吞吐被自己的写方式掐死，跟带宽没关系。
+             *
+             * 套一层 64KB 缓冲再写：TLS 记录接近满额，
+             * 系统调用次数降一个数量级。
+             */
+            OutputStream os = new java.io.BufferedOutputStream(
+                    socket.getOutputStream(), UPLOAD_BUF);
             os.write(req.toString().getBytes(StandardCharsets.US_ASCII));
+            // 请求头先单独刷出去，让服务端尽早准备接收
             os.flush();
 
             // 前面剩下的部分（已由调用方写进 head 的字节流）
             if (fileStream != null) {
-                byte[] buf = new byte[8192];
+                byte[] buf = new byte[UPLOAD_BUF];
                 int n;
                 while ((n = fileStream.read(buf)) > 0) os.write(buf, 0, n);
             }

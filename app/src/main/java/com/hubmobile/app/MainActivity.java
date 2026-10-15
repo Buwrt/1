@@ -424,6 +424,12 @@ public class MainActivity extends Activity {
         bridge.setImageProxy(imageProxy());
         v.addJavascriptInterface(bridge, "NativeBridge");
 
+        /* 后台预热各下载通道的速度。
+           目的：用户点开「通道」面板时**立刻**看到数字，而不是先「测量中…」
+           等好几秒。有新鲜缓存（10 分钟内）就直接用，没有才静默测一轮；
+           正在下载时不凑热闹，免得跟用户抢带宽。 */
+        bridge.warmupChannelProbe();
+
         v.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
@@ -590,7 +596,7 @@ public class MainActivity extends Activity {
         try {
             attachWebView();
             webView.loadUrl(HOME_URL);
-            Toast.makeText(this, "页面被系统回收了，正在重新加载", Toast.LENGTH_SHORT).show();
+            toastTrouble("页面被系统回收了，正在重新加载", Toast.LENGTH_SHORT);
         } catch (Throwable t) {
             finish();       // 实在起不来：干脆收掉，别留一张不会动的图
         }
@@ -740,7 +746,7 @@ public class MainActivity extends Activity {
                     return;
                 }
             } catch (Exception ignored) {}
-            Toast.makeText(this, "无法打开链接", Toast.LENGTH_SHORT).show();
+            toastTrouble("无法打开链接", Toast.LENGTH_SHORT);
         }
     }
 
@@ -824,9 +830,13 @@ public class MainActivity extends Activity {
            已授权时这个方法直接返回，不会重复弹框。 */
         TotpService.ensureNotificationPermission(this);
 
-        /* 排上「关注的项目更新」检查的闹钟，并顺手立刻查一次。
-           检查本身不发任何常驻通知 —— 只有真发现新版本才会弹一条。 */
-        RepoWatchReceiver.attach(this);
+        /* 回到前台时把通知轮询挂上。
+
+           为什么放在 onResume 而不是 onCreate：
+             · 覆盖安装后系统常沿用旧进程，onCreate 不一定再走一遍；
+             · Android 12+ 对后台启动有限制，onResume 时 App 在前台，最稳；
+             · 已挂过也不会重复（AlarmManager 按 PendingIntent 去重）。 */
+        try { NotifWatchReceiver.schedule(this); } catch (Throwable ignored) { }
 
         if (webView != null) {
             webView.evaluateJavascript(
@@ -842,6 +852,11 @@ public class MainActivity extends Activity {
            用户切出去想马上看到码时会等不到。 */
         App.sForeground = false;
         TotpService.showNotification(this);
+
+        /* 退到后台：把通知检查提前。
+           用户刚离开，接下来最可能有人回复他 —— 这时候贴近一点检查，
+           比死等 15 分钟更符合「像微信那样收到消息」的期待。 */
+        try { NotifWatchReceiver.scheduleSoonAfterLeave(this); } catch (Throwable ignored) { }
 
         if (webView != null) webView.evaluateJavascript(
                 "(function(){try{window.__paused=true;}catch(e){}})()", null);
@@ -886,6 +901,24 @@ public class MainActivity extends Activity {
         }
         lastBackPressed = now;
         Toast.makeText(this, "再按一次退出 githup", Toast.LENGTH_SHORT).show();
+    }
+
+    /*
+      ═══ MainActivity 里出错类提示也记一笔 ═══
+
+      JsBridge.toast() 那条路只管 JsBridge 内部的提示；
+      这里的 Toast.makeText 是自己直接弹的，走不到那边。
+
+      只把「出错类」的接上（页面被回收、打不开链接）。
+      「再按一次退出」和崩溃详情展示不是错误，不记 ——
+      否则日志会被正常反馈刷满，比没有还糟。
+    */
+    private void toastTrouble(String msg, int duration) {
+        try {
+            LogBook.error(this, "界面提示", msg);
+        } catch (Throwable ignored) {
+        }
+        Toast.makeText(this, msg, duration).show();
     }
 
     /*

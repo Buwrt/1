@@ -1,0 +1,76 @@
+# 实测所有加速通道（在真实公网环境下）
+#
+# ═══ 为什么要在 CI 里跑 ═══
+#
+# 打包环境的外网出口有白名单策略：不在名单里的域名一律 403，连直连
+# GitHub 都被拒。在那里测出来的「不可用」是环境拦截，不是通道真的挂了，
+# 拿它当判据会把一批好通道误杀掉。
+#
+# CI runner 没有这个限制，是真实公网出口，所以验证必须在这里跑。
+#
+# 结果落盘到 ci/channel-probe.txt（摘要）和 ci/channel-probe.json（明细），
+# 以此决定 DownloadChannels.MIRRORS 里哪些该留、哪些该剔。
+name: Probe Channels
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # 先自检：确认这里能连到 GitHub 本身。
+      # 如果连直连都被拒，说明 runner 环境也有问题，后面的结果全不可信 ——
+      # 这一步能避免「拿着一份无效报告去做筛选」。
+      - name: Sanity check - can we reach GitHub at all?
+        run: |
+          echo "--- 直连 GitHub ---"
+          curl -sS -o /dev/null -w "直连 HTTP %{http_code}\n" \
+            --max-time 20 -A "githup" \
+            -r 0-65535 \
+            "https://github.com/Buwrt/githup/releases/download/v1.2.15/githup-v1.2.15.apk" \
+            || echo "直连失败"
+
+      - name: Probe all channels
+        run: |
+          python3 tools/probe-channels.py 2>&1 | tee probe-stdout.txt
+
+      - name: Collect results
+        run: |
+          mkdir -p ci
+          cp channel-probe.txt ci/channel-probe.txt
+          cp channel-probe.json ci/channel-probe.json
+          cp probe-stdout.txt ci/channel-probe.log
+          echo "=== 摘要 ==="
+          cat ci/channel-probe.txt
+
+      - name: Commit results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f ci/channel-probe.txt ci/channel-probe.json ci/channel-probe.log
+          if git diff --cached --quiet; then
+            echo "结果无变化，跳过提交"
+          else
+            git commit -m "ci: 通道实测结果 $(date -u '+%Y-%m-%d %H:%M UTC')"
+            git push
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: channel-probe
+          path: |
+            channel-probe.txt
+            channel-probe.json

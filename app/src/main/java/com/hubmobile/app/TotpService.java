@@ -64,6 +64,7 @@ public class TotpService extends Service {
     /** 动态码渠道：LOW，退到后台时真正展示内容的通知 */
     private static final String CHANNEL_CODES = "githup_totp";
     /** 安静渠道：MIN，App 在前台时服务保命用，状态栏无图标、通知栏底部折叠 */
+    private static final String CHANNEL_QUIET = "githup_totp_quiet";
     private static final int NOTIFY_ID = 7301;
     private static final String PREFS = "hub_prefs";
     private static final String KEY_ENABLED = "totp_bg_enabled";
@@ -184,23 +185,23 @@ public class TotpService extends Service {
     }
 
     /**
-     * App 回到前台时调用（MainActivity.onResume）：**彻底收摊**。
+     * App 回到前台时调用（MainActivity.onResume）。
      *
-     * 这里的关键是【绝不启动服务】。
-     *
-     * 上一版的做法是发 ACTION_HIDE —— 服务继续存活，只把通知换成 MIN 级
-     * 安静通知（「动态码随时待命」）。那条通知会一直挂在通知栏上，
-     * 用户在前台用 App 时也看得见，等于常驻占坑。
-     *
-     * 现在改成：停服务 + 取消通知，通知栏恢复干净。
-     * 代价是下一次 onPause 要重新走一遍 startForegroundService ——
-     * 但那时 App 刚退到后台，系统通常仍允许；万一被拒，send() 里
-     * 的 try-catch 会吞掉异常，最多这次不显示，绝不会闪退。
+     * 注意：这里【不再停服务】，而是发 ACTION_HIDE ——
+     * 服务保持存活，通知换成 MIN 级安静通知。这样下一次 onPause 时
+     * 服务已经是前台状态，彻底避开 Android 12+ 的「后台启动前台服务」
+     * 限制（1.2.15 两次闪退的根因）。
+     * 服务若还没启动（冷启动后第一次 onResume），这里就以【前台身份】
+     * 合法地把它拉起来。
      */
     static void hideNotification(Context ctx) {
         if (ctx == null) return;
-        try { ctx.stopService(new Intent(ctx, TotpService.class)); } catch (Throwable ignored) { }
-        cancel(ctx);
+        if (!isEnabled(ctx)) {
+            try { ctx.stopService(new Intent(ctx, TotpService.class)); } catch (Throwable ignored) { }
+            cancel(ctx);
+            return;
+        }
+        send(ctx, ACTION_HIDE);
     }
 
     /**
@@ -234,28 +235,20 @@ public class TotpService extends Service {
         ensureChannels();
 
         /*
-         * 服务一旦创建，立刻尝试进入前台状态。
+         * 服务一旦创建，立刻尝试进入前台状态（先用安静通知）。
          *
          * 注意：这里绝不能像上一版修复那样「try-catch 吞掉异常继续跑」——
          * startForeground 抛 ForegroundServiceStartNotAllowedException
          * 意味着 ServiceRecord 上「必须进前台」的标记会一直挂着，
          * 10 秒后系统看门狗照样抛 ForegroundServiceDidNotStartInTimeException。
          *
-         * 策略：最简通知失败就立刻 stopSelf，尽快让系统移除 ServiceRecord。
-         *
-         * 这一版的关键变化：服务**只在用户退出 App 时**才启动，
-         * 所以这里挂的是「待展示的动态码」这条路径，不再有常驻的安静通知 ——
-         * 用户明确要求「需要的时候再出现」，App 在前台时通知栏不该有任何东西。
-         *
-         * 没账户时一条通知都不留：直接收摊，连前台都不进。
+         * 策略：安静通知失败 → 最简通知再试一次 → 还失败立刻 stopSelf，
+         * 尽快让系统移除 ServiceRecord（服务销毁会取消挂起的超时消息）。
          */
-        reload();
-        if (accounts.isEmpty()) {
-            stopSelf();
-            return;
-        }
-        if (!promote(buildBareNotification())) {
-            stopSelf();
+        if (!promote(buildQuietNotification())) {
+            if (!promote(buildBareNotification())) {
+                stopSelf();
+            }
         }
     }
 
@@ -264,9 +257,7 @@ public class TotpService extends Service {
         String action = intent != null ? intent.getAction() : null;
 
         // 再确保一次前台状态。正常情况下 onCreate 已成功，重复调用无副作用。
-        // 用最简通知兜底（不是常驻安静通知）—— 它会被紧接着的 drawCodes() 覆盖，
-        // 用户看到的就是动态码本身。
-        if (!foregroundReady && !promote(buildBareNotification())) {
+        if (!foregroundReady && !promote(buildQuietNotification())) {
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -279,21 +270,25 @@ public class TotpService extends Service {
         reload();
         boolean empty = accounts.isEmpty();
 
-        /*
-         * 这一版起，服务只承担一件事：把动态码挂到通知栏上。
-         *
-         * 原来的 ACTION_HIDE 分支（回到前台 → 换成 MIN 级安静通知、服务继续存活）
-         * 已经去掉 —— 那条安静通知会**一直占着通知栏**，正是用户看到的
-         * 「动态码随时待命」。现在回到前台是**彻底停服务**（见 hideNotification），
-         * 服务只在用户退出 App 时才活着。
-         */
-        stopTicker();
-        if (empty) {
-            stopSelf();
-            return START_NOT_STICKY;
+        if (ACTION_SHOW.equals(action)) {
+            // App 退到后台 / 开机恢复：展示动态码并开始每秒刷新
+            stopTicker();
+            if (empty) {
+                stopSelf();
+                return START_NOT_STICKY;
+            }
+            drawCodes();
+            startTicker();
+        } else {
+            // ACTION_HIDE（onResume）或无 action（refresh / setEnabled）：
+            // App 在前台，停掉刷新、换安静通知，服务保持存活待命。
+            stopTicker();
+            if (empty) {
+                stopSelf();
+                return START_NOT_STICKY;
+            }
+            showQuiet();
         }
-        drawCodes();
-        startTicker();
 
         // START_STICKY：被系统回收后自动重建，通知不会莫名其妙消失
         return START_STICKY;
@@ -340,6 +335,14 @@ public class TotpService extends Service {
         } catch (Throwable t) {
             return false;
         }
+    }
+
+    /** 换成安静通知（App 在前台时） */
+    private void showQuiet() {
+        try {
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (nm != null) nm.notify(NOTIFY_ID, buildQuietNotification());
+        } catch (Throwable ignored) { }
     }
 
     /* ---------------- 动态码刷新 ---------------- */
@@ -505,16 +508,30 @@ public class TotpService extends Service {
     }
 
     /**
-     * 最简通知：startForeground 的兜底，不带任何 PendingIntent / 样式，
-     * 只求前台状态建立成功、不触发超时崩溃。紧接着 drawCodes() 会把它
-     * 换成真正的动态码，用户看到的就是码本身。
-     *
-     * 用**动态码渠道**（而不是 MIN 级安静渠道）：安静渠道的通知会被系统
-     * 折叠到通知栏最底部、状态栏不显示图标 —— 那正是用户抱怨的
-     * 「动态码随时待命」那条常驻占位。
+     * 安静通知：服务保命用。
+     * 渠道 IMPORTANCE_MIN：状态栏无图标、无声，只在通知栏最底部折叠成一条。
+     */
+    private Notification buildQuietNotification() {
+        Notification.Builder b = newBuilder(CHANNEL_QUIET);
+        b.setSmallIcon(android.R.drawable.ic_lock_lock)
+                .setContentTitle("githup")
+                .setContentText("动态码随时待命")
+                .setOngoing(true)
+                .setShowWhen(false)
+                .setOnlyAlertOnce(true)
+                .setCategory(Notification.CATEGORY_SERVICE);
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            b.setPriority(Notification.PRIORITY_MIN);
+        }
+        return b.build();
+    }
+
+    /**
+     * 最简通知：安静通知都构建失败时的兜底，不带任何 PendingIntent /
+     * 样式，只求 startForeground 能成功，不触发超时崩溃。
      */
     private Notification buildBareNotification() {
-        Notification.Builder b = newBuilder(CHANNEL_CODES);
+        Notification.Builder b = newBuilder(CHANNEL_QUIET);
         b.setSmallIcon(android.R.drawable.ic_lock_lock)
                 .setContentTitle("githup")
                 .setOngoing(true)
@@ -614,5 +631,14 @@ public class TotpService extends Service {
             nm.createNotificationChannel(ch);
         }
 
+        if (nm.getNotificationChannel(CHANNEL_QUIET) == null) {
+            NotificationChannel ch = new NotificationChannel(
+                    CHANNEL_QUIET, "动态码后台服务", NotificationManager.IMPORTANCE_MIN);
+            ch.setDescription("githup 随时准备在通知栏显示动态码（状态栏不显示图标）");
+            ch.setShowBadge(false);
+            ch.enableVibration(false);
+            ch.setSound(null, null);
+            nm.createNotificationChannel(ch);
+        }
     }
 }

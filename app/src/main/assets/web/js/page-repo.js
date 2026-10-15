@@ -229,7 +229,7 @@
 
   function headHtml(repo, tab, ctx) {
     var parts = repo.full_name.split('/');
-    var isSub = ['issues', 'pulls', 'actions', 'releases', 'commits', 'contributors', 'branches', 'tags', 'settings', 'stargazers', 'watchers', 'forks'].indexOf(tab) >= 0;
+    var isSub = ['issues', 'pulls', 'actions', 'releases', 'commits', 'contributors', 'branches', 'tags', 'settings', 'stargazers', 'watchers', 'forks', 'wiki'].indexOf(tab) >= 0;
     /* tab 栏上只有六个按钮（代码/议题/拉取请求/Actions/发布/更多）。
        从「更多」里进去的那些页面（提交记录、分支、标签、里程碑、贡献者、
        协作者、仓库设置、star/fork/关注名单）在这排按钮上没有自己的位置 ——
@@ -447,6 +447,7 @@
   function moreMenu(repo) {
     UI.menu('更多', [
       { icon: 'git-commit', label: '提交记录', key: 'commits' },
+      { icon: 'book', label: 'Wiki', key: 'wiki' },
       { icon: 'people', label: '贡献者', key: 'contributors' },
       { icon: 'git-branch', label: '分支', key: 'branches' },
       { icon: 'tag', label: '标签', key: 'tags' },
@@ -507,8 +508,30 @@
       case 'milestones': return tabMilestones(repo, ctx, box);
       case 'settings': return tabSettings(repo, ctx, box);
       case 'collaborators': return tabCollaborators(repo, ctx, box);
+      case 'wiki': return tabWiki(repo, ctx, box);
       default: return tabCode(repo, ctx, box);
     }
+  }
+
+  /* ============ Wiki ============ */
+  /**
+   * Wiki 没有列表接口，取数逻辑全在 wiki.js 里（raw 拉取 + 页名兜底）。
+   * 这里只负责把路由上的 ?page= 传进去，以及右上角给一枚「网页打开」——
+   * 编辑器在官网上，移动端做不了。
+   */
+  function tabWiki(repo, ctx, box) {
+    var page = ctx.query.page || (window.Wiki && window.Wiki.DEFAULT_PAGE) || 'Home';
+    if (!window.Wiki) {
+      box.innerHTML = UI.empty('book', 'Wiki 模块没加载', '刷新页面重试。');
+      return Promise.resolve();
+    }
+    window.App.setActions([{
+      icon: 'link-external', onClick: function () {
+        var url = repo.html_url + '/wiki/' + encodeURIComponent(page);
+        window.NativeBridge && NativeBridge.openExternal ? NativeBridge.openExternal(url) : window.open(url, '_blank');
+      }
+    }]);
+    return window.Wiki.render(repo, page, box);
   }
 
   /* ============ 代码 ============ */
@@ -583,7 +606,7 @@
         if (a.type === b.type) return a.name.localeCompare(b.name);
         return a.type === 'dir' ? -1 : 1;
       });
-      var html = '<div class="list">' + entries.map(function (e) {
+      var html = '<div class="list" id="flist">' + entries.map(function (e, i) {
         var isDir = e.type === 'dir';
         var sub = isDir ? '' : '<span class="fmeta">' + U.bytes(e.size) + '</span>';
         // 在子目录里，接口返回的 path 是相对当前目录的（GitHub 就是这个约定），
@@ -593,7 +616,16 @@
         // 目录名里的 # 和 ? 不转义会在 hash 路由里被当成片段/查询分隔符，
         // 结果就是点进去跳回仓库首页，所以路径必须走 encodePath
         var target = refUrl(repo, isDir ? 'tree' : 'blob', full, ref);
-        return '<button class="file-row" data-go="' + U.esc(target) + '">' +
+        /* 长按菜单要用到的东西一并挂在行上：
+             data-i     —— 回查 entries 的下标
+             data-fpath —— 完整路径（删文件时就是接口要的 path）
+             data-ftype —— dir / file（删目录要递归，走的是另一条路）
+             data-fsha  —— 文件的 blob sha，DELETE contents 必须带上，
+                           相当于「我删的是这一版」的乐观锁 */
+        return '<button class="file-row" data-go="' + U.esc(target) + '"' +
+          ' data-i="' + i + '" data-fpath="' + U.esc(full) + '"' +
+          ' data-ftype="' + (isDir ? 'dir' : 'file') + '"' +
+          ' data-fsha="' + U.esc(e.sha || '') + '">' +
           '<span class="file-ico' + (isDir ? ' dir' : '') + '">' + window.icon(isDir ? 'file-directory-fill' : 'file', 16) + '</span>' +
           '<span class="fname">' + U.esc(e.name) + '</span>' + sub + '</button>';
       }).join('') + '</div>';
@@ -629,6 +661,10 @@
 
       box.insertAdjacentHTML('beforeend', html);
       window.bindRepoCards(box);
+      /* 长按文件/文件夹弹出管理菜单（删除、重命名、下载…）。
+         Release 列表早就有这套，文件列表却一直只绑了点击跳转 ——
+         用户长按半天没反应，就是因为压根没挂。 */
+      bindFileLongPress(repo, ref, entries, box);
       if (!path) {
         bindAbout(repo, box);
         var rm = UI.$('#readme', box);
@@ -653,6 +689,214 @@
   }
 
   function encodePath(p) { return String(p || '').split('/').map(encodeURIComponent).join('/'); }
+
+  /* ------------------------------------------------------------
+   * 有限并发的 map
+   *
+   * 为什么需要它 ——
+   *   上传文件夹原来是 `chain = chain.then(...)` 一路串下去：
+   *   第 N 个文件必须等第 N-1 个彻底结束才出发。
+   *   于是总耗时 = Σ(每个文件的传输时间 + 一次完整的网络往返)。
+   *   传 30 个小文件、每个往返 600ms，光干等就是 18 秒 ——
+   *   用户感受到的「特别慢」，绝大部分耗在这段纯等待上，不是带宽不够。
+   *
+   *   改成同时跑 CONCURRENCY 路之后，等待时间被摊平成
+   *   「总传输量 / 带宽 + 一轮往返」，文件越多提速越明显。
+   *
+   * 为什么上限取 4 ——
+   *   移动网络下 4 路通常就能把带宽吃满，再往上加只会让 TLS 握手、
+   *   队头阻塞和丢包重传互相打架，整体反而更慢；
+   *   而且 GitHub 对写操作有更严格的次级限流，并发太高容易撞上 403。
+   *
+   * 为什么失败不中断 ——
+   *   一个文件上传失败不该拖垮整批。失败的收集起来最后一起报，
+   *   成功的照常进提交（tree 里只挂成功的那些）。
+   * ------------------------------------------------------------ */
+  var UPLOAD_CONCURRENCY = 4;
+
+  function mapLimit(items, limit, worker, onProgress) {
+    var total = items.length;
+    if (!total) return Promise.resolve({ done: [], failed: [] });
+    var n = Math.max(1, Math.min(limit || 4, total));
+    var idx = 0, finished = 0;
+    var done = [], failed = [];
+
+    function tick() {
+      finished++;
+      if (onProgress) {
+        try { onProgress(finished, total); } catch (e) {}
+      }
+    }
+
+    function runner() {
+      if (idx >= total) return Promise.resolve();
+      var i = idx++;
+      var it = items[i];
+      return Promise.resolve()
+        .then(function () { return worker(it, i); })
+        .then(function (v) { done.push({ item: it, value: v }); })
+        .catch(function (e) { failed.push({ item: it, error: e }); })
+        .then(tick)
+        .then(runner);   // 这个跑完接着领下一个，池子始终是满的
+    }
+
+    var lanes = [];
+    for (var i = 0; i < n; i++) lanes.push(runner());
+    return Promise.all(lanes).then(function () { return { done: done, failed: failed }; });
+  }
+
+  /* ------------------------------------------------------------
+   * 文件 / 文件夹的长按菜单
+   *
+   * 为什么以前长按没反应 ——
+   *   .file-row 只绑了 data-go 的点击跳转，压根没挂长按监听。
+   *   Release 列表有 bindRelLongPress，文件列表没有，两边不一致。
+   *
+   * 删除为什么比想象中麻烦 ——
+   *   GitHub 的 contents 接口【只能删文件，不能删目录】。
+   *   要删一个文件夹，得自己递归把里面所有文件逐个删掉 ——
+   *   目录空了在 git 里自然就不存在了（git 不跟踪空目录）。
+   *   所以「删文件夹」实际是一串删文件请求，耗时与文件数成正比。
+   * ------------------------------------------------------------ */
+
+  /** 把目录递归展开成一串待删文件路径（深度优先，子目录继续往下钻） */
+  function listFilesDeep(repo, dirPath, ref, out, depth) {
+    out = out || [];
+    depth = depth || 0;
+    /* 兜底：目录套得太深多半是仓库结构异常，别把接口打爆 */
+    if (depth > 12) return Promise.resolve(out);
+    return window.API.get('/repos/' + repo.full_name + '/contents/' + encodePath(dirPath),
+      { ref: ref }, { cache: 0 }).then(function (r) {
+      var items = r.data || [];
+      /* 本层的文件直接收；子目录**并发**下钻。
+         原来是挨个串行，目录一多光等往返就把时间耗光了。
+         收集顺序不重要（只是凑一份待删清单），并发是安全的。 */
+      var dirs = [];
+      items.forEach(function (it) {
+        if (it.type === 'dir') dirs.push(it);
+        else if (it.type === 'file') out.push({ path: it.path, sha: it.sha });
+      });
+      return mapLimit(dirs, UPLOAD_CONCURRENCY, function (d) {
+        return listFilesDeep(repo, d.path, ref, out, depth + 1);
+      });
+    }).then(function () { return out; });
+  }
+
+  /** 删单个文件：DELETE /contents/{path}，必须带 sha + message + branch */
+  function deleteFile(repo, fpath, sha, ref, msg) {
+    return window.API.del('/repos/' + repo.full_name + '/contents/' + encodePath(fpath), {
+      message: msg,
+      sha: sha,
+      branch: ref
+    });
+  }
+
+  function bindFileLongPress(repo, ref, entries, box) {
+    if (!window.UI || typeof window.UI.bindLongPress !== 'function') return;
+    var canWrite = window.Session.isLogin && canPush(repo);
+    UI.$$('#flist .file-row', box).forEach(function (el) {
+      var e = entries[Number(el.getAttribute('data-i'))];
+      if (!e) return;
+      var fpath = el.getAttribute('data-fpath') || e.path || e.name;
+      var isDir = el.getAttribute('data-ftype') === 'dir';
+      var fsha = el.getAttribute('data-fsha') || e.sha || '';
+
+      var wasLong = UI.bindLongPress(el, function () { fileMenu(repo, ref, e, fpath, isDir, fsha, canWrite, el); }, 550);
+      /* 长按松手会带出一次合成 click —— 在这里吞掉，
+         不然全局 data-go 委托会把「菜单背后的页面」跳走 */
+      el.addEventListener('click', function (ev) {
+        if (wasLong()) { ev.stopPropagation(); ev.preventDefault(); }
+      });
+    });
+  }
+
+  function fileMenu(repo, ref, entry, fpath, isDir, fsha, canWrite, el) {
+    var items = [
+      { icon: isDir ? 'file-directory-fill' : 'file', label: '打开', key: 'open' },
+      { icon: 'download', label: isDir ? '下载（暂不支持整个目录）' : '下载此文件', key: 'dl', disabled: isDir }
+    ];
+    items.push('-');
+    if (!canWrite) {
+      items.push({ icon: 'shield', label: '需要仓库写权限才能删除', key: 'noperm', disabled: true });
+    } else {
+      items.push({ icon: 'trash', label: isDir ? '删除此文件夹' : '删除此文件', key: 'del' });
+    }
+
+    return UI.menu(entry.name, items).then(function (k) {
+      if (!k) return;
+      if (k === 'open') {
+        return window.Router.go(refUrl(repo, isDir ? 'tree' : 'blob', fpath, ref));
+      }
+      if (k === 'dl') {
+        var raw = 'https://raw.githubusercontent.com/' + repo.full_name + '/' +
+          encodeURIComponent(ref) + '/' + encodePath(fpath);
+        if (window.Native && window.Native.download) {
+          if (window.Native.download(raw, entry.name, window.Native.authHeaders(), 'file')) {
+            return UI.toast('开始下载 ' + entry.name);
+          }
+        }
+        window.open(raw, '_blank');
+        return null;
+      }
+      if (k === 'del') {
+        return isDir ? confirmDeleteDir(repo, ref, fpath, entry.name, el)
+                     : confirmDeleteFile(repo, ref, fpath, fsha, entry.name, el);
+      }
+      return null;
+    });
+  }
+
+  /** 删文件：问一句再删，删完把这一行从界面上抹掉 */
+  function confirmDeleteFile(repo, ref, fpath, fsha, name, el) {
+    return UI.confirm('删除文件', '确定删除 ' + name + ' 吗？这个操作不可撤销。', '删除', true)
+      .then(function (ok) {
+        if (!ok) return;
+        UI.loading(true);
+        return deleteFile(repo, fpath, fsha, ref, '删除 ' + name)
+          .then(function () {
+            UI.loading(false);
+            UI.toast('已删除 ' + name);
+            if (el && el.parentNode) el.parentNode.removeChild(el);
+          })
+          .catch(function (e) {
+            UI.loading(false);
+            UI.toast('删除失败：' + (e.status === 403 ? '没有写权限' :
+              e.status === 409 ? '文件已被改动，请刷新后重试' : e.message));
+          });
+      });
+  }
+
+  /** 删文件夹：先递归清点，把文件数摆出来再让用户确认 */
+  function confirmDeleteDir(repo, ref, dirPath, name, el) {
+    UI.loading(true);
+    return listFilesDeep(repo, dirPath, ref).then(function (files) {
+      UI.loading(false);
+      if (!files.length) {
+        return UI.toast('这个文件夹里没有可删的文件');
+      }
+      /* 文件多时逐个删要一会儿，先说清楚，别让人以为卡死了 */
+      var tip = '将删除「' + name + '」下的 ' + files.length + ' 个文件' +
+        (files.length > 20 ? '（文件较多，需要一点时间）' : '') + '。不可撤销。';
+      return UI.confirm('删除文件夹', tip, '删除 ' + files.length + ' 个文件', true)
+        .then(function (ok) {
+          if (!ok) return;
+          UI.loading(true);
+          /* 并发删。删文件之间没有依赖，排队纯属浪费 ——
+             30 个文件原来要等 30 轮往返，现在摊平成几轮。 */
+          return mapLimit(files, UPLOAD_CONCURRENCY, function (f) {
+            return deleteFile(repo, f.path, f.sha, ref, '删除 ' + name + '（清理目录）');
+          }).then(function (r) {
+            UI.loading(false);
+            var done = r.done.length, failed = r.failed.length;
+            UI.toast(failed ? ('已删 ' + done + ' 个，' + failed + ' 个失败') : ('已删除 ' + done + ' 个文件'));
+            if (!failed && el && el.parentNode) el.parentNode.removeChild(el);
+          });
+        });
+    }).catch(function (e) {
+      UI.loading(false);
+      UI.toast('读取目录失败：' + e.message);
+    });
+  }
 
   /**
    * 是否对仓库有写权限。
@@ -1204,6 +1448,14 @@
   /* 议题/PR 列表每页条数。GitHub 单页最多 100，取 30 与网页端默认一致，
      翻页时加载更多追加到列表末尾。 */
   var ISSUE_PAGE_SIZE = 30;
+  /* 自动续拉空页的上限：议题列表里 PR 会被过滤掉，整页都是 PR 的情况
+     理论上能连续出现好几次。给个上限，接口异常时不至于无限请求。 */
+  var MAX_EMPTY_PAGES = 10;
+  /* 自动加载的预取距离：哨兵进入视口下方这么多像素就开始拉下一页。
+     给足提前量，用户「快划到底」时新内容已经在了，感知上是无缝的。 */
+  var PRELOAD_PX = 320;
+  /* 首屏自动补页的上限（见 maybeFill） */
+  var AUTO_FILL_MAX = 5;
 
   function issueParams(ctx, isPR, page) {
     /* 默认排序与 GitHub 网页端一致：按创建时间倒序（最新创建在前）。
@@ -1329,64 +1581,193 @@
   window.issueRow = issueRow;
 
   /**
-   * 议题 / PR 列表的分页加载。
+   * 议题 / PR 列表的分页加载 —— **滚到底自动加载**，没有「加载更多」按钮。
    *
-   * 原来只拉第一页（per_page=30，不带 page），议题多的仓库后面的就看不到了；
-   * 现在做成「加载更多」：第一页渲染完后，底部放一个按钮，点一下拉下一页追加到末尾。
-   * 当某一页返回的条数 < ISSUE_PAGE_SIZE，说明已经到底，按钮自动消失。
+   * 列表末尾放一个哨兵，快划到它（提前 PRELOAD_PX 像素）就自动拉下一页
+   * 追加到末尾，感知上是无缝的。到底了底部给一句「已加载全部 N 条」。
+   *
+   * 早期版本只拉第一页；后来做成「加载更多」按钮；现在按用户要求去掉按钮，
+   * 改成滚动自动加载。
    *
    * isPR=false 走 /issues 接口，需要过滤掉 pull_request（/issues 会把 PR 也带回来）；
    * isPR=true 走 /pulls 接口，返回的全是 PR，不过滤。
    */
   function issueListWithPaging(repo, ctx, box, listId, isPR) {
     var ep = '/repos/' + repo.full_name + (isPR ? '/pulls' : '/issues');
-    var st = { page: 1, items: [], done: false, loading: false };
+    var st = { page: 1, items: [], done: false, loading: false, autoFrom: 1, autoFill: 0 };
+    /* 底部哨兵的观察器 / 滚动监听句柄，render 重建 DOM 时要先拆再装 */
+    var observer = null;
+    var scrollHost = null;
+    var onScroll = null;
+
+    /**
+     * 找到列表真正所在的滚动容器（一般是 #view）。
+     *
+     * 不能写死 window —— 这个 App 的页面是在 #view 这个内部容器里滚的
+     * （#app 是 100dvh 的 flex 列，#view flex:1 + overflow-y:auto），
+     * window 本身根本不滚。写死 window 的话滚动监听永远不触发。
+     */
+    function scrollRoot() {
+      var n = box;
+      try {
+        while (n && n !== document.body && n !== document.documentElement) {
+          var cs = window.getComputedStyle(n);
+          if (cs && (cs.overflowY === 'auto' || cs.overflowY === 'scroll')) return n;
+          n = n.parentElement;
+        }
+      } catch (e) { }
+      return null;
+    }
+
+    function teardownSentinel() {
+      if (observer) { try { observer.disconnect(); } catch (e) { } observer = null; }
+      if (scrollHost && onScroll) {
+        try { scrollHost.removeEventListener('scroll', onScroll); } catch (e) { }
+        scrollHost = null; onScroll = null;
+      }
+    }
 
     function render() {
       var b = UI.$('#' + listId, box);
-      if (!b) return;
+      if (!b) { teardownSentinel(); return; }
       if (!st.items.length) {
         b.innerHTML = isPR
           ? UI.empty('git-pull-request', '没有符合条件的拉取请求', '')
           : UI.empty('issue-opened', '没有符合条件的议题', '试试切换筛选条件');
+        teardownSentinel();
         return;
       }
       var noun = isPR ? '拉取请求' : '议题';
       var rows = '<div class="list">' + st.items.map(function (i) { return issueRow(i, repo, isPR); }).join('') + '</div>';
-      var more = '';
+      var tail;
       if (st.done) {
-        /* 到底了：给一个轻量的提示，不占地方、也不打扰。
-           只有在确实加载过、且总数超过一页时才显示，不然第一页就 3 条还挂个
-           「没有更多了」显得多余。 */
-        if (st.items.length > ISSUE_PAGE_SIZE) {
-          more = '<div class="list-end">已加载全部 ' + st.items.length + ' 条' + noun + '</div>';
-        }
+        /* 到底了：给一个交代，让人知道确实加载完了、不是卡住。 */
+        tail = '<div class="list-end">已加载全部 ' + st.items.length + ' 条' + noun + '</div>';
+      } else if (st.failed) {
+        /* 后续某页失败：已加载的保留，给一个重试入口。
+           这不是「加载更多」按钮 —— 只在失败时出现。 */
+        tail = '<button class="list-retry" id="' + listId + '-retry">加载失败，点此重试</button>';
       } else {
-        more = '<button class="btn block mt8" id="' + listId + '-more">' +
-          (st.loading ? '加载中…' : '加载更多') + '</button>';
+        /* 哨兵：滚到它附近就自动拉下一页。平时只有一行「加载中…」。 */
+        tail = '<div class="list-sentinel" id="' + listId + '-sentinel">' +
+          '<span class="list-loading">' +
+          (st.loading ? '<i class="spinner"></i>加载中…' : '') + '</span></div>';
       }
-      b.innerHTML = rows + more;
-      var mb = UI.$('#' + listId + '-more', box);
-      if (mb) mb.onclick = loadNext;
+      b.innerHTML = rows + tail;
       window.bindRepoCards(b);
       bindIssueLongPress(b, st.items, repo, isPR);
+
+      var rb = UI.$('#' + listId + '-retry', box);
+      if (rb) rb.onclick = function () { st.failed = false; loadNext(); };
+
+      watchSentinel();
+    }
+
+    /**
+     * 盯住底部哨兵：快划到它（提前 PRELOAD_PX）就自动拉下一页。
+     *
+     * 用 IntersectionObserver 而不是 scroll 事件 —— 后者每帧都要读
+     * scrollTop 触发重排，长列表下明显掉帧。
+     */
+    function watchSentinel() {
+      teardownSentinel();
+      if (st.done || st.failed) return;
+      var sen = UI.$('#' + listId + '-sentinel', box);
+      if (!sen) return;
+
+      var root = scrollRoot();
+      if (window.IntersectionObserver && root) {
+        observer = new window.IntersectionObserver(function (entries) {
+          for (var i = 0; i < entries.length; i++) {
+            if (entries[i].isIntersecting) { loadNext(); break; }
+          }
+        }, { root: root, rootMargin: '0px 0px ' + PRELOAD_PX + 'px 0px' });
+        observer.observe(sen);
+        maybeFill();
+        return;
+      }
+      /* 老 WebView 没有 IntersectionObserver：退回 scroll 监听 */
+      var host = root || window;
+      onScroll = function () {
+        var r = sen.getBoundingClientRect();
+        var vh = (host === window ? window.innerHeight : host.clientHeight) || 0;
+        if (r.top - vh < PRELOAD_PX) loadNext();
+      };
+      scrollHost = (host === window) ? null : host;
+      (scrollHost || window).addEventListener('scroll', onScroll, { passive: true });
+      maybeFill();
+    }
+
+    /**
+     * 首屏内容不够高时根本不会滚动，哨兵一直停在视口里 ——
+     * 光靠观察器不会触发（它只在**进入**视口时回调）。
+     * 所以主动补一页，直到把屏幕填满或确认到底。
+     *
+     * 带 AUTO_FILL_MAX 上限：接口异常（一直返回满页却全是 PR）时不至于
+     * 把流量和电量打光。
+     */
+    function maybeFill() {
+      if (st.done || st.failed || st.loading) return;
+      if (st.autoFill >= AUTO_FILL_MAX) return;
+      var host = scrollRoot();
+      if (!host) return;
+      /* 已经能滚了（内容超过一屏）就交给滚动去触发，别自作主张 */
+      if (host.scrollHeight > host.clientHeight + 40) return;
+      st.autoFill++;
+      loadNext();
     }
 
     function loadPage(pageNum) {
+      /* 页面已经被切走了（用户点了别的 tab）：停止加载，别再往一个
+         脱离文档的容器里写东西。观察器也顺手拆掉。 */
+      try { if (!document.body.contains(box)) { teardownSentinel(); return; } } catch (e) { }
+
       st.loading = true;
-      /* 按钮文字变「加载中…」给即时反馈，免得用户连点两下发两次请求 */
-      var mb = UI.$('#' + listId + '-more', box);
-      if (mb) mb.textContent = '加载中…';
+      st.failed = false;
       var p = issueParams(ctx, isPR, pageNum);
       return window.API.get(ep, p).then(function (r) {
-        var arr = r.data || [];
-        if (!isPR) arr = arr.filter(function (i) { return !i.pull_request; });
+        /*
+          ⚠️ 这里是「议题只能显示 29 条」的根因，别再改回去。
+
+          /issues 接口会把**拉取请求一起带回来**，所以要在客户端过滤掉
+          pull_request。以前是这么写的：
+
+              arr = arr.filter(!pull_request);
+              if (arr.length < ISSUE_PAGE_SIZE) st.done = true;   // ← 错
+
+          服务端一页给 30 条，里面混着 1 个 PR，过滤后剩 29 ——
+          29 < 30 就被判成「到底了」，「加载更多」按钮消失。
+          于是后面几十条议题永远加载不出来。
+
+          那些 PR 是**我们自己扔掉的**，不代表服务端没数据了。
+          判断「还有没有下一页」必须用**过滤前**的原始条数。
+        */
+        var raw = r.data || [];
+        var arr = raw;
+        if (!isPR) arr = raw.filter(function (i) { return !i.pull_request; });
         st.items = st.items.concat(arr);
-        /* 不足一页 = 没有更多了。注意：即使这一页恰好装满，下一页也可能是空的，
-           所以严格来说应该再请求一次确认；但 GitHub 的 /issues 在无数据时返回空数组，
-           那时 arr.length===0 < ISSUE_PAGE_SIZE，done 会被置 true，不会死循环。 */
-        if (arr.length < ISSUE_PAGE_SIZE) st.done = true;
         st.page = pageNum;
+
+        /* 服务端还有没有下一页：看过滤前的条数 */
+        var serverHasMore = raw.length >= ISSUE_PAGE_SIZE;
+        if (!serverHasMore) {
+          st.done = true;
+          st.loading = false;
+          render();
+          return;
+        }
+
+        /*
+          这一页服务端是满的，但过滤后一条都没剩下（整页都是 PR）。
+          直接 render 的话用户点「加载更多」会毫无反应 —— 明明还有数据。
+          所以自动接着拉下一页，直到拉到内容或确认到底。
+
+          带一个次数上限：接口异常（比如服务端一直返回满页但都是 PR）
+          时不至于把用户的流量和电量打光。
+        */
+        if (arr.length === 0 && pageNum - st.autoFrom < MAX_EMPTY_PAGES) {
+          return loadPage(pageNum + 1);
+        }
         st.loading = false;
         render();
       }).catch(function (e) {
@@ -1394,21 +1775,19 @@
         var b = UI.$('#' + listId, box);
         if (b && st.items.length === 0) {
           /* 第一页就挂了：显示错误框 */
+          teardownSentinel();
           b.innerHTML = UI.errorBox(e);
         } else {
-          /* 已经加载了几页，后续某页挂了：保留已加载的，按钮上提示重试 */
+          /* 已经加载了几页，后续某页挂了：保留已加载的，给一个重试入口 */
+          st.failed = true;
           render();
-          var btn = UI.$('#' + listId + '-more', box);
-          if (btn) {
-            btn.textContent = '加载失败，点此重试';
-            btn.onclick = function () { loadPage(st.page + 1); };
-          }
         }
       });
     }
 
     function loadNext() {
       if (st.loading || st.done) return;
+      st.autoFrom = st.page + 1;      // 新的一轮「连续空页」计数从这里起算
       loadPage(st.page + 1);
     }
 
@@ -2929,31 +3308,38 @@
           }).then(function (r) {
             var rel = r.data;
             if (!files.length) { UI.loading(false); return rel; }
-            // 逐个上传附件（二进制走原生）
-            var chain = Promise.resolve();
-            files.forEach(function (f) {
-              chain = chain.then(function () {
-                var url = 'https://uploads.github.com/repos/' + repo.full_name +
-                  '/releases/' + rel.id + '/assets?name=' + encodeURIComponent(f.name) +
-                  '&label=' + encodeURIComponent(f.name);
-                return window.Native.uploadBinary(url, f.uri, {
-                  'Authorization': 'Bearer ' + window.Session.token,
-                  'Accept': 'application/vnd.github+json',
-                  'X-GitHub-Api-Version': '2022-11-28',
-                  'Content-Type': f.mime || 'application/octet-stream'
-                }).then(function (res) {
-                  // status=0 本地异常 / >=400 GitHub 拒绝：转失败，别报喜
-                  if (res && (res.status === 0 || res.status >= 400)) {
-                    var m = '';
-                    try { m = (JSON.parse(res.body) || {}).error
-                          || (JSON.parse(res.body) || {}).message || ''; } catch (e) {}
-                    throw new Error(m || ('HTTP ' + res.status));
-                  }
-                  return res;
-                });
+            /* 并发上传附件（二进制走原生）。
+               原来逐个排队，附件一多（比如一次发 5 个 APK + 校验文件）
+               耗时就是好几轮往返叠加。附件之间互不依赖，并发是安全的。 */
+            return mapLimit(files, UPLOAD_CONCURRENCY, function (f) {
+              var url = 'https://uploads.github.com/repos/' + repo.full_name +
+                '/releases/' + rel.id + '/assets?name=' + encodeURIComponent(f.name) +
+                '&label=' + encodeURIComponent(f.name);
+              return window.Native.uploadBinary(url, f.uri, {
+                'Authorization': 'Bearer ' + window.Session.token,
+                'Accept': 'application/vnd.github+json',
+                'X-GitHub-Api-Version': '2022-11-28',
+                'Content-Type': f.mime || 'application/octet-stream'
+              }).then(function (res) {
+                // status=0 本地异常 / >=400 GitHub 拒绝：转失败，别报喜
+                if (res && (res.status === 0 || res.status >= 400)) {
+                  var m = '';
+                  try { m = (JSON.parse(res.body) || {}).error
+                        || (JSON.parse(res.body) || {}).message || ''; } catch (e) {}
+                  throw new Error(m || ('HTTP ' + res.status));
+                }
+                return res;
               });
+            }).then(function (r) {
+              /* 附件没传全也要说清楚：Release 已经建好了，
+                 别让用户以为全部成功 */
+              if (r.failed.length) {
+                var fm = r.failed[0].error;
+                throw new Error(r.failed.length + ' 个附件上传失败：' +
+                  (fm && fm.message ? fm.message : '未知错误'));
+              }
+              return rel;
             });
-            return chain.then(function () { return rel; });
           }).then(function (rel) {
             UI.loading(false);
             UI.closeSheet();
@@ -3207,7 +3593,19 @@
       '<div class="field"><label>提交信息 <span style="color:var(--danger)">*</span></label>' +
       '<input class="input" id="uf-msg" placeholder="Add files via upload"></div>' +
       '<div class="field"><label>分支</label>' +
-      '<input class="input mono" id="uf-branch" value="' + U.esc(ref || repo.default_branch) + '"></div>';
+      '<input class="input mono" id="uf-branch" value="' + U.esc(ref || repo.default_branch) + '"></div>' +
+      /* 上传进度。以前整段时间只有一个转圈的 indeterminate 条，
+         文件一多用户完全不知道进行到哪了 —— 「慢」里有一半是这个造成的。
+         现在明确写出「第几个 / 共几个 + 百分比」。 */
+      '<div class="field" id="uf-progwrap" hidden>' +
+      '<div class="up-prog"><div class="up-prog-bar" id="uf-progbar"></div></div>' +
+      '<div class="hint" id="uf-progtxt">准备中…</div></div>' +
+      /* 上传为什么比下载慢，得说清楚 —— 不然用户只会觉得「这软件有毛病」：
+         下载走系统 DownloadManager（多线程、系统级调优），
+         上传走 GitHub Contents API，必须先 Base64 编码（体积 +33%），
+         且只能单请求提交。17MB 的 APK 实际要传约 23MB。 */
+      '<div class="field" id="uf-whywrap" hidden>' +
+      '<div class="hint" id="uf-why"></div></div>';
 
     var root = document.getElementById('sheet-root');
     UI.sheet({
@@ -3217,6 +3615,42 @@
         var fileEl = root.querySelector('#uf-file');
         var pick = root.querySelector('#uf-pick');
         var folderBtn = root.querySelector('#uf-folder');
+        var progWrap = root.querySelector('#uf-progwrap');
+        var progBar = root.querySelector('#uf-progbar');
+        var progTxt = root.querySelector('#uf-progtxt');
+        var whyWrap = root.querySelector('#uf-whywrap');
+        var whyEl = root.querySelector('#uf-why');
+
+        /* 把「为什么要传这么多」摆出来。
+           Base64 让体积涨 33%，这是 Contents API 的硬性要求，绕不过去；
+           不说的话，用户看到 17MB 的文件传半天只会以为软件有问题。 */
+        function showWhy(bytes) {
+          if (!whyWrap || !whyEl) return;
+          var wired = Math.round(bytes * 4 / 3);
+          whyWrap.hidden = false;
+          whyEl.textContent = 'Base64 编码后实际上传 ' + U.bytes(wired) +
+            '（比 ' + U.bytes(bytes) + ' 多约 33%），单请求提交。' +
+            '下载走系统服务（多线程），上传受限于此，会慢一些。';
+        }
+        function hideWhy() { if (whyWrap) whyWrap.hidden = true; }
+
+        /* 进度条：finished/total 明确给出；百分比按文件个数算。
+           不按字节算是因为拿不到每个文件的实时传输字节数，
+           按个数算是诚实且有意义的近似（用户关心的是「还剩几个」）。 */
+        function showProg(finished, total) {
+          if (!progWrap) return;
+          progWrap.hidden = false;
+          var pct = total ? Math.round(finished / total * 100) : 0;
+          if (progBar) progBar.style.width = pct + '%';
+          if (progTxt) {
+            progTxt.textContent = total
+              ? ('已上传 ' + finished + ' / ' + total + '（' + pct + '%）')
+              : '处理中…';
+          }
+        }
+        function hideProg() {
+          if (progWrap) progWrap.hidden = true;
+        }
 
         function paint() {
           pick.textContent = file ? '重新选择文件' : '选择文件';
@@ -3247,6 +3681,7 @@
             if (meta.size > MAX) return UI.toast('文件过大（' + U.bytes(meta.size) + '），请控制在 25MB 内');
             file = meta;
             folder = null; files = null;    // 两种模式互斥
+            showWhy(meta.size);
             paint();
           }).catch(function (e) {
             if (e.message !== '选择文件超时') UI.toast('选择失败：' + e.message);
@@ -3263,6 +3698,8 @@
               file = null;
               folder = meta;
               files = list;
+              var tb = 0; files.forEach(function (f) { tb += f.size; });
+              showWhy(tb);
               paint();
             });
           }).catch(function (e) {
@@ -3282,7 +3719,7 @@
          *   4) POST /git/commits → PATCH ref
          * 全程原子：中途失败仓库不会有半套文件。
          */
-        function uploadTree(branch, msg, items, dir) {
+        function uploadTree(branch, msg, items, dir, onProgress) {
           var hdr = {
             'Authorization': 'Bearer ' + window.Session.token,
             'Accept': 'application/vnd.github+json',
@@ -3290,26 +3727,35 @@
             'Content-Type': 'application/json'
           };
           var entries = [];
-          var chain = Promise.resolve();
-          items.forEach(function (f) {
-            chain = chain.then(function () {
-              var url = 'https://api.github.com/repos/' + repo.full_name + '/git/blobs';
-              return window.Native.uploadMultipartB64(url, f.uri, hdr,
-                '{"content":"', '","encoding":"base64"}').then(function (res) {
-                if (res && (res.status === 0 || res.status >= 400)) {
-                  var m = '';
-                  try { m = (JSON.parse(res.body) || {}).message || ''; } catch (e) {}
-                  throw new Error('上传 ' + f.path + ' 失败' + (m ? '：' + m : '（HTTP ' + res.status + '）'));
-                }
-                var sha = null;
-                try { sha = (JSON.parse(res.body) || {}).sha; } catch (e) {}
-                if (!sha) throw new Error('上传 ' + f.path + ' 失败：没有返回 sha');
-                entries.push({ path: (dir ? dir + '/' : '') + f.path,
-                  mode: '100644', type: 'blob', sha: sha });
-              });
+          /* 并发跑，不再是排队一个一个来（详见 mapLimit 的注释）。
+             entries 的 push 只在成功的那一路发生，失败的文件不进 tree ——
+             半套文件不会进提交，与原来的「全原子」语义一致。 */
+          return mapLimit(items, UPLOAD_CONCURRENCY, function (f) {
+            var url = 'https://api.github.com/repos/' + repo.full_name + '/git/blobs';
+            return window.Native.uploadMultipartB64(url, f.uri, hdr,
+              '{"content":"', '","encoding":"base64"}').then(function (res) {
+              if (res && (res.status === 0 || res.status >= 400)) {
+                var m = '';
+                try { m = (JSON.parse(res.body) || {}).message || ''; } catch (e) {}
+                throw new Error('上传 ' + f.path + ' 失败' + (m ? '：' + m : '（HTTP ' + res.status + '）'));
+              }
+              var sha = null;
+              try { sha = (JSON.parse(res.body) || {}).sha; } catch (e) {}
+              if (!sha) throw new Error('上传 ' + f.path + ' 失败：没有返回 sha');
+              entries.push({ path: (dir ? dir + '/' : '') + f.path,
+                mode: '100644', type: 'blob', sha: sha });
+              return sha;
             });
-          });
-          return chain.then(function () {
+          }, onProgress).then(function (r) {
+            /* 有失败也要说清楚：成功的那些已经传上去了，
+               但整批不会合成提交（下面会抛错），避免留下半套文件 */
+            if (r.failed.length) {
+              var first = r.failed[0].error;
+              throw new Error(r.failed.length + ' 个文件上传失败：' +
+                (first && first.message ? first.message : '未知错误'));
+            }
+            return r;
+          }).then(function () {
             return window.API.get('/repos/' + repo.full_name + '/git/ref/heads/' + branch,
               null, { cache: 0 }).then(function (r) {
                 var parentSha = r.data.object.sha;
@@ -3347,8 +3793,10 @@
             var msg = root.querySelector('#uf-msg').value.trim() || 'Add files via upload';
 
             UI.loading(true);
-            uploadTree(branch, msg, items, dir).then(function () {
+            showProg(0, items.length);
+            uploadTree(branch, msg, items, dir, showProg).then(function () {
               UI.loading(false);
+              hideProg();
               UI.closeSheet();
               UI.toast('已上传 ' + items.length + ' 个文件' +
                 (tooBig.length ? '（' + tooBig.length + ' 个超限文件已跳过）' : ''));
@@ -3358,6 +3806,7 @@
               window.Router.reload();
             }).catch(function (e) {
               UI.loading(false);
+              hideProg();
               UI.toast('上传失败：' + (e.message || '未知错误'));
             });
             return;
@@ -3370,6 +3819,7 @@
           var path = (dir ? dir + '/' : '') + file.name;
 
           UI.loading(true);
+          showProg(0, 1);
           var existed = false;
           // 1) 若文件已存在，需要先取 sha（走更新而非新建）
           window.API.get('/repos/' + repo.full_name + '/contents/' + encodePath(path),
@@ -3410,6 +3860,7 @@
               });
             }).then(function () {
               UI.loading(false);
+              hideProg();
               UI.closeSheet();
               UI.toast(existed ? '文件已更新' : '文件已上传');
               try { window.App.cacheDel('repo_' + repo.full_name); } catch (e) {}
@@ -3418,6 +3869,7 @@
               window.Router.reload();
             }).catch(function (e) {
               UI.loading(false);
+              hideProg();
               UI.toast('上传失败：' + (e.status === 422 ? '无写入权限或内容不合法' : e.message));
             });
         };

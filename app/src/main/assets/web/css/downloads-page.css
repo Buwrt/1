@@ -66,6 +66,50 @@
   color: var(--fg-subtle, #6e7781);
 }
 
+/* ---- 下载偏慢时的建议条 ---- */
+#dl-page .dl-advice {
+  margin: 12px 16px 0;
+  background: var(--bg-inset, #f6f8fa);
+  border: 1px solid var(--border, #d0d7de);
+  border-radius: 8px;
+  overflow: hidden;
+}
+#dl-page .dl-advice-in {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+}
+#dl-page .dl-advice-ico { color: var(--attention, #9a6700); flex: none; margin-top: 1px; }
+#dl-page .dl-advice .row-main { display: block; min-width: 0; }
+#dl-page .dl-advice .row-desc {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--fg-subtle, #6e7781);
+}
+#dl-page .dl-advice-acts {
+  display: flex;
+  gap: 8px;
+  padding: 0 12px 10px;
+}
+#dl-page .dl-advice-btn {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border, #d0d7de);
+  background: transparent;
+  color: var(--fg, #1f2328);
+  cursor: pointer;
+}
+#dl-page .dl-advice-btn.primary {
+  background: var(--accent, #0969da);
+  border-color: var(--accent, #0969da);
+  color: #fff;
+}
+
 /* 空态 */
 #dl-page .dl-empty, .dl-empty {
   padding: 72px 24px;

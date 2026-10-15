@@ -9,26 +9,93 @@
   // 用于把相对链接、短 SHA、以及**相对图片地址**还原成能访问的绝对地址
   window.MDContext = { repo: null, ref: null, path: null, user: null };
 
+  /* ------------------------------------------------------------
+   * 代码块：按逻辑行渲染（一行一个 .crow，行号在该行左侧）
+   *
+   * ═══ 为什么不用「一列行号 + 一整块 code」═══
+   *
+   * 以前是这么写的：
+   *
+   *     <div class="gutter"><div>1</div><div>2</div>…</div>
+   *     <code class="hljs">…整段高亮…</code>
+   *
+   * 两个致命问题叠在一起：
+   *
+   *   1) **CSS 里根本没有 .gutter 这条规则** —— 行号列完全没有样式，
+   *      数字就那么裸着堆在代码上面/旁边，和代码行没有任何对齐关系。
+   *
+   *   2) 就算补上样式也没救：代码块会自动换行（pre-wrap），一个逻辑行
+   *      在窄屏上要占 3~4 个视觉行，而 gutter 里每个数字只占**一行** ——
+   *      行号从第 1 行开始就整体往上飘，越往后错得越离谱。
+   *      这正是截图里「数字和内容对不齐」的由来。
+   *
+   * 正确做法（page-repo.js 已验证过）：把高亮后的 HTML 拆成一行一个
+   * <div class="crow">，行号 <span class="ln"> 就在这一行里。换行时行号
+   * 仍钉在该逻辑行的第一行左侧，永远不会错位。
+   *
+   * ═══ 拆分时的坑 ═══
+   *
+   * 不能对高亮后的 HTML 直接 split('\n') —— 一个 <span>（多行注释、
+   * 多行字符串）会跨行，硬切会把标签撕断，页面直接花掉。
+   * 必须按标签平衡切：到行尾把未闭合的 <span> 补齐，行首再补回来。
+   * ------------------------------------------------------------ */
+
+  function closeSpans(n) { var s = ''; for (var k = 0; k < n; k++) s += '</span>'; return s; }
+
+  /** 把高亮后的 HTML 按换行拆成「每行一段独立合法 HTML」 */
+  function splitHlLines(html) {
+    var lines = [], open = [], buf = '', i = 0, len = html.length;
+    while (i < len) {
+      var c = html.charAt(i);
+      if (c === '<') {
+        var end = html.indexOf('>', i);
+        if (end < 0) { buf += html.slice(i); break; }
+        var tag = html.slice(i, end + 1);
+        if (tag.charAt(1) === '/') { if (open.length) open.pop(); }
+        else if (tag.charAt(tag.length - 2) !== '/') open.push(tag);
+        buf += tag;
+        i = end + 1;
+      } else if (c === '\n') {
+        lines.push(buf + closeSpans(open.length));
+        buf = open.join('');
+        i++;
+      } else { buf += c; i++; }
+    }
+    lines.push(buf + closeSpans(open.length));
+    return lines;
+  }
+
+  /** 超长代码块不排行号：几千行的话 DOM 会大到卡死滚动 */
+  var MAX_LINED = 400;
+
   var renderer = {
     code: function (a, b) {
       var code = (a && typeof a === 'object') ? a.text : a;
       var lang = (a && typeof a === 'object') ? a.lang : b;
-      var lines = mdCodeLines(String(code == null ? '' : code).replace(/\n+$/, ''), lang);
-      var head = '<pre class="md-code"' + (lang ? ' data-lang="' + U.esc(lang) + '"' : '') + '>';
-      /*
-       * 行结构和代码查看器（page-repo.js）用的是同一套 .crow / .ln / .lc：
-       * 一个逻辑行一个 .crow，行号是这一行里面的 span。
-       *
-       * 以前是「左边一整列行号 div + 右边一整块 code」：行号那一列写满了
-       * 1、2、3…，代码是单独一块，两者只在行数刚好对得上时才看起来正常；
-       * 一旦某一行文字换行（目录树那种长行），列高就和代码块对不齐，
-       * 看到的就是「一堆数字竖着排、代码全被挤到下面」。
-       * 改成行内 span 之后，行号永远钉在它那一行的行首。
-       *
-       * 只有两行以上才带行号 —— 单行代码块挂一个「1」纯属噪音。
-       */
-      if (lines.length > 1 && lines.length < 400) return head + mdCodeRows(lines) + '</pre>';
-      return head + '<code class="hljs language-' + U.esc(lang || 'text') + '">' + lines[0] + '</code></pre>';
+      var html;
+      try {
+        if (lang && window.hljs && hljs.getLanguage(lang)) {
+          html = hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
+        } else if (window.hljs) {
+          html = hljs.highlightAuto(code).value;
+        } else html = U.esc(code);
+      } catch (e) { html = U.esc(code); }
+
+      var lines = splitHlLines(html);
+      var body;
+      if (lines.length > 1 && lines.length <= MAX_LINED) {
+        var h = '';
+        for (var i = 0; i < lines.length; i++) {
+          h += '<div class="crow"><span class="ln">' + (i + 1) + '</span>' +
+            '<code class="lc hljs">' + lines[i] + '</code></div>';
+        }
+        body = '<div class="code-lines md-rows">' + h + '</div>';
+      } else {
+        /* 单行或超长：不排行号，退化成整块（不会错位，因为根本没有行号） */
+        body = '<div class="code-lines"><code class="hljs md-noln">' + html + '</code></div>';
+      }
+      return '<pre class="md-code"' + (lang ? ' data-lang="' + U.esc(lang) + '"' : '') + '>' +
+        body + '</pre>';
     },
     link: function (a, b, c) {
       var href = (a && typeof a === 'object') ? a.href : a;
@@ -42,7 +109,7 @@
        * 内置查看器只认 [data-zoom]，而 WebView 又没开多窗口、也没实现
        * onCreateWindow —— 点下去既不放大也不跳转，看起来就是「图片点不了」。
        * 现在不管内外链一律打上 data-zoom，点击走内置查看器。 */
-      return '<img class="md-img" src="' + U.esc(resolveImgUrl(href)) + '" alt="' + linkText(text || '') +
+      return '<img class="md-img" src="' + U.esc(resolveImgUrl(href)) + '" alt="' + U.esc(text || '') +
         '" loading="lazy" data-zoom="1">';
     },
     /* 原始 HTML：以前一律 return ''，于是 GitHub 上传的视频
@@ -89,6 +156,46 @@
    *                     直接当 src 拉到的是 HTML 页面，同样是裂图）
    *   其它绝对地址     → 原样不动
    * ============================================================ */
+  /**
+   * 把「协议相对地址」（//host/path）补成 https:。
+   *
+   * ═══ 为什么要多判一道 ═══
+   *
+   * 这一行以前就写 `return 'https:' + h`，看着天经地义 —— 但它**只在
+   * `//` 后面真的是主机名时才成立**。`//` 后面若直接跟 `/`、`?` 或 `#`：
+   *
+   *     ///docs/tips.png   →  https:///docs/tips.png
+   *     //?x=1             →  https://?x=1
+   *
+   * 拼出来的串**有协议、没主机**。而浏览器是认得出这是无效地址的
+   * （https 属于特殊协议，空主机直接解析失败），它不会自作主张去连；
+   * 我们的原生 Http 却照建连不误：
+   *
+   *     port = u.getPort() > 0 ? u.getPort() : (secure ? 443 : 80)
+   *     host = u.getHost()      // ""
+   *
+   * 空主机经 InetAddress.getByName("") 解析成回环地址，于是报错写着
+   * `failed to connect to localhost/127.0.0.1 (port 443)` ——
+   * 手机上从没有服务在听 443，App 在连自己。
+   *
+   * 实测（真实 java.net.URL）：
+   *     https:///docs/tips.png → host="" port=443
+   *     https://               → host="" port=443
+   *     正常 raw 地址           → host=raw.githubusercontent.com
+   *
+   * 所以：`//` 之后必须紧跟主机名开头才补协议，否则**原样返回** ——
+   * 保持相对形态，后续按相对路径/assets 处理，不去造一个空主机的 URL。
+   */
+  function protocolRel(h) {
+    /*
+      `//` 之后第一个字符必须**像主机名开头**才补协议。
+      排除 / ? # 之外，还要排除 ':' —— `//:80/x.png` 补成
+      `https://:80/x.png`，Java 照样解析出空主机（实测确认）。
+      主机名不会以冒号开头，冒号意味着这里写的是端口，主机被省掉了。
+    */
+    return /^\/\/[^\/?#:]/.test(h) ? 'https:' + h : h;
+  }
+
   function joinPath(basePath, rel) {
     var dir = String(basePath || '').replace(/\\/g, '/');
     var cut = dir.lastIndexOf('/');
@@ -116,7 +223,7 @@
     var h = String(href == null ? '' : href).trim();
     if (!h) return h;
     if (/^(?:data|blob):/i.test(h)) return h;
-    if (/^\/\//.test(h)) return 'https:' + h;                 // 协议相对地址
+    if (/^\/\//.test(h)) return protocolRel(h);               // 协议相对地址
     var m = h.match(/^https?:\/\/(?:www\.)?github\.com\/([^\/]+)\/([^\/]+)\/(?:blob|raw)\/([^\/]+)\/(.+)$/i);
     if (m) return rawUrl(m[1] + '/' + m[2], m[3], m[4]);
     if (/^[a-z][a-z0-9+.-]*:/i.test(h)) return h;             // 其它绝对地址原样
@@ -332,44 +439,41 @@
   function bindImageTap(img) {
     var wasLong = window.UI && typeof window.UI.bindLongPress === 'function'
       ? window.UI.bindLongPress(img, function () {
-          /* 长按图片：弹一个操作菜单。
-           * 「保存到相册」永远都有；「打开链接」只在外层有 <a href> 时才出现。
-           * 以前长按直接跳链接，跟「保存图片」这个更常见的诉求冲突，
-           * 现在让用户自己选。 */
-          try {
-            var a = img.closest ? img.closest('a[href]') : null;
-            var href = a ? (a.getAttribute('href') || '') : '';
-            var hasLink = !!href && /^(https?:|mailto:|tel:)/i.test(href);
+          /*
+            ═══ 长按图片：直接保存到相册，不弹菜单 ═══
 
-            var items = '<button class="btn" data-save style="width:100%;margin-bottom:8px">保存到相册</button>';
-            if (hasLink) {
-              items += '<button class="btn" data-open style="width:100%">打开图片所在页面</button>';
+            取 img.src，不取 getAttribute('src')。
+
+            这两者不一样：img.src 是 **DOM 属性**，浏览器已经把相对路径、
+            协议相对都解析成了完整绝对地址；getAttribute('src') 拿到的是
+            **原始字符串**，没人替它校验。
+
+            之前做「长按直存」时改成了优先用后者（记在 data-src 里），
+            结果连续几版报 `failed to connect to localhost/127.0.0.1`
+            —— 残缺串没主机，被解析成了回环地址。而**菜单版**一直用
+            img.src，从没出过这个问题。
+
+            所以这里严格照抄菜单版的取值方式：只读 img.src。
+
+            另外那个报错的真因后来在日志里查清了 —— 是手机上的 hosts
+            把 raw.githubusercontent.com 解析到了 127.0.0.1（WebView 自带
+            解析器不读 hosts 所以显示正常，原生 InetAddress 读所以连到本机）。
+            原生侧已加 DoH 兜底 + 加速通道兜底，这里不必再操心。
+          */
+          try {
+            var src = img.src;
+            if (!src) return;
+
+            /* 网络图要先下载再落盘，慢时好几秒。垫一句反馈，
+             * 免得用户以为长按没生效于是再按一次，存出两张一样的。 */
+            if (window.UI && typeof window.UI.toast === 'function') {
+              window.UI.toast('正在保存图片…', 1200);
             }
-            window.UI.sheet({
-              title: '图片操作',
-              body: '<div style="padding:4px 0">' + items + '</div>',
-              onMount: function (body, close) {
-                var root = document.getElementById('sheet-root');
-                var saveBtn = root.querySelector('[data-save]');
-                if (saveBtn) saveBtn.onclick = function () {
-                  close();
-                  if (window.Native && typeof window.Native.saveImage === 'function') {
-                    window.Native.saveImage(img.src);
-                  } else if (window.NativeBridge && typeof window.NativeBridge.saveImage === 'function') {
-                    window.NativeBridge.saveImage(img.src);
-                  }
-                };
-                var openBtn = root.querySelector('[data-open]');
-                if (openBtn) openBtn.onclick = function () {
-                  close();
-                  if (window.NativeBridge && typeof window.NativeBridge.openExternal === 'function') {
-                    window.NativeBridge.openExternal(href);
-                  } else if (typeof window.open === 'function') {
-                    window.open(href, '_blank');
-                  }
-                };
-              }
-            });
+            if (window.Native && typeof window.Native.saveImage === 'function') {
+              window.Native.saveImage(src);
+            } else if (window.NativeBridge && typeof window.NativeBridge.saveImage === 'function') {
+              window.NativeBridge.saveImage(src);
+            }
           } catch (e) {}
         })
       : function () { return false; };
@@ -512,7 +616,7 @@
     if (!h) return h;
     if (h.charAt(0) === '#') return h;                        // 锚点，交给点击拦截
     if (/^(?:mailto|tel|sms|ftp|javascript|data|blob):/i.test(h)) return h;
-    if (/^\/\//.test(h)) h = 'https:' + h;                    // 协议相对地址
+    if (/^\/\//.test(h)) h = protocolRel(h);                  // 协议相对地址
     if (/^https?:\/\//i.test(h)) {
       /* GitHub 上传的附件（issue 里拖进去的截图 / 录屏）不是站内页面，
        * 原样留着 —— 点它没有「仓库内视图」可去，长按图片打开的就是它。
@@ -537,75 +641,8 @@
       path.split('/').map(encodeURIComponent).join('/');
   }
 
-  /* ---- 代码块：高亮后按行拆分 ----
-   * 与 page-repo.js 的 splitHlLines 同一套算法：hljs 会给跨行的 token
-   * 套一层 <span>，按 \n 直接切会把标签切坏。这里逐字符走一遍，
-   * 记住当前开着几个 span，换行时先补闭合、下一行开头再补回来。 */
-  function mdCloseSpans(n) { var s = ''; for (var k = 0; k < n; k++) s += '</span>'; return s; }
-
-  function mdSplitLines(html) {
-    var lines = [], open = [], buf = '', i = 0, len = html.length;
-    while (i < len) {
-      var c = html.charAt(i);
-      if (c === '<') {
-        var end = html.indexOf('>', i);
-        if (end < 0) { buf += html.slice(i); break; }
-        var tag = html.slice(i, end + 1);
-        if (tag.charAt(1) === '/') { if (open.length) open.pop(); }
-        else if (tag.charAt(tag.length - 2) !== '/') open.push(tag);
-        buf += tag;
-        i = end + 1;
-      } else if (c === '\n') {
-        lines.push(buf + mdCloseSpans(open.length));
-        buf = open.join('');
-        i++;
-      } else { buf += c; i++; }
-    }
-    lines.push(buf + mdCloseSpans(open.length));
-    return lines;
-  }
-
-  function mdCodeLines(text, lang) {
-    var html;
-    try {
-      if (lang && window.hljs && hljs.getLanguage(lang)) {
-        html = hljs.highlight(text, { language: lang, ignoreIllegals: true }).value;
-      } else if (window.hljs && text.length < 200000) {
-        html = hljs.highlightAuto(text).value;
-      } else html = U.esc(text);
-    } catch (e) { html = U.esc(text); }
-    return mdSplitLines(html);
-  }
-
-  function mdCodeRows(lines) {
-    var h = '';
-    for (var i = 0; i < lines.length; i++) {
-      h += '<div class="crow"><span class="ln">' + (i + 1) + '</span>' +
-        '<code class="lc hljs">' + lines[i] + '</code></div>';
-    }
-    return h;
-  }
-
-  /**
-   * 链接文字要不要转义。
-   *
-   * marked 渲染 [![说明](图片)](链接) 这种「图片链接」时，会先把里面的图片
-   * 画成 <img …>，再把整段 HTML 当作链接文字传进来。
-   * 这里如果无脑 esc 一次，用户看到的就是一行
-   *     <img class="md-img" src="https://img.shields.io/badge/…">
-   * 这样的源码文本，而不是徽章 —— README 顶部那一排 shields.io 徽章
-   * 全是这种写法，于是整个「图片区」变成一堆错位的英文标签。
-   *
-   * 所以：文字已经是渲染好的内联 HTML 时原样放行。安全上不用担心，
-   * 后面 DOMPurify.sanitize 会按白名单过滤一遍。
-   */
-  function linkText(s) {
-    if (typeof s !== 'string' || !s) return '';
-    return /^\s*<(?:img|a|b|i|em|strong|code|span|br|svg)\b/i.test(s) ? s : U.esc(s);
-  }
-
   function mdLink(href, text) {
-    if (!href) return linkText(text || '');
+    if (!href) return U.esc(text || '');
     if (isVideo(href)) return videoTag(href, 'md-probe');      // 裸的视频链接 → 直接内嵌播放器
     if (ATTACH_RE.test(href)) return videoTag(href, 'md-probe'); // 无扩展名的上传附件 → 乐观当视频，失败自动降级
     /* 裸的图片链接 → 就地显示，可点开。
@@ -620,21 +657,21 @@
     if (/^https?:/i.test(href)) {
       var norm = normalizeLink(href);
       if (norm.charAt(0) === '#') {
-        return '<a href="' + U.esc(norm) + '">' + linkText(text || href) + '</a>';
+        return '<a href="' + U.esc(norm) + '">' + U.esc(text || href) + '</a>';
       }
-      return '<a href="' + U.esc(norm) + '" target="_blank" rel="noopener">' + linkText(text || href) + '</a>';
+      return '<a href="' + U.esc(norm) + '" target="_blank" rel="noopener">' + U.esc(text || href) + '</a>';
     }
-    if (/^#/.test(href)) return '<a href="' + U.esc(href) + '">' + linkText(text || href) + '</a>';
+    if (/^#/.test(href)) return '<a href="' + U.esc(href) + '">' + U.esc(text || href) + '</a>';
     /* 站内相对路径（x、./x、../x、/x）——以前这里写死 blob/HEAD 且不认
      * 「./ 开头」「/ 开头」，漏网的直接输出相对 href，就是 file:// 导航的源头之一。
      * 现在统一交给 normalizeLink：ref 用当前渲染上下文的，不再钉死 HEAD。 */
     if (window.MDContext.repo) {
       var nb = normalizeLink(href);
       if (nb && nb.charAt(0) === '#') {
-        return '<a href="' + U.esc(nb) + '">' + linkText(text || href) + '</a>';
+        return '<a href="' + U.esc(nb) + '">' + U.esc(text || href) + '</a>';
       }
     }
-    return '<a href="' + U.esc(href) + '">' + linkText(text || href) + '</a>';
+    return '<a href="' + U.esc(href) + '">' + U.esc(text || href) + '</a>';
   }
 
   function inlineExtras(src) {
@@ -845,7 +882,7 @@
     mount: function (container, src, ctx) {
       container.innerHTML = this.render(src, ctx) || '<p class="muted">（无内容）</p>';
       container.classList.add('md');
-      try { postMount(container, ctx); } catch (e) { }
+      postMount(container, ctx);
     },
 
     /**
@@ -913,7 +950,7 @@
           if (String(n.tagName).toLowerCase() === 'video') attachVideoSources(n);
         }
       } catch (e) {}
-      try { postMount(container, ctx); } catch (e) { }
+      postMount(container, ctx);
     },
 
     /** 纯文本摘要（列表用） */

@@ -36,7 +36,200 @@
         b.onclick = a.onClick;
         box.appendChild(b);
       });
+      /* 通道按钮必须排在下载按钮**之前**：下载按钮在右边（末尾），
+         通道按钮要落在它的左边。 */
+      App.appendChannelAction();
       App.appendDownloadAction();
+    },
+
+    /**
+     * 右上角「通道」按钮 —— 就在「下载管理」那个图标按钮的左边。
+     *
+     * 点开是一张面板：列出全部加速通道 + 直连，每条后面跟着**实测速度**，
+     * 用户点哪条以后下载就走哪条；顶部「自动选择」会选当前测得最快的那条。
+     *
+     * 为什么只在用户点开时才测速：自动/发车前探测会让用户点完下载干等
+     * 几秒，实测比「走错通道再换」还难受。这里改成用户主动触发，
+     * 结果并发出来、逐个显现，且不阻塞任何正在进行的下载。
+     */
+    appendChannelAction: function () {
+      var NB = window.NativeBridge;
+      if (!(NB && typeof NB.startChannelProbe === 'function')) return;
+      var box = document.getElementById('appbar-actions');
+      if (!box) return;
+
+      /* 只出现在「下载管理」页 —— 通道是下载的事，别的页面放着既没用
+         又占地方。路由 hash 在这里判断，切走时 setActions([]) 会连它
+         一起清掉，不用手动摘。 */
+      var h = (location.hash || '').replace(/^#/, '').split('?')[0];
+      if (h !== '/downloads') return;
+
+      /* 防重复：路由可能先 setActions 再 render，也可能反过来，
+         两头都会调这个方法 —— 已经有就不加。 */
+      if (box.querySelector('.ch-action')) return;
+
+      var b = document.createElement('button');
+      b.className = 'icon-btn ch-action';
+      b.setAttribute('aria-label', '下载通道');
+      b.title = '下载通道';
+      b.innerHTML = window.icon('pulse', 22);
+      b.onclick = function () { App.openChannelPicker(); };
+      box.appendChild(b);
+    },
+
+    /* ---------------- 下载通道选择面板 ---------------- */
+
+    openChannelPicker: function () {
+      var NB = window.NativeBridge;
+      if (!NB) return;
+      var cur = '';
+      try { cur = NB.getChannel() || ''; } catch (e) { }
+
+      /* 先抓一份当前已知成绩（预热过的），面板首帧就有数字 */
+      var cached = {};
+      try {
+        (JSON.parse(NB.channelProbe() || '[]') || []).forEach(function (r) {
+          if (r.state === 'ok' && r.bps > 0) cached[r.key] = r.bps;
+        });
+      } catch (e) { }
+
+      /*
+        ⚠️ 必须走 UI.sheet（标准弹层），不能自己 createElement 挂到 body 上。
+
+        之前是自己拼一个 .sheet-mask + .sheet 直接 appendChild 到 body。
+        那个自造浮层**不在 #sheet-root 里**，于是 handleBack() 的弹层分支
+        根本认不出它 —— 返回键一路落到「路由回退 / 再按一次退出」，
+        面板却还盖在最上层，用户看到的就是「按返回键没反应」。
+
+        走 UI.sheet 之后：
+          · 返回键：handleBack 检测到 #sheet-root.show → closeSheet() → 关
+          · Esc 键：UI.sheet 内部已监听
+          · 点遮罩 / ✕：都是标准行为
+          · 外观与「翻译」等其它设置弹窗完全一致
+
+        这是修根子，不是给 handleBack 再补一条特判 —— 那个做法在扫码
+        浮层上用过一次，结果每加一个自造浮层就得补一次，迟早漏。
+      */
+      var timer = null;
+      function fmtBps(bps) {
+        if (bps >= 1024 * 1024) return (bps / 1048576).toFixed(1) + ' MB/s';
+        if (bps >= 1024) return Math.round(bps / 1024) + ' KB/s';
+        return bps + ' B/s';
+      }
+
+      UI.sheet({
+        title: '下载通道',
+        icon: 'pulse',
+        body:
+          '<div class="ch-tip">面板开着就一直在测，下面的速度是此刻的实测值，' +
+          '每轮都会刷新。点「自动选择」用当前最快的；也可以自己指定一条。' +
+          '「不可用」只是这一轮没连上，不代表这条通道坏了 —— 下一轮可能就活了。' +
+          '标「待观察」的是 CI 测不出速度的，多半是海外 IP 被拒，' +
+          '你这边未必 —— 测一下就知道。' +
+          '标「仅仓库文件」的只代理仓库里的文件，下载 Release 附件时会' +
+          '自动跳过它，改用别的通道。</div>' +
+          '<div class="list-row ch-row" id="ch-re">' +
+          '<span class="ch-ico">' + window.icon('sync', 15) + '</span>' +
+          '<span class="row-main"><span class="row-title">重新测速</span>' +
+          '<span class="row-desc">立刻重跑一轮，不等自动轮次</span></span>' +
+          '</div>' +
+          '<div class="list ch-list" id="ch-list"></div>',
+        onMount: function (bodyEl, closeFn) {
+          var list = bodyEl.querySelector('#ch-list');
+          if (!list) return;
+
+          function render(rows, best, bestBps) {
+            /* 自动模式下的说明要**跟着实时数据变**：连名字带速度一起刷，
+               用户点之前就知道此刻会走哪条。 */
+            var autoDesc;
+            if (best && bestBps > 0) {
+              autoDesc = '此刻最快：' + best + ' · ' + fmtBps(bestBps);
+            } else if (best) {
+              autoDesc = '此刻最快：' + best;
+            } else {
+              autoDesc = '每次下载都重新挑当前最快的那条';
+            }
+            var html = '';
+            html += '<div class="list-row ch-row' + (cur === '' || cur === 'auto' ? ' on' : '') +
+              '" data-ch-key="auto">' +
+              '<span class="ch-ico">' + window.icon('rocket', 15) + '</span>' +
+              '<span class="row-main">' +
+              '<span class="row-title">自动选择</span>' +
+              '<span class="row-desc">' + autoDesc + '</span>' +
+              '</span>' +
+              '<span class="row-acts ch-speed' + (bestBps > 0 ? ' ok' : '') + '">' +
+              (bestBps > 0 ? fmtBps(bestBps) : '') + '</span></div>';
+            rows.forEach(function (r) {
+              var v, stale = false;
+              if (r.state === 'ok' && r.bps > 0) {
+                v = fmtBps(r.bps);
+              } else if (r.state === 'fail') {
+                /* 标了适用范围的通道，说明它只是这类文件用不上，不是坏了 */
+                v = r.scope ? '不适用' : '不可用';
+              } else if (cached && cached[r.key] && cached[r.key] > 0) {
+                /* 还在测，但上次有成绩 —— 先显示旧的，别整屏「测量中」 */
+                v = fmtBps(cached[r.key]); stale = true;
+              } else {
+                v = '测量中…';
+              }
+              html += '<div class="list-row ch-row' +
+                (cur && cur === r.key ? ' on' : '') + '" data-ch-key="' + r.key + '">' +
+                '<span class="ch-ico">' + window.icon('globe', 15) + '</span>' +
+                '<span class="row-main">' +
+                '<span class="row-title">' + r.name +
+                (r.scope ? ' <span class="ch-tag">仅仓库文件</span>' : '') +
+                (r.verified ? '' : ' <span class="ch-tag">待观察</span>') +
+                ' <span class="ch-host">' + r.host + '</span></span>' +
+                '<span class="row-desc">' + (stale ? '上次实测，正在刷新…'
+                  : (r.state === 'ok' && r.bps > 0 ? ('实测 ' + fmtBps(r.bps))
+                    : (r.scope && r.state === 'fail'
+                      ? '这条只代理仓库里的文件，Release 附件用不上'
+                      : v))) + '</span>' +
+                '</span>' +
+                '<span class="row-acts ch-speed' +
+                (r.state === 'ok' ? ' ok' : (r.state === 'fail' ? ' bad' : '')) +
+                (stale ? ' stale' : '') + '">' + v + '</span>' +
+                '</div>';
+            });
+            list.innerHTML = html;
+            UI.$$('[data-ch-key]', list).forEach(function (row) {
+              row.onclick = function () {
+                var k = row.getAttribute('data-ch-key');
+                try { NB.setChannel(k); } catch (e) { }
+                UI.toast(k === 'auto' ? '已设为自动（最快的通道）' : '已选择该通道');
+                closeFn();
+              };
+            });
+          }
+
+          function tick() {
+            var rows = [];
+            try { rows = JSON.parse(NB.channelProbe() || '[]') || []; } catch (e) { }
+            var best = '', bv = 0;
+            rows.forEach(function (r) {
+              if (r.state === 'ok' && r.bps > bv) { bv = r.bps; best = r.name; }
+            });
+            render(rows, best, bv);
+          }
+
+          var reBtn = bodyEl.querySelector('#ch-re');
+          if (reBtn) {
+            reBtn.onclick = function () {
+              try { NB.startChannelProbe(); } catch (e) { }
+              tick();
+            };
+          }
+
+          try { NB.startChannelProbe(); } catch (e) { }
+          tick();
+          timer = setInterval(tick, 500);
+        },
+        onClose: function () {
+          if (timer) { clearInterval(timer); timer = null; }
+          /* 必须通知原生层停：否则面板关了测速线程还在跑，费电又费流量 */
+          try { if (NB.stopChannelProbe) NB.stopChannelProbe(); } catch (e) { }
+        }
+      });
     },
 
     /**
@@ -270,9 +463,18 @@
      *   6. 已经在首页：交给「再按一次退出」
      */
     handleBack: function () {
-      /* 0) 新手引导：优先级最高。
-         引导期间整屏都是遮罩，返回键必须能把它退掉 —— 否则用户会被
-         困在遮罩里（点哪都没反应，只能杀进程重开）。 */
+      /* 0) 扫码取景层：优先级最高。
+         它是 qr-live.js 直接挂到 body 上的全屏浮层，既不是路由页、
+         也不是 #sheet-root 弹层 —— 下面那些分支都认不出它。
+         不在这里拦一道的话，返回键会落到「路由回退 / 再按一次退出」，
+         路由在下面悄悄变了、相机却还开着盖在最上层，
+         用户看到的就是「按了返回键没反应」。 */
+      if (window.QRLive && window.QRLive.isActive()) {
+        window.QRLive.cancel();
+        return true;
+      }
+      /* 0.5) 新手引导：整屏遮罩，返回键必须能退掉 ——
+         否则用户会被困在遮罩里（点哪都没反应，只能杀进程重开）。 */
       if (window.Onboarding && window.Onboarding.isActive()) {
         window.Onboarding.quit();
         return true;
@@ -447,18 +649,59 @@
       else b.hidden = true;
     },
 
+    /*
+      ═══ 未读角标：用 Link 头的 last.page 推算总数 ═══
+
+      以前的写法：
+
+          per_page: 1
+          var n = (r.data || []).length;      // ← 最多就是 1
+
+      只拉 1 条，却拿**列表长度**当未读数 —— 长度上限被 per_page 卡死在 1。
+      所以不管实际有多少条未读，角标永远是 1。
+
+      修法：GitHub 的 /notifications 不返回总数，但 Link 头给了最后一页的
+      页码。per_page=1 时「最后一页的页码」就等于「总条数」：
+
+          Link: <...?page=13&per_page=1>; rel="last"   →  13 条
+
+      只下载 1 条数据就知道总数，不用把 13 条全拉回来。
+
+      边界：只有一页时 GitHub 往往不发 Link 头（也就没有 last），
+      此时退回用列表长度 —— 那种情况本来就只有 0 或 1 条，长度是对的。
+    */
     refreshBadge: function () {
       if (!window.Session.isLogin) { this.updateBadge(0); return Promise.resolve(); }
       return window.API.get('/notifications', { per_page: 1, all: 'false' }).then(function (r) {
-        var h = r.headers || {};
-        var rem = h['x-ratelimit-remaining'];
-        var link = r.link && r.link.last ? r.link.last : null;
-        // 未读数用列表长度估算（未读视图）
-        var n = (r.data || []).length;
-        App.updateBadge(n > 0 ? n : 0);
+        App.updateBadge(unreadFromLink(r));
       }).catch(function () {});
     }
   };
+  /*
+    从 /notifications?per_page=1 的响应里推算出未读总数。
+
+    @param r  API 响应
+    @return   未读条数（0 起）
+  */
+  function unreadFromLink(r) {
+    if (!r) return 0;
+    var list = r.data || [];
+    /* 首选：Link 头里最后一页的页码（per_page=1 → 页码即总条数） */
+    try {
+      var last = r.link && r.link.last ? String(r.link.last) : '';
+      if (last) {
+        var m = last.match(/[?&]page=(\d+)/);
+        if (m) {
+          var n = parseInt(m[1], 10);
+          if (!isNaN(n) && n >= 0) return n;
+        }
+      }
+    } catch (e) { /* 解析失败就退回下面 */ }
+
+    /* 兜底：没有 Link 头说明只有一页，列表长度就是答案（0 或 1） */
+    return list.length > 0 ? list.length : 0;
+  }
+
   window.App = App;
 
   /* ---------------- 路由解析 ---------------- */
@@ -541,7 +784,7 @@
       if (sub === 'commit' && segs[3]) return { name: 'commit', ctx: Object.assign(ctx, { tab: 'commits', sha: segs[3] }) };
       // 仓库子页白名单：不在名单里的第 3 段会被当成文件路径，
       // 所以每加一个 tab 都必须来这里登记，否则点进去只会落到代码页
-      var allow = ['issues', 'pulls', 'actions', 'releases', 'commits', 'contributors', 'branches', 'tags', 'settings', 'stargazers', 'watchers', 'forks', 'milestones', 'collaborators'];
+      var allow = ['issues', 'pulls', 'actions', 'releases', 'commits', 'contributors', 'branches', 'tags', 'settings', 'stargazers', 'watchers', 'forks', 'milestones', 'collaborators', 'wiki'];
       if (allow.indexOf(sub) >= 0) { ctx.tab = sub; return { name: 'repo', ctx: ctx }; }
       return { name: 'repo', ctx: ctx };
     }

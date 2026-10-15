@@ -28,9 +28,18 @@ import java.util.Locale;
  *   TranslateService:2633」有用得多 —— 前者谁都能看懂，后者要人去翻代码。
  *
  * 存在哪 ——
- *   /storage/emulated/0/Download/githup/错误日志/错误日志-2026-10-01.txt
- *   放在公共目录，用户用手机自带的「文件管理」就能找到、直接发给别人，
- *   不用先学会「应用私有目录」这种东西。
+ *   **平时只记在 App 内部**（应用私有目录），不碰公共下载目录。
+ *
+ *   以前是「一出错就往 Download/githup/错误日志/ 写」—— 结果用户没要求
+ *   导出，下载目录里也天天冒出一个日志文件，还跟着下载历史一起被同步
+ *   （历史跟着本地走，于是日志也混在里面）。
+ *
+ *   现在的规定是：
+ *     · 出错了        → 自动记进 **App 内部**的小本子（用户看不见，不污染下载目录）
+ *     · 想拿去用      → 自己去「关于 githup → 下载错误日志 → 保存到本地」
+ *                       手动导出，这时才写进 Download/githup/错误日志/
+ *
+ *   所以「自动」和「手动」是分开的：内部随时记，公共目录只有手动才有。
  *
  * 按天清零 ——
  *   文件名带日期。第二天第一次写日志时，老文件原样留在那儿（用户想看还能看），
@@ -149,11 +158,18 @@ final class LogBook {
     private static void write(Context ctx, String text) {
         String line = stamp() + "  " + text + "\n";
 
-        /* 首选：写公共 Download/githup/错误日志/（走 MediaStore，
-         * 分区存储下唯一合法的写法）。用户用文件管理器能直接找到。 */
-        if (appendToPublic(ctx, line)) return;
+        /*
+          ⚠️ 只写 App 内部，**不碰公共下载目录**。
 
-        /* 退路：写应用私有目录，至少把证据留住 */
+          以前这里第一句就是 `if (appendToPublic(ctx, line)) return;` ——
+          一出错就往 Download/githup/错误日志/ 写，于是用户没导出过，
+          下载目录里也天天冒出一个日志文件；它还会被「历史跟着本地走」
+          的同步逻辑扫进下载记录里。
+
+          现在公共目录**只有用户手动点「保存到本地」时**才写（见 save()）。
+          出错了自动记，但记在内部 —— 这是要求的「自动保存」，
+          和「手动导出」是两件事。
+        */
         try {
             File dir = logDir(ctx);
             if (dir == null) return;
@@ -425,17 +441,18 @@ final class LogBook {
 
     /**
      * 把今天的日志整个读出来；没有就返回空串。
-     * 优先读公共目录（那才是权威副本），读不到再退私有目录。
+     *
+     * ⚠️ 只读 App 内部那本，**不读公共目录**。
+     *
+     * 以前优先读公共目录（当时以为那是"权威副本"）。现在日志平时根本
+     * 不落公共目录，那里只可能有用户手动导出的 `错误日志导出-*.txt`，
+     * 或者更老版本自动留下的 `错误日志-*.txt` —— 后者是**过去某天**的
+     * 自动日志，读它会把陈年旧账混进今天的导出里。
+     *
+     * 所以这里只读内部小本子：导出的就是"今天记的"，干净。
      */
     static String readToday(Context ctx) {
         try {
-            // 1) 公共目录
-            android.net.Uri u = findPublicToday(ctx);
-            if (u != null) {
-                byte[] b = readPublic(ctx, u);
-                if (b != null && b.length > 0) return new String(b, "UTF-8");
-            }
-            // 2) 私有退路
             File dir = logDir(ctx);
             if (dir == null) return "";
             StringBuilder sb = new StringBuilder();

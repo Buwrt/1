@@ -64,18 +64,31 @@ android {
 
     buildTypes {
         release {
-            /*
-              本库是「未加密未加固」版本：不开混淆、不删资源，
-              反编译出来就是能读的源码，方便对照阅读。
-              加固与混淆只在 Buwrt/githup 那个库里做。
-            */
-            minifyEnabled false
-            shrinkResources false
+            // 混淆 + 删无用代码 + 压缩资源：这是「防反编译」的第一道也是最有效的一道
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
+                'proguard-rules.pro'
             // 用专属密钥签，不再是人人可用的 debug 签名
             signingConfig signingConfigs.release
+
+            // 去掉 BuildConfig 里的调试字段，减少可读信息
+            buildConfigField "boolean", "DEBUG_BUILD", "false"
         }
         debug {
             applicationIdSuffix '.debug'
+
+            /*
+             * 补上 DEBUG_BUILD。
+             *
+             * 这个字段以前只在 release 里声明，而原生层的 SignCheck 是
+             * 无条件引用 BuildConfig.DEBUG_BUILD 的 —— 于是一编译 debug
+             * 变体就报「cannot find symbol」，整个 debug 构建过不去
+             * （Android Studio 里点 Run 也是同一个错）。
+             *
+             * debug 变体本来就该放行，这里给 true；release 那边保持 false。
+             */
+            buildConfigField "boolean", "DEBUG_BUILD", "true"
         }
     }
 
@@ -93,9 +106,14 @@ android {
         checkReleaseBuilds false
     }
 
+    // 签名校验要读 BuildConfig.DEBUG_BUILD 来决定放不放行
     buildFeatures {
         buildConfig true
     }
+}
+
+// 无第三方依赖：仅使用 Android 框架 API
+dependencies {
 }
 
 // ---- 版本锁定校验：与 version.lock 对不上就别想构建 ----
@@ -114,7 +132,3 @@ if (ext.LOCK_NAME || ext.LOCK_CODE) {
     }
 }
 logger.lifecycle("[版本锁定] versionName=${android.defaultConfig.versionName} versionCode=${android.defaultConfig.versionCode}（已与 version.lock 核对一致）")
-
-// 无第三方依赖：仅使用 Android 框架 API
-dependencies {
-}

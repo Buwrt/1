@@ -58,7 +58,47 @@
     /* ---------- 轻提示 ---------- */
     // 轻提示一律贴在底部正中间，两三秒自动消失；#toast-root 是 pointer-events:none，
     // 所以它冒出来的时候照常能点页面上的东西，不打断操作。
+    /**
+     * 统一出口的「出错提示」采集。
+     *
+     * 为什么放在 toast 里 —— 几乎所有功能出问题，最后都是以一句提示
+     * 告诉用户的（「上传失败」「加载超时」「翻译引擎全部不可用」…）。
+     * 与其在几十个分支里各插一行，不如在这个唯一的出口统一筛一遍：
+     * **只要用户看到了出错提示，日志里就有**。
+     *
+     * 三条规矩：
+     *   1) 用词保守 —— 宁可少记，也不能把「已改用某引擎」这种正常
+     *      降级当成错误记进去。
+     *   2) 同一句整场会话只记一次 —— 自动重试能把同一句刷上百遍，
+     *      淹没真正有价值的首条。
+     *   3) 绝不外抛 —— 采集代码自己崩了不能影响主流程。
+     */
+    logTrouble: function (msg) {
+      try {
+        if (!msg || typeof msg !== 'string') return false;
+        var TROUBLE_WORDS = ['不可用', '失败', '出错', '错误', '卡住', '超时',
+                             '无法', '没能', '没成功', '异常', '中断', '拒绝',
+                             '不存在', '找不到', '已停止', '拦截', '阻止',
+                             /* 补：这些说法不含上面任何一个词，以前全被漏掉 */
+                             '连不上', '没反应', '被限制', '已过期', '不完整',
+                             '超时了', '已取消', '403', '404', '500'];
+        var hit = false;
+        for (var i = 0; i < TROUBLE_WORDS.length; i++) {
+          if (msg.indexOf(TROUBLE_WORDS[i]) >= 0) { hit = true; break; }
+        }
+        if (!hit) return false;
+        if (_troubleSeen[msg]) return false;
+        _troubleSeen[msg] = 1;
+        if (window.API && typeof window.API.logError === 'function') {
+          window.API.logError('界面提示：' + msg);
+          return true;
+        }
+      } catch (e) { /* 采集失败绝不影响主流程 */ }
+      return false;
+    },
+
     toast: function (msg, ms) {
+      try { UI.logTrouble(msg); } catch (e) { }
       var root = document.getElementById('toast-root');
       var t = document.createElement('div');
       t.className = 'toast';
@@ -348,6 +388,17 @@
       };
       var btn = root.querySelector('.viewer-save');
       if (btn) btn.onclick = function () {
+        /*
+          直接交给原生 saveImage。
+
+          以前这里调 MD.saveImageToAlbum —— 那是「长按直存」那轮加的包装，
+          后来回退版本时 md.js 退了、这两个文件没退干净，函数没了却还在调。
+          靠 `typeof === 'function'` 兜着才没炸，但状态已经不一致了，
+          索性清掉，回到和长按同一条最短路。
+
+          大图查看器拿到的 src 常常已是 data: URI（README 快车道换的），
+          原生认得它，直接解出来存，不会拿它去发 HTTP。
+        */
         if (window.Native && typeof window.Native.saveImage === 'function') {
           window.Native.saveImage(src);
         } else if (window.NativeBridge && typeof window.NativeBridge.saveImage === 'function') {
@@ -390,6 +441,9 @@
       return !!(root && root.classList.contains('show'));
     }
   };
+
+  /* 出错提示去重表：同一句提示整场会话只记一次 */
+  var _troubleSeen = {};
 
   window.UI = UI;
 

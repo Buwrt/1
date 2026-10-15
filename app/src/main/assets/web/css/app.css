@@ -693,13 +693,6 @@ html[data-theme="dark"] .toast { background: #30363d; }
   margin: 0 0 12px; border: 1px solid var(--border-muted);
 }
 .md pre code { background: none; padding: 0; font-size: 12.5px; line-height: 1.5; }
-/* Markdown 代码块：和代码查看器共用 .crow 行结构（见 md.js 的 code renderer）。
-   行号是每一行里的 span，不是单独一列 —— 某一行文字换行时行号仍钉在行首，
-   不会退化成「左边一整列数字、代码全被挤到下面」。
-   行高必须和 .crow 的 1.6 一致，否则行号和代码会上下错开。 */
-.md pre.md-code { padding: 10px 0; background: var(--bg); line-height: 1.6; }
-.md pre.md-code > .crow .ln { background: var(--bg); }
-.md pre.md-code > code.hljs { display: block; padding: 0 14px; white-space: pre; font-size: 12.5px; line-height: 1.6; }
 .md img { max-width: 100%; border-radius: 6px; cursor: zoom-in; }
 /* 加载失败的图片：给它一个看得见的框，别只剩一块空白 */
 .md img.img-broken { min-width: 120px; min-height: 48px; border: 1px dashed var(--border); }
@@ -717,6 +710,18 @@ html[data-theme="dark"] .toast { background: #30363d; }
 .md table { border-collapse: collapse; margin: 0 0 12px; display: block; overflow-x: auto; max-width: 100%; }
 .md th, .md td { border: 1px solid var(--border); padding: 6px 12px; }
 .md th { background: var(--canvas); }
+/* 发布说明里常放指纹表：长哈希要能整段选中复制，不能被压成省略号，
+   也不能从中间断开（断了就没法跟官方公布值比对）。 */
+.md td { vertical-align: top; }
+.md th { white-space: nowrap; }
+.md td code {
+  font-family: var(--mono, monospace); font-size: 11px; line-height: 1.55;
+  word-break: break-all; overflow-wrap: anywhere;
+  white-space: normal; background: none; padding: 0;
+  user-select: all; -webkit-user-select: all;
+}
+/* 让放哈希的那列有个宽松的最小宽度，免得整表挤成一竖条 */
+.md td:last-child { min-width: 200px; }
 .md hr { border: 0; border-top: 1px solid var(--border); margin: 16px 0; }
 .md a { text-decoration: none; }
 .md .task-list-item { list-style: none; margin-left: -20px; }
@@ -902,6 +907,26 @@ html[data-theme="dark"] .toast { background: #30363d; }
 .crow .lc { flex: 1; min-width: 0; padding: 0 14px; background: transparent; white-space: pre; }
 .code-view.wrap .code-lines { overflow-x: hidden; }
 .code-view.wrap .crow .lc { white-space: pre-wrap; word-break: break-word; }
+
+/* ============ Markdown 里的代码块 ============
+ *
+ * ⚠️ 以前这里用「一列 .gutter 行号 + 一整块 <code>」，而 CSS 里压根没有
+ *    .gutter 这条规则 —— 行号无样式地裸堆着，和代码行没有任何对齐关系；
+ *    就算补上样式也没救：代码块自动换行时一个逻辑行占好几个视觉行，
+ *    而 gutter 里每个数字只占一行，行号从第 1 行起就整体往上飘。
+ *
+ * 现在和代码预览（page-repo.js）统一成 .crow：一行一个 div，
+ * 行号 .ln 就在这一行里，换行时仍钉在逻辑行首，不会错位。
+ */
+.md-code { margin: 10px 0; padding: 0; background: var(--bg); border: 1px solid var(--border-muted); border-radius: 6px; overflow: hidden; }
+.md-code .code-lines { overflow-x: auto; }
+/* 行号列：粘性吸左，横向滚动时不会跟着代码跑掉 */
+.md-rows .crow .ln { flex: none; box-sizing: border-box; width: 3.6em; text-align: right; padding: 0 10px 0 8px; color: var(--fg-subtle); user-select: none; position: sticky; left: 0; background: var(--bg); }
+.md-rows .crow .lc { flex: 1; min-width: 0; padding: 0 14px 0 0; background: transparent; white-space: pre-wrap; word-break: break-word; }
+/* 没有行号的整块态（单行代码 / 超长代码块）：保留横向滚动，不强行折断 */
+.md-code .md-noln { display: block; padding: 10px 14px; white-space: pre; overflow-x: auto; }
+/* 空的逻辑行也要撑出一行高度，否则行号会连成一坨 */
+.md-rows .crow { display: flex; align-items: flex-start; min-height: 1.6em; }
 
 /* 编辑器：透明的 textarea 叠在高亮层上；两者字体 / 内边距 / 行高必须完全一致，
    否则输入的文字和高亮底纹会对不齐。行号在高亮层里，跟着一起滚。 */
@@ -2192,9 +2217,142 @@ html[data-glass-support="0"][data-nav="glass"] .toast {
 .ref-loading .spinner { width: 16px; height: 16px; flex: none; }
 
 /* 列表加载到底的提示（议题/PR 分页用）。居中、小字、弱化色，不抢视觉焦点。 */
+/* 滚动到底自动加载：底部哨兵 / 加载中 / 失败重试 */
+.list-sentinel { display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 10px 0 4px; }
+.list-loading { font-size: 12px; color: var(--fg-subtle); display: flex; align-items: center; gap: 6px; }
+.list-loading .spinner {
+  display: inline-block; width: 13px; height: 13px; border-radius: 50%;
+  border: 2px solid var(--border); border-top-color: var(--accent);
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.list-sentinel:empty { min-height: 1px; }
+.list-retry {
+  display: block; width: 100%; padding: 12px; margin: 4px 0;
+  background: transparent; border: 0; color: var(--accent);
+  font-size: 13px; text-align: center;
+}
 .list-end {
   text-align: center;
   padding: 14px 12px 18px;
   font-size: 12px;
   color: var(--fg-muted);
 }
+
+/* ============ 校验信息表格（Release 详情页 / 关于页共用） ============ */
+.fp-card { padding: 12px 14px 10px; margin-top: 10px; }
+.fp-head {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 600; color: var(--fg-muted);
+  margin-bottom: 8px;
+}
+.fp-head > svg { flex: none; }
+
+/* 表格可能比屏宽：外层允许横向滑动，绝不把长指纹挤成省略号 */
+.fp-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.fp-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+
+.fp-table th {
+  font-size: 11px; font-weight: 600; color: var(--fg-muted);
+  text-align: left; padding: 0 6px 6px 0; border-bottom: 1px solid var(--border);
+}
+.fp-table th.fp-act-h { width: 34px; }
+
+.fp-table td {
+  padding: 9px 6px 9px 0; vertical-align: top;
+  border-bottom: 1px solid var(--border-muted);
+}
+.fp-table tr:last-child td { border-bottom: 0; }
+
+/* 名称列：名称一行 + 算法小字一行 */
+.fp-table td.fp-kind { width: 30%; }
+.fp-name { display: block; font-size: 12px; line-height: 1.35; color: var(--fg); }
+.fp-algo { display: block; font-size: 10px; line-height: 1.4; color: var(--fg-muted); margin-top: 2px; }
+
+/* 指纹列：等宽、按词换行，绝不从中间断开（断了就没法整段复制比对） */
+.fp-table td.fp-val code {
+  display: block; font-family: var(--mono, monospace); font-size: 11px; line-height: 1.5;
+  word-break: break-all; overflow-wrap: anywhere;
+  background: var(--bg-subtle, var(--bg)); border-radius: 6px; padding: 6px 8px;
+  user-select: all; -webkit-user-select: all;
+}
+
+/* 操作列 */
+.fp-table td.fp-act { width: 34px; text-align: right; }
+.fp-copy {
+  border: 1px solid var(--border); background: var(--bg);
+  border-radius: 6px; padding: 5px 7px; cursor: pointer;
+  display: inline-flex; align-items: center; color: var(--fg-muted);
+}
+.fp-copy:active { background: var(--btn-bg-hover); color: var(--fg); }
+
+.fp-hint { font-size: 11px; color: var(--fg-muted); margin-top: 8px; line-height: 1.6; }
+.fp-hint code { font-size: 10px; }
+
+/* 极窄屏：三列挤不下就改成两行（名称在上、指纹在下），复制按钮跟到指纹右侧 */
+@media (max-width: 380px) {
+  .fp-table td.fp-kind { width: auto; }
+  .fp-table, .fp-table tbody, .fp-table tr, .fp-table td { display: block; width: auto; }
+  .fp-table thead { display: none; }
+  .fp-table tr { border-bottom: 1px solid var(--border-muted); padding: 8px 0; }
+  .fp-table tr:last-child { border-bottom: 0; }
+  .fp-table td { border-bottom: 0; padding: 0; }
+  .fp-table td.fp-val { margin-top: 4px; }
+  .fp-table td.fp-act { text-align: left; margin-top: 6px; }
+}
+
+/* 保留旧的行式渲染（Fingerprints 未加载时的兜底） */
+.fp-item {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 8px 0; border-top: 1px solid var(--border-muted);
+}
+.fp-item:first-child { border-top: 0; }
+.fp-item > .fp-kind {
+  flex: none; width: 96px; font-size: 11px; line-height: 1.4;
+  color: var(--fg-muted); padding-top: 2px;
+}
+.fp-item > .fp-val {
+  flex: 1 1 auto; min-width: 0;
+  font-family: var(--mono, monospace); font-size: 11px; line-height: 1.5;
+  word-break: break-all; overflow-wrap: anywhere;
+  background: var(--bg-subtle, var(--bg)); border-radius: 6px;
+  padding: 6px 8px; user-select: all; -webkit-user-select: all;
+}
+
+/* ============ 上传进度条 ============ */
+/* 上传文件夹动辄几十个文件，只给一个转圈的 indeterminate 条
+   用户完全不知道进行到哪了 —— 这里给出确定的百分比与「第几个 / 共几个」。 */
+.up-prog {
+  height: 6px; border-radius: 3px; overflow: hidden;
+  background: var(--border-muted); margin-bottom: 6px;
+}
+.up-prog-bar {
+  height: 100%; width: 0;
+  background: var(--accent);
+  transition: width .25s ease;
+}
+
+/* ---- 下载通道选择面板 ---- */
+.ch-tip { color: var(--fg-muted); font-size: 12px; line-height: 1.5; margin-bottom: 10px; }
+.ch-row { align-items: center; gap: 8px; cursor: pointer; }
+.ch-row.on { border-color: var(--accent); background: var(--accent-subtle); }
+.ch-row.on .row-title { color: var(--accent); }
+.ch-ico { flex: none; display: inline-flex; color: var(--fg-muted); }
+.ch-row.on .ch-ico { color: var(--accent); }
+.ch-host { font-weight: 400; font-size: 12px; color: var(--fg-muted); word-break: break-all; }
+/* 速度固定在右列，右对齐：数字跳动时不会把整行推来推去 */
+.ch-speed { font-size: 13px; font-variant-numeric: tabular-nums; color: var(--fg-muted);
+  min-width: 76px; justify-content: flex-end; }
+.ch-speed.ok { color: var(--fg); font-weight: 600; }
+.ch-speed.bad { color: var(--fg-subtle, var(--fg-muted)); opacity: .7; }
+/* 下载管理页里的「下载通道」入口行 */
+.ch-open { align-items: center; gap: 8px; cursor: pointer; }
+
+/* 上次测得的旧值：视觉上弱一档，表示「正在刷新」 */
+.ch-speed.stale { opacity: .6; font-weight: 400; }
+
+/* 「候选」角标：这条通道还没实测过，用不了属正常 */
+.ch-tag { display: inline-block; font-size: 10px; font-weight: 400; line-height: 1.4;
+  padding: 0 4px; border-radius: 3px; color: var(--fg-muted);
+  border: 1px solid var(--border); vertical-align: 1px; }
+.ch-row.on .ch-tag { color: var(--accent); border-color: var(--accent); }

@@ -14,34 +14,10 @@
 
   /* 正文渲染：有官方渲染好的 HTML 就用它（类型、宽高都是现成的），
    * 没有（老缓存、接口没给）就退回自己渲染 Markdown —— 行为与以前一致。 */
-  /**
-   * 正文为空时显示什么。
-   *
-   * 以前一律是「（无内容）」四个字 —— 看着跟「内容没加载出来」一模一样，
-   * 其实只是作者没写：PR 的说明是可填项，空着是常态（#14 就是这样）。
-   * 把话说完整，用户就不会以为是 App 没把内容渲染出来。
-   */
-  function emptyBodyHtml(kind) {
-    var t = kind === 'pr' ? '这个拉取请求没有填写说明'
-      : kind === 'issue' ? '这个议题没有填写正文'
-      : '没有填写内容';
-    return '<p class="muted">（' + t + '）</p>';
-  }
-
-  /**
-   * @param kind  'pr' / 'issue' / 'comment'，只影响空正文那句话怎么写
-   */
-  function mountBody(el, it, full, kind) {
+  function mountBody(el, it, full) {
     if (!el) return;
-    var html = String((it && it.body_html) || '');
-    var body = String((it && it.body) || '');
-    if (!html.trim() && !body.trim()) {
-      el.innerHTML = emptyBodyHtml(kind);
-      el.className = 'bubble-body md';
-      return;
-    }
-    if (html) window.MD.mountHtml(el, html, { repo: full });
-    else window.MD.mount(el, body, { repo: full });
+    if (it && it.body_html) window.MD.mountHtml(el, it.body_html, { repo: full });
+    else window.MD.mount(el, (it && it.body) || '', { repo: full });
   }
 
   /* =================== 议题 / PR 详情 =================== */
@@ -122,7 +98,7 @@
       UI.menu('操作', acts).then(function (k) {
         if (!k) return;
         if (k === 'web') { var u = it.html_url; return window.NativeBridge && NativeBridge.openExternal ? NativeBridge.openExternal(u) : window.open(u, '_blank'); }
-        if (k === 'state') return toggleState(full, n, it, isPR);
+        if (k === 'state') return toggleState(full, n, it);
         if (k === 'labels') return pickLabels(full, n, it);
         if (k === 'assign') return pickAssignees(full, n);
         if (k === 'review') return reviewPR(full, n, it);
@@ -134,65 +110,12 @@
     document.getElementById('fab').onclick = function () { commentBox(full, n); };
   }
 
-  /**
-   * 「重新打开」在两种状态下是**注定失败**的。
-   *
-   * 与其等服务端甩一句 422 Validation Failed 回来，不如点之前就说清楚
-   * 为什么打不开 —— 这两种情况在响应里都写着，不用额外打接口。
-   *
-   * @return 打不开的原因；null 表示可以正常发起请求
-   */
-  function reopenBlockReason(it, isPR) {
-    if (!isPR) return null;
-    if (it.merged || it.merged_at) return '这个拉取请求已经合并了，不能再重新打开';
-    /*
-     * 源分支所在的仓库（多半是一个 fork）被删掉之后，GitHub 就不允许
-     * 重新打开了 —— 服务端一律回 422，而且 errors 是空的，什么线索都不给。
-     * 但这一点在请求之前就能看出来：head 里的 repo 是 null 就是它的信号。
-     */
-    var head = it.head;
-    if (!head || !head.repo) {
-      return '这个拉取请求重新打开不了：它的源分支「' + ((head && head.ref) || '未知') +
-        '」所在的仓库已经不存在了（分支或 fork 被删掉后，GitHub 不允许重新打开）';
-    }
-    return null;
-  }
-
-  function toggleState(full, n, it, isPR) {
+  function toggleState(full, n, it) {
     var next = it.state === 'open' ? 'closed' : 'open';
-    if (next === 'open') {
-      var blocked = reopenBlockReason(it, isPR);
-      if (blocked) return UI.toast(blocked);
-    }
-    /*
-     * 拉取请求必须走 /pulls 端点。
-     *
-     * GitHub 里 PR 确实也是一种 issue，所以 /issues/{n} 能「读」到它，
-     * 但「改状态」这件事只认 /pulls/{n} —— 拿 /issues 端点去改，
-     * 服务端一律回 422 Validation Failed。
-     */
-    var path = '/repos/' + full + (isPR ? '/pulls/' : '/issues/') + n;
-    window.API.patch(path, { state: next }).then(function () {
+    window.API.patch('/repos/' + full + '/issues/' + n, { state: next }).then(function () {
       UI.toast(next === 'closed' ? '已关闭' : '已重新打开');
       window.Router.reload();
-    }).catch(function (e) {
-      var m = String((e && e.message) || '未知错误');
-      /* GitHub 有时会在 errors 里给出具体原因，比那一句 Validation Failed
-         有用得多（比如「head repository is missing」）—— 有就一起说出来。 */
-      var detail = '';
-      try {
-        var errs = e && e.data && e.data.errors;
-        if (errs && errs.length) {
-          detail = errs.map(function (x) { return x && (x.message || x.code); })
-            .filter(Boolean).join('；');
-        }
-      } catch (ignore) { }
-      if (m.indexOf('Validation Failed') >= 0) {
-        m = (isPR ? '这个拉取请求' : '这个议题') + '改不了状态：GitHub 拒绝了这次修改'
-          + (detail ? '（' + detail + '）' : '');
-      }
-      UI.toast('操作失败：' + m);
-    });
+    }).catch(function (e) { UI.toast('操作失败：' + e.message); });
   }
 
   function pickLabels(full, n, it) {
@@ -337,7 +260,7 @@
       (it.author_association ? '<span class="chip" style="padding:0 6px">' + assocText(it.author_association) + '</span>' : '') + '</div>' +
       '<div class="bubble-body" id="main-body"></div></div></div>' +
       '<div id="tl"><div style="padding:16px"><div class="spinner"></div></div></div>';
-    mountBody(UI.$('#main-body', box), it, full, isPR ? 'pr' : 'issue');
+    mountBody(UI.$('#main-body', box), it, full);
     /* 正文跟 README 一样是「骨架先到、内容后填」的，翻译的第一轮看不见它。
      * 打一声招呼，让翻译按整篇模式接上（详情见 ui.js 的 noticeRefresh）。 */
     if (window.UI) UI.noticeRefresh(UI.$('#main-body', box));
@@ -361,15 +284,10 @@
       var bodies = UI.$$('.bubble-body', tl);
       var ci = 0;
       all.forEach(function (x) {
-        if (x.t !== 'c') return;
-        var box = bodies[ci];
-        ci++;
-        if (!box) return;
-        /* 一条评论渲染失败不能连累后面所有评论 —— 以前 mountBody 抛异常会
-           直接冲出这个 forEach，从出错那一条起，后面全部停在「空白气泡」上，
-           看起来就像评论凭空消失了。 */
-        try { mountBody(box, x.d, full, 'comment'); }
-        catch (e) { box.textContent = (x.d && x.d.body) || ''; }
+        if (x.t === 'c') {
+          if (bodies[ci]) mountBody(bodies[ci], x.d, full);
+          ci++;
+        }
       });
       window.bindHashLinks(tl);
       /* 用与 postMount 同一个入口绑（点 = 查看大图，长按 = 打开链接页）。
@@ -963,6 +881,82 @@
   };
 
   /* =================== 发布详情 =================== */
+  /* =================== 说明正文里的指纹表格 =================== */
+  /*
+   * 指纹由**发布者写在 Release 说明里**（用 Markdown 表格），App 原样渲染，
+   * 不再自己从说明里抠哈希、再额外插一张「校验信息」卡片。
+   *
+   * 为什么去掉自动提取 ——
+   *   那张卡片是 App 猜出来的：靠长度和附近关键词判断这是证书还是 commit，
+   *   说明里没写的东西它编不出来，写的方式一变就可能标错。
+   *   而指纹是给人拿去比对官方公布值的，容不得「猜」。
+   *   说明里本来就有表格时，卡片反而成了第二份、且可能不一致的副本。
+   *
+   * 现在只做一件事：让说明正文里的 Markdown 表格在窄屏上也能看全 ——
+   *   长哈希要能整段选中复制，不能被压成省略号（见 app.css 里 .md table 那段）。
+   */
+
+  /* ------------------------------------------------------------
+   * 指纹表格渲染：「关于」页用这一套。
+   *
+   * 为什么还留着 ——
+   *   「关于」页没有「说明正文」可渲染，它读的是包里烙的常量
+   *   （api.js 的 SRC_SHA256 + 原生层读的安装包签名），
+   *   这两条不来自任何 Markdown，只能自己画。
+   *
+   * 为什么用表格 ——
+   *   指纹是「名称 / 值 / 操作」三元组，天生是表格。之前是每行
+   *   一块 div，标签和值上下挤在一起、行与行之间对不齐；
+   *   表格三列对齐后一眼能扫完，也与说明正文里的表格同形。
+   * ------------------------------------------------------------ */
+  window.Fingerprints = {
+
+    /**
+     * "源码指纹（源码快照 SHA-256）" → { name:'源码指纹', algo:'源码快照 SHA-256' }
+     * 表格里名称列要短，算法那半截挪到名称下方的小字，整表才不挤。
+     */
+    splitKind: function (kind) {
+      var m = /^(.+?)[（(](.+?)[)）]\s*$/.exec(String(kind || ''));
+      if (m) return { name: m[1], algo: m[2] };
+      return { name: String(kind || ''), algo: '' };
+    },
+
+    /** @param items [{kind, val}] @param note 表下方那句提示（可空） */
+    cardHtml: function (items, note) {
+      var self = this;
+      return '<div class="fp-head">' + window.icon('shield', 14) + '<span>校验信息</span></div>' +
+        '<div class="fp-scroll"><table class="fp-table">' +
+        '<thead><tr><th>项目</th><th>指纹（完整值）</th><th class="fp-act-h"></th></tr></thead>' +
+        '<tbody>' +
+        items.map(function (it) {
+          var k = self.splitKind(it.kind);
+          return '<tr>' +
+            '<td class="fp-kind"><span class="fp-name">' + U.esc(k.name) + '</span>' +
+              (k.algo ? '<span class="fp-algo">' + U.esc(k.algo) + '</span>' : '') + '</td>' +
+            '<td class="fp-val"><code>' + U.esc(it.val) + '</code></td>' +
+            '<td class="fp-act">' +
+              '<button class="fp-copy" data-fp="' + U.esc(it.val) + '" ' +
+              'title="复制这枚指纹" aria-label="复制' + U.esc(k.name) + '">' +
+              window.icon('copy', 14) + '</button>' +
+            '</td>' +
+            '</tr>';
+        }).join('') +
+        '</tbody></table></div>' +
+        (note ? '<div class="fp-hint">' + note + '</div>' : '');
+    },
+
+    /** 给容器内的复制按钮挂事件 */
+    bind: function (root) {
+      if (!root) return;
+      UI.$$('.fp-copy', root).forEach(function (b) {
+        b.onclick = function (e) {
+          if (e && e.stopPropagation) e.stopPropagation();
+          UI.copy(b.getAttribute('data-fp'), '指纹已复制');
+        };
+      });
+    }
+  };
+
   P.release = {
     title: '发布详情',
     render: function (ctx, host) {
@@ -999,6 +993,8 @@
             }).join('') + '</div>' : '');
         window.MD.mount(UI.$('#rbody', host), rel.body || '', { repo: full });
         if (window.UI) UI.noticeRefresh(UI.$('#rbody', host));
+        /* 指纹由发布者写进说明正文（Markdown 表格），这里原样渲染即可 ——
+           不再额外插一张 App 猜出来的「校验信息」卡片。 */
         UI.$$('[data-dl]', host).forEach(function (b) {
           b.onclick = function () {
             var url = b.getAttribute('data-dl'), name = b.getAttribute('data-n');
@@ -1036,12 +1032,16 @@
         window.API.get('/repos/' + full + '/actions/runs/' + ctx.id),
         window.API.get('/repos/' + full + '/actions/runs/' + ctx.id + '/jobs', { per_page: 100 }).catch(function () { return { data: { jobs: [] } }; }),
         // 构建产物（APK 等）——官网在这个区域提供下载
+        // 失败时不静默变空数组，而是记一个标记：
+        // 「没有产物」和「没查到」是两件事，用户看到的提示必须不一样，
+        // 否则会在其实只是请求失败时，误以为这次运行没产出 APK。
         window.API.get('/repos/' + full + '/actions/runs/' + ctx.id + '/artifacts', { per_page: 100 })
-          .catch(function () { return { data: { artifacts: [] } }; })
+          .catch(function (e) { return { data: { artifacts: [] }, __artFail: true }; })
       ]).then(function (rs) {
         if (epoch !== window.Router.viewEpoch) return;
         var run = rs[0].data, jobs = (rs[1].data && rs[1].data.jobs) || [];
         var artifacts = (rs[2].data && rs[2].data.artifacts) || [];
+        var artFail = !!(rs[2] && rs[2].__artFail);
         var st = run.conclusion || run.status;
         var color = st === 'success' ? 'var(--success)' : st === 'failure' ? 'var(--danger)' : 'var(--attention)';
         host.innerHTML =
@@ -1074,7 +1074,7 @@
             }).join('') + '</div>' : UI.empty('workflow', '暂无作业', '')) +
 
           /* ---- 构建产物（artifacts）：APK 就是从这里下载的 ---- */
-          artifactsBlock(artifacts);
+          artifactsBlock(artifacts, artFail);
         bindArtifacts(host);
         UI.$$('[data-web]', host).forEach(function (b) {
           b.onclick = function () { var u = b.getAttribute('data-web'); NativeBridge.openExternal ? NativeBridge.openExternal(u) : window.open(u, '_blank'); };
@@ -1127,8 +1127,31 @@
    * 注意：archive_download_url 必须带 Authorization 才能下载（否则 403），
    * 所以走 Native.download 带认证头，而不是简单地丢给浏览器。
    */
-  function artifactsBlock(artifacts) {
-    if (!artifacts.length) return '';
+  /*
+    构建产物区块。
+
+    以前没有产物时整块 `return ''` —— 页面上一片空白，看的人只会以为
+    「加载坏了」，根本想不到是这次运行压根没上传产物。
+
+    为什么会没有产物：GitHub 只在**工作流里用了 upload-artifact** 时才
+    生成。把文件提交到分支（像 fetchv4 那样 commit 到 apk-out）、或者
+    只发到 Release，都不会出现在这里。这一句说明就是把这个差别讲清楚。
+  */
+  function artifactsBlock(artifacts, artFail) {
+    var head = '<div class="section-title">' +
+      window.icon('package', 14) + ' 构建产物</div>';
+    if (artFail) {
+      return head + '<div class="set-note" style="padding:8px 12px">' +
+        '没查到产物列表（请求失败）。可能是没登录、权限不够，或网络问题。</div>';
+    }
+    if (!artifacts.length) {
+      return head + '<div class="set-note" style="padding:8px 12px">' +
+        '这次运行没有构建产物。<br>' +
+        '只有工作流里用了 <code>actions/upload-artifact</code> 才会出现在这里；' +
+        '把文件提交到分支或发到 Release 是不会显示的。</div>';
+    }
+    head = '<div class="section-title">' + window.icon('package', 14) +
+      ' 构建产物（' + artifacts.length + '）</div>';
     return '<div class="section-title">' + window.icon('package', 14) + ' 构建产物（' + artifacts.length + '）</div>' +
       '<div class="list">' + artifacts.map(function (a) {
         var expired = !!a.expired;

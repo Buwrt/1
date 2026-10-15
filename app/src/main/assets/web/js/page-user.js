@@ -1368,6 +1368,28 @@
         '<div class="set-group">' +
         setItem('shield-check', '两步验证器', totpCountText(), 'totp') +
         '</div>' +
+
+        /*
+          ═══ 这一块原来放的是「通知栏提醒」 ═══
+
+          条目（铃铛图标 + 一行副标题）和它下面那一整段机制说明，
+          已经**整块删掉** —— 按用户要求，设置页不该出现这个东西。
+
+          ═══ 但功能一点没少 ═══
+
+          删的只是设置页里那块 UI，后台轮询照常工作：
+
+            · NotifWatchReceiver.isEnabled() 恒为 true，不再读任何存档值
+              —— 没有入口能把它关掉，也就不存在「开关被关、功能失效」
+            · setAndAllowWhileIdle + 链式调度：Doze（灭屏静置）期间也能
+              被唤醒，不会像普通 setInexactRepeating 那样被推迟到几小时
+              一次的维护窗口，导致锁屏期间一条通知都收不到
+            · 15 分钟一轮；登录 / 加完账户 20 秒后建基线；退到后台 3 分钟
+              后查一次；打开通知页立刻查一遍
+            · 同一条通知只提醒一次
+
+          换句话说：设置页里看不见它了，但它一直在跑。
+        */
         '<div class="section"></div>' +
         '<div class="set-group">' +
         setItem('book', '新手指导', (window.Onboarding && window.Onboarding.isDone()) ? '已完成' : '未开始', 'guide') +
@@ -1545,19 +1567,25 @@
   }
 
   /**
-   * 本机安装包的签名证书指纹（前 16 位），拿不到就返回空。
+   * 本机安装包的签名证书指纹（**完整 64 位**），拿不到就返回空。
    * 走原生层读 —— 那是系统给的安装包签名，比在 JS 里猜靠谱。
    * 读不到宁可不显示，也不编一个假的出来。
+   *
+   * 以前这里返回前 16 位 + 省略号，结果和 Release 页显示的完整值
+   * 「看着像两个东西」—— 用户根本没法拿它去比对。现在统一给完整值。
    */
-  function certShort() {
+  function certSha() {
     try {
       if (window.NativeBridge && typeof window.NativeBridge.certSha256 === 'function') {
-        var s = String(window.NativeBridge.certSha256() || '');
-        if (s.length >= 16) return s.slice(0, 16) + '…';
+        var s = String(window.NativeBridge.certSha256() || '').toLowerCase();
+        if (s.length >= 40) return s;
       }
     } catch (e) {}
     return '';
   }
+
+  /** 保留旧名，内部几处调用仍指同一个东西 */
+  function certShort() { return certSha(); }
 
   /** 这些是作者自己的信息，改这一处就行 */
   var ME = {
@@ -1605,6 +1633,43 @@
         (v ? '<span class="muted tiny" style="margin-left:auto">' + U.esc(v) + '</span>' : '') + '</button>';
     };
 
+    /**
+     * 指纹行：完整值 + 复制按钮。
+     *
+     * 拿不到值就明说「未生成 / 无法读取」，绝不截断成省略号 ——
+     * 指纹被截断就没法跟官方公布的比对了，给一半等于没给。
+     *
+     * 直接复用 Release 详情页那套表格渲染（window.Fingerprints），
+     * 两处同一个实现、同一张表，不会再各写一份而对不上。
+     */
+    var fpRow = function (kind, val) {
+      val = String(val || '').toLowerCase();
+      var shown = val || (kind.indexOf('源码') >= 0 ? '未生成' : '无法读取');
+      return '<div class="fp-item">' +
+        '<span class="fp-kind">' + U.esc(kind) + '</span>' +
+        '<code class="fp-val">' + U.esc(shown) + '</code>' +
+        (val ? '<button class="fp-copy" data-fp="' + U.esc(val) + '" ' +
+               'title="复制这枚指纹">' + window.icon('copy', 14) + '</button>' : '') +
+        '</div>';
+    };
+
+    /** 把两条指纹交给共享渲染器，画成和 Release 详情页一模一样的表格 */
+    var fpTable = function (srcSha, certSha256) {
+      var items = [
+        { kind: '源码指纹（源码快照 SHA-256）', val: String(srcSha || '').toLowerCase() },
+        { kind: '签名指纹（证书 SHA-256）', val: String(certSha256 || '').toLowerCase() }
+      ];
+      if (window.Fingerprints && window.Fingerprints.cardHtml) {
+        return window.Fingerprints.cardHtml(items,
+          '点最右列按钮复制。在仓库里跑 ' +
+          '<code>python3 tools/gen-srcfingerprint.py --check</code> 比对源码指纹；' +
+          '签名指纹应与官方发布的一致，不一致说明这个包被人重新打包过。' +
+          '这张表与 Release 详情页「校验信息」完全相同。');
+      }
+      /* page-detail.js 万一没加载：退回逐行渲染，至少值还是完整的 */
+      return items.map(function (it) { return fpRow(it.kind, it.val); }).join('');
+    };
+
     UI.sheet({
       title: '关于 githup',
       body:
@@ -1644,15 +1709,21 @@
          * tag 停在旧提交、APK 却是新代码。现在把两条指纹摆出来，
          * 仓库里跑一遍 tools/gen-srcfingerprint.py 对一下就知道。
          *
-         * 签名指纹走原生层拿（读的是系统给的安装包签名），拿不到就不显示 ——
-         * 编一个假的比不显示更有害。 */
-        '<div class="set-group">' +
-        row('srcsha', 'code', '源码指纹', (window.API && window.API.SRC_SHA256) ? window.API.SRC_SHA256.slice(0, 16) + '…' : '未生成') +
-        row('certsha', 'shield-check', '签名指纹', certShort() || '无法读取') +
+         * 这里用**完整值 + 一键复制**，与 Release 详情页的「校验信息」区块
+         * 是同一套（同一份数据、同一个 .fp-card 样式）。
+         *
+         * 以前这里是「前 16 位 + 省略号」，而 Release 页显示完整 64 位，
+         * 两处看着像两个不同的东西，用户根本没法拿它去比对 ——
+         * 指纹这种东西截断就等于废掉，必须整段给出来。
+         *
+         * 两条的取值：
+         *   源码指纹 —— api.js 里的 SRC_SHA256，构建时由
+         *     tools/gen-srcfingerprint.py 遍历源码算出并烙进包里；
+         *   签名指纹 —— 走原生层读系统给的安装包签名，拿不到就不显示，
+         *     编一个假的比不显示更有害。 */
+        '<div class="card fp-card">' +
+        fpTable((window.API && window.API.SRC_SHA256) ? window.API.SRC_SHA256 : '', certSha()) +
         '</div>' +
-        '<div class="set-note">这两条用来核对安装包来源：在仓库里跑 ' +
-        '<code>python3 tools/gen-srcfingerprint.py --check</code> 比对源码指纹；' +
-        '签名指纹应与官方发布的一致，不一致说明这个包被人重新打包过。</div>' +
 
         '<div class="set-note">' +
         '本应用为个人学习用途的第三方客户端，与 GitHub, Inc. 无任何隶属关系。' +
@@ -1661,6 +1732,17 @@
         '</div>',
 
       onMount: function () {
+        /* 指纹复制按钮 —— 与 Release 详情页那套完全一致 */
+        if (window.Fingerprints && window.Fingerprints.bind) {
+          window.Fingerprints.bind(document);
+        } else {
+          UI.$$('.fp-copy').forEach(function (b) {
+            b.onclick = function (e) {
+              e.stopPropagation();
+              UI.copy(b.getAttribute('data-fp'), '指纹已复制');
+            };
+          });
+        }
         UI.$$('[data-ab]').forEach(function (b) {
           b.onclick = function () {
             var k = b.getAttribute('data-ab');
@@ -1686,10 +1768,12 @@
                 foot: '<button class="btn primary" data-close="1">好的</button>',
                 onMount: function () {
                   /* 长按赞赏码 → 保存到相册。
+                   * 直接交给原生 saveImage（见 ui.js 里那段说明）。
                    * tips.png 是本地 assets 资源，saveImage 内部会识别并直接读 assets。 */
                   var qr = document.getElementById('tip-qr');
                   if (qr && window.UI && typeof window.UI.bindLongPress === 'function') {
                     window.UI.bindLongPress(qr, function () {
+                      /* 直接交给原生：见 ui.js 里那段说明（回退时没退干净，已清理） */
                       if (window.Native && typeof window.Native.saveImage === 'function') {
                         window.Native.saveImage(qr.src);
                       } else if (window.NativeBridge && typeof window.NativeBridge.saveImage === 'function') {
@@ -1745,8 +1829,9 @@
               UI.sheet({
                 title: '错误日志',
                 body: '<div class="muted" style="font-size:14px;line-height:1.7">' +
-                  '今天的日志已经整理好了（只记今天，明天自动从头开始）。<br>' +
-                  '你想怎么处理它？' +
+                  '出问题时，App 会自动把情况记在**内部**小本子里（只记今天，' +
+                  '明天自动从头开始），不会往下载目录里放任何东西。<br><br>' +
+                  '想拿去用的时候，在这里手动导出：' +
                   '</div>',
                 foot: '<button class="btn" data-log-share="1">分享</button>' +
                   '<button class="btn primary" data-log-save="1">保存到本地</button>',

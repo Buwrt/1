@@ -2,13 +2,13 @@ package com.hubmobile.app;
 
 import android.app.Activity;
 import android.app.DownloadManager;
-import android.database.Cursor;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.Resources;
+import android.database.Cursor;
 import android.graphics.Insets;
 import android.net.Uri;
 import android.os.Build;
@@ -28,7 +28,13 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import android.os.SystemClock;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -38,6 +44,7 @@ import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.Executors;
 
 /**
@@ -1041,6 +1048,41 @@ public class JsBridge {
 
     /* ---------------- 错误日志 ---------------- */
 
+    /* ---------------- GitHub 通知的后台轮询 ---------------- */
+
+    /**
+     * 后台通知提醒是否开启（默认开）。
+     *
+     * 为什么需要：GitHub 不会把通知推给第三方 App，只能 App 定时去问。
+     * 这里把开关交给用户 —— 有人就是不想要系统通知。
+     */
+    @JavascriptInterface
+    public boolean notifWatchEnabled() {
+        try { return NotifWatchReceiver.isEnabled(activity); } catch (Throwable ignored) { return true; }
+    }
+
+    @JavascriptInterface
+    public void setNotifWatch(boolean on) {
+        try { NotifWatchReceiver.setEnabled(activity, on); } catch (Throwable ignored) { }
+    }
+
+    /**
+     * 立刻检查一次 GitHub 通知（不等待下一轮）。
+     *
+     * 给「通知页下拉刷新」用 —— 让用户能当场验证后台提醒到底有没有在工作，
+     * 而不是干等 15 分钟才知道。这不是开关，只是一个手动触发。
+     */
+    @JavascriptInterface
+    public void checkNotificationsNow() {
+        try { NotifWatchReceiver.checkNow(activity); } catch (Throwable ignored) { }
+    }
+
+    /** 上次后台检查的时间戳（0 = 从没检查过），给设置页显示 */
+    @JavascriptInterface
+    public long notifWatchLastCheck() {
+        try { return NotifWatchReceiver.lastCheck(activity); } catch (Throwable ignored) { return 0; }
+    }
+
     /**
      * 前端上报一条错误（功能出问题了）。
      *
@@ -1138,8 +1180,19 @@ public class JsBridge {
 
     @JavascriptInterface
     public void setToken(String token) {
-        if (token == null || token.isEmpty()) SecurePrefs.remove(activity, TOKEN_KEY);
-        else SecurePrefs.put(activity, TOKEN_KEY, token);
+        if (token == null || token.isEmpty()) {
+            SecurePrefs.remove(activity, TOKEN_KEY);
+            /* 退出登录：撤掉轮询，并清掉去重表 —— 换账号后 id 不该继承，
+             * 否则新账号的旧通知会被当成"已经提醒过了"而漏掉。 */
+            try {
+                NotifWatchReceiver.cancel(activity);
+                NotifWatchReceiver.resetSeen(activity);
+            } catch (Throwable ignored) { }
+        } else {
+            SecurePrefs.put(activity, TOKEN_KEY, token);
+            /* 登录成功：把通知轮询挂上（已挂过不会重复） */
+            try { NotifWatchReceiver.scheduleSoonAfterLogin(activity); } catch (Throwable ignored) { }
+        }
     }
 
     /* ---------------- 键值存储 ---------------- */
@@ -1509,7 +1562,34 @@ public class JsBridge {
                      *      a) 本地 assets 资源（赞赏码 tips.png 这类）—— 直接读 assets
                      *      b) 网络图片（GitHub 附件、仓库图）—— 走 Http，带 token */
                     byte[] data;
-                    String assetPath = assetPathOf(url);
+                    /*
+                      ═══ data: URI —— 字节就在串里，不必再发网络 ═══
+
+                      README 里的图片为了让 raw.githubusercontent.com 这类
+                      直连不通的地址也能出图，走了一条「原生取图」快车道：
+                      拉回 base64 塞成 data: URI 再赋给 <img src>（见
+                      md.js 的 pumpFetch，以及 ImageProxy 的转发通道）。
+                      **于是 img.src 可能整串都是图片数据，而不是一个网址。**
+
+                      浏览器当然能渲染它 —— 也正是它能「下载图片」的原因之一
+                      （浏览器存的是已解码的那份，根本不用再按 URL 取一遍）。
+                      而这里以前没有这个分支：data: 掉进下面的网络分支，
+                      `new URL("data:…")` 直接抛 MalformedURLException，
+                      报错写着「保存失败：no protocol: data:…」，看不懂。
+
+                      没有这个分支，README 里凡是走了快车道的图都存不下来 ——
+                      而那恰恰是绝大多数。
+                    */
+                    boolean isData = url != null && url.startsWith("data:");
+                    String assetPath = null;
+                    if (isData) {
+                        data = decodeDataUri(url);
+                        if (data == null || data.length == 0) {
+                            toast("保存失败：图片数据读不出来");
+                            return;
+                        }
+                    } else {
+                    assetPath = assetPathOf(url);
                     if (assetPath != null) {
                         /* 本地 assets：file:///android_asset/web/img/tips.png
                          * 或相对路径 img/tips.png，都映射到 assets/web/... */
@@ -1525,18 +1605,70 @@ public class JsBridge {
                             if (in != null) try { in.close(); } catch (Throwable ignored) {}
                         }
                     } else {
+                        /*
+                          ═══ 建连前先验一下地址 ═══
+
+                          报错长这样：
+                              failed to connect to localhost/127.0.0.1 (port 443)
+
+                          443 这个数字是关键：Http 里端口是这么算的
+                              secure = "https".equalsIgnoreCase(u.getProtocol())
+                              port   = u.getPort()>0 ? u.getPort() : (secure?443:80)
+                          能算出 443 说明 **protocol 是 https，而 host 是空的**
+                          (空 host 经 InetAddress.getByName("") 解析成回环地址，
+                          于是报错里写着 localhost/127.0.0.1)。
+
+                          浏览器遇到这种地址是**认得出无效、直接失败**的，
+                          绝不会去连本机；我们以前照建连不误。这里挡一道，
+                          和浏览器对齐：解析不出主机就不连，并给一句人话。
+                        */
+                        /*
+                          用 Http.hostUsable 而不是自己判「host 非空」——
+                          后者会放行 localhost / 127.0.0.1 / 0.0.0.0 / [::1]，
+                          照样连到本机，报错依旧是那句 localhost。
+                        */
+                        if (!Http.hostUsable(url)) {
+                            toast("保存失败：图片地址不完整（" + briefUrl(url) + "）");
+                            return;
+                        }
                         java.util.Map<String, String> headers = new java.util.HashMap<>();
                         String token = getToken();
                         if (token != null && !token.isEmpty()) {
                             headers.put("Authorization", "Bearer " + token);
                         }
                         headers.put("Accept", "image/*,*/*;q=0.8");
-                        resp = Http.requestRaw("GET", url, headers);
-                        if (resp.code < 200 || resp.code >= 300 || resp.body == null) {
-                            toast("保存失败：图片下载不到（HTTP " + resp.code + "）");
+                        /*
+                          ═══ 直连取不到，就换加速通道 ═══
+
+                          日志已经给出真相（用户导出）：地址完全正常 ——
+                              https://raw.githubusercontent.com/Buwrt/githup/main/docs/tips.png
+                          却连到了 localhost/127.0.0.1。
+
+                          那串不是我们写死的地址，而是**解析结果**：
+                          InetAddress.toString() 是「主机名/IP」，127.0.0.1 的
+                          反查名恰好是 localhost。所以是这台手机上
+                          raw.githubusercontent.com 被解析到了本机 ——
+                          hosts 被改（各类 GitHub 加速/hosts 修改器都会写 127.0.0.1）
+                          或 VPN 的 DNS 劫持。
+
+                          同一个域名，加载却正常：图片是 **WebView 渲染的**，
+                          Chromium 自带解析器、不读系统 hosts；保存走原生
+                          InetAddress、会读。**两边问的不是同一个地方。**
+
+                          跟 DNS 较劲不如换个域名：本 App 本来就有 17 条
+                          加速通道（下载 Release 一直在用），把取图也接上去。
+                          直连失败时依次换通道重试 —— 换的是主机，
+                          本机那条 hosts 记录就管不着了。
+                        */
+                        resp = fetchImage(url, headers);
+                        if (resp == null || resp.code < 200 || resp.code >= 300 || resp.body == null) {
+                            toast("保存失败：图片下载不到"
+                                    + (resp == null ? "（直连与加速通道都连不上）"
+                                                     : "（HTTP " + resp.code + "）"));
                             return;
                         }
                         data = resp.body;
+                    }
                     }
                     if (data == null || data.length == 0) {
                         toast("保存失败：图片是空的");
@@ -1547,7 +1679,15 @@ public class JsBridge {
                      *    网络图片优先看响应头 Content-Type，本地 assets 没有响应头，
                      *    从 URL 后缀猜，再不行按文件头魔数判（PNG/JPEG/GIF/WebP）。 */
                     String mime = null;
-                    if (assetPath == null) {
+                    /*
+                      data: URI 自己就带着类型（data:image/png;base64,…），
+                      用它的 —— 而且**绝不能去读 resp**：data 分支下 resp 是 null，
+                      读它会 NPE 被下面的 catch 悄悄吞掉，mime 恒为 null，
+                      最后只能靠魔数猜，SVG 这类没有魔数的就全存成了 png。
+                    */
+                    if (isData) {
+                        mime = mimeOfDataUri(url);
+                    } else if (assetPath == null) {
                         try { mime = resp.header("Content-Type"); } catch (Throwable ignored) {}
                         if (mime != null) {
                             int sc = mime.indexOf(';');
@@ -1602,6 +1742,19 @@ public class JsBridge {
 
                     toast("已保存到相册");
                 } catch (Throwable t) {
+                    /*
+                      记一笔：把**真实地址**和异常类型写进错误日志。
+
+                      连续几轮我都在猜这个地址长什么样（data:? 相对路径?
+                      空主机? loopback?），每次都猜错。与其继续猜，不如让
+                      App 自己说出来 —— 去「关于 → 下载错误日志」导一份，
+                      里面就有这里记的原文，一眼能定位。
+                    */
+                    try {
+                        LogBook.error(activity, "保存图片失败",
+                                briefUrl(url) + " | " + t.getClass().getSimpleName()
+                                        + ": " + (t.getMessage() == null ? "" : t.getMessage()));
+                    } catch (Throwable ignored) {}
                     toast("保存失败：" + (t.getMessage() == null ? "未知错误" : t.getMessage()));
                 }
             }
@@ -1629,6 +1782,135 @@ public class JsBridge {
             s = "web/" + s;
         }
         return s;
+    }
+
+    /**
+     * 这个地址能拿去建连吗？
+     *
+     * <p>判据只有一条：**解析出来的主机不能为空**。
+     * `https:///x`、`https:/x`、`https://` 这类「有协议没主机」的残缺串，
+     * 拿去建连会被解析成回环地址 —— 也就是那句莫名其妙的
+     * `failed to connect to localhost/127.0.0.1`。
+     *
+     * <p>用的是 java.net.URL，跟 Http 建连时那套解析**是同一个** ——
+     * 判据天然一致。这正是不能用别的解析器替代的原因（实测
+     * `https:///x` 在 Java 下 host=""，在 WHATWG 下却是 "docs"）。
+     *
+     * <p>data: / assets / 相对路径不走这条路，不必在这里管。
+     */
+    private static boolean hasHost(String url) {
+        if (url == null) return false;
+        try {
+            String host = new java.net.URL(url).getHost();
+            return host != null && host.length() > 0;
+        } catch (Throwable ignored) {
+            return false;   // 连解析都失败，更不该去连
+        }
+    }
+
+    /**
+     * 把可能很长的地址截成能进提示与日志的一小段。
+     * data: URI 动辄几十上百 KB，整条塞进提示框会把屏幕撑爆。
+     */
+    private static String briefUrl(String url) {
+        String s = String.valueOf(url);
+        if (s.length() <= 80) return s;
+        return s.substring(0, 80) + "…（共 " + s.length() + " 字符）";
+    }
+
+    /**
+     * data: URI 自带的 MIME，如 `data:image/png;base64,xxx` → `image/png`。
+     *
+     * <p>data: 分支下没有 HTTP 响应头可用，只能从这里取；取不到就退给
+     * 文件头魔数兜底。
+     */
+    private static String mimeOfDataUri(String u) {
+        try {
+            if (u == null || !u.startsWith("data:")) return null;
+            int comma = u.indexOf(',');
+            if (comma <= 0) return null;
+            String head = u.substring(5, comma);
+            int sc = head.indexOf(';');
+            String mime = (sc >= 0 ? head.substring(0, sc) : head).trim();
+            return mime.isEmpty() ? null : mime;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    /**
+     * 把 data: URI 还原成字节。
+     *
+     * <p>字节本来就在字符串里 —— 这一步**不走网络**，所以「浏览器能存、
+     * 我们存不了」的那批快车道图片，靠它就能存下来。
+     *
+     * @return 解码后的字节；失败返回 null
+     */
+    private static byte[] decodeDataUri(String u) {
+        try {
+            if (u == null || !u.startsWith("data:")) return null;
+            int comma = u.indexOf(',');
+            if (comma < 0) return null;
+            String head = u.substring(5, comma);
+            String payload = u.substring(comma + 1);
+            boolean b64 = head.toLowerCase(java.util.Locale.US).indexOf("base64") >= 0;
+            if (b64) {
+                return android.util.Base64.decode(payload, android.util.Base64.DEFAULT);
+            }
+            /* 非 base64 的 data: 是百分号编码的文本（SVG 常见） */
+            return java.net.URLDecoder.decode(payload, "UTF-8").getBytes("UTF-8");
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    /**
+     * 取图片字节：先直连，失败就换加速通道。
+     *
+     * <p><b>为什么不再跟 DNS 较劲</b>：域名在本机被解析成 127.0.0.1 时，
+     * 直连必然失败（Http 里已加 DoH 兜底，但那要求 DoH 端点本身可达，
+     * 在 hosts 被改得比较狠的机器上未必成立）。换通道是**换主机**，
+     * 本机那条 hosts 记录就管不着了 —— 比修 DNS 可靠得多。
+     *
+     * <p><b>安全</b>：走镜像时**不带 Authorization**。GitHub token 只能发给
+     * GitHub，发给第三方镜像等于把令牌交出去。图片是公开资源，不需要令牌。
+     *
+     * <p>直连走原 headers；镜像只保留 Accept。
+     *
+     * @return 成功返回响应；全部失败返回直连的那份（好让错误码有意义），
+     *         连直连都抛异常时返回 null
+     */
+    private static Http.RawResponse fetchImage(String url, java.util.Map<String, String> headers) {
+        Http.RawResponse direct = null;
+        try {
+            Http.RawResponse r = Http.requestRaw("GET", url, headers);
+            if (ok200(r)) return r;
+            direct = r;                       // 留着，全失败时报它的码
+        } catch (Throwable ignored) {
+            /* 直连抛异常（连不上/被解析到本机），下面换通道 */
+        }
+
+        int n = Math.min(DownloadChannels.MIRRORS.length, DownloadChannels.VERIFIED_COUNT);
+        for (int i = 0; i < n; i++) {
+            String mirror = DownloadChannels.MIRRORS[i];
+            if (mirror == null || mirror.length() == 0) continue;
+            /* 云速是模板型拼法，不能 `前缀 + 原URL`；拼不出来（不是 raw 类
+               地址）就跳过这条 —— 图片几乎都是 raw 地址，通常是能拼出来的。 */
+            String murl = DownloadChannels.buildUrl(mirror, url);
+            if (murl == null) continue;
+            try {
+                java.util.Map<String, String> h = new java.util.HashMap<>();
+                h.put("Accept", "image/*,*/*;q=0.8");     /* 不带令牌 */
+                Http.RawResponse r = Http.requestRaw("GET", murl, h);
+                if (ok200(r)) return r;
+            } catch (Throwable ignored) {
+            }
+        }
+        return direct;
+    }
+
+    private static boolean ok200(Http.RawResponse r) {
+        return r != null && r.code >= 200 && r.code < 300 && r.body != null && r.body.length > 0;
     }
 
     private static String extFromMime(String mime) {
@@ -1770,19 +2052,43 @@ public class JsBridge {
 
     /**
      * 清洗前端传来的下载分类（子目录名）。
-     * 只允许字母、数字、下划线、连字符（中文字符也算字母），
-     * 路径分隔符等一律剔除 —— 这个值会拼进文件路径，不能让 JS 传
-     * "../" 之类的东西进来。长度截到 32。空串 = 直接放 githup/ 根下。
+     *
+     * ═══ 为什么函数体曾经是 `return ""` ═══
+     *
+     * 还原 v1.2.14 时把它改成了恒返回空串 —— 那版是**单层目录**，
+     * 所有下载平铺在 Download/githup/ 下，不按来源分子目录。
+     *
+     * 但用户要的是「Release 下下来的东西就该在 Download/githup/release/」。
+     * 分类是前端明确传了的：
+     *
+     *   · Release 附件 / 源码包  → 'release'
+     *   · 议题里的附件          → '议题'
+     *   · 仓库文件              → 'file'
+     *
+     * 恒返回空串等于**把前端传的分类全丢掉**，文件自然都落在根目录。
+     * 这就是「为什么 release 的文件不在 release 目录」的答案。
+     *
+     * ═══ 清洗策略 ═══
+     *
+     * 子目录名会被拼进落盘路径，绝不能含分隔符，否则就是路径穿越。
+     * 这里不搞白名单（前端以后加分类还得改原生），改成**严格清洗**：
+     * 去掉分隔符、控制字符、点，剩下的才是合法目录名；洗完为空就当没分类。
      */
     static String safeCategory(String c) {
         if (c == null) return "";
-        StringBuilder sb = new StringBuilder();
-        int n = Math.min(c.length(), 32);
-        for (int i = 0; i < n; i++) {
-            char ch = c.charAt(i);
-            if (Character.isLetterOrDigit(ch) || ch == '_' || ch == '-') sb.append(ch);
-        }
-        return sb.toString();
+        String s = c.trim();
+        if (s.isEmpty()) return "";
+        /* 路径分隔符：子目录名里绝不能有，否则拼进路径就是穿越 */
+        s = s.replaceAll("[\\/]+", "");
+        /* 控制字符：文件名里出现会破坏 MediaStore 查询 */
+        s = s.replaceAll("[\u0000-\u001f\u007f]", "");
+        /* 点：挡掉 "." / ".." 这类相对路径 */
+        s = s.replace(".", "");
+        s = s.trim();
+        if (s.isEmpty()) return "";
+        /* 长度上限：目录名过长会被文件系统拒绝 */
+        if (s.length() > 32) s = s.substring(0, 32);
+        return s;
     }
 
     /** 下载文件在 Download/ 下的相对路径，如 githup/议题/foo.zip */
@@ -1790,81 +2096,6 @@ public class JsBridge {
         String safeCat = safeCategory(category);
         return DOWNLOAD_SUBDIR + (safeCat.isEmpty() ? "" : "/" + safeCat)
                 + "/" + safeName(name);
-    }
-
-    /**
-     * 下载文件名去重：同名已经存在时，自动改成 name-2、name-3 …
-     *
-     * 为什么需要 ——
-     *   DownloadManager 落盘时，目标文件若已存在会**直接覆盖**。而下载源重名
-     *   是常态：Release 附件常常都叫 app-release.apk，构建产物也都是同一个名字。
-     *   于是「先下一个 APK，再下另一个 APK」，后一个会把前一个顶掉 ——
-     *   用户以为下了两个，去下载目录一看只剩最后那个。
-     *
-     * 现在的做法是落盘前先把名字让开：发现重名就加序号，保证每次下载都
-     * 落在各自独立的文件上，谁也不覆盖谁。
-     *
-     * @param ctx      用来查 DownloadManager 的历史记录
-     * @param name     前端传来的原始文件名
-     * @param category 下载分类（决定落在哪个子目录）
-     * @return 一个此刻未被占用的文件名
-     */
-    static String uniqueDownloadName(Context ctx, String name, String category) {
-        String base = safeName(name == null || name.isEmpty() ? "download" : name);
-        if (!downloadNameTaken(ctx, base, category)) return base;
-
-        // 把 foo.apk 拆成 foo + .apk，序号插在中间，扩展名保持原样
-        int dot = base.lastIndexOf('.');
-        String stem = dot > 0 ? base.substring(0, dot) : base;
-        String ext = dot > 0 ? base.substring(dot) : "";
-
-        for (int i = 2; i < 1000; i++) {
-            String cand = stem + "-" + i + ext;
-            if (!downloadNameTaken(ctx, cand, category)) return cand;
-        }
-        // 极端情况（同一秒下了一千个同名文件）：用时间戳兜底，绝不覆盖
-        return stem + "-" + System.currentTimeMillis() + ext;
-    }
-
-    /**
-     * 这个名字在下载目录里是不是已经被占用了。
-     *
-     * 查两个地方，顺序与 DownloadProvider.resolve 一致：
-     *   1) DownloadManager 的历史记录 —— Android 10+ 分区存储下唯一可靠的来源
-     *   2) 公共下载目录里的名义路径 —— Android 9 及以下的兜底
-     *
-     * 查不到一律当「没被占用」：宁可偶尔真覆盖，也不能让下载下不去。
-     */
-    private static boolean downloadNameTaken(Context ctx, String name, String category) {
-        Cursor c = null;
-        try {
-            DownloadManager dm = (DownloadManager) ctx.getSystemService(Context.DOWNLOAD_SERVICE);
-            if (dm != null) {
-                c = dm.query(new DownloadManager.Query().setFilterByStatus(
-                        DownloadManager.STATUS_SUCCESSFUL | DownloadManager.STATUS_RUNNING
-                                | DownloadManager.STATUS_PAUSED | DownloadManager.STATUS_PENDING));
-                if (c != null) {
-                    int iTitle = c.getColumnIndex(DownloadManager.COLUMN_TITLE);
-                    if (iTitle >= 0) {
-                        while (c.moveToNext()) {
-                            String t = c.getString(iTitle);
-                            if (t != null && t.equals(name)) return true;
-                        }
-                    }
-                }
-            }
-        } catch (Throwable ignored) {
-            // 查不了就当没占用，不影响下载本身
-        } finally {
-            if (c != null) { try { c.close(); } catch (Throwable ignored) { } }
-        }
-
-        try {
-            File f = new File(android.os.Environment.getExternalStoragePublicDirectory(
-                    android.os.Environment.DIRECTORY_DOWNLOADS), downloadSubPath(name, category));
-            if (f.exists()) return true;
-        } catch (Throwable ignored) { }
-        return false;
     }
 
     /**
@@ -1926,7 +2157,7 @@ public class JsBridge {
                                  String userAgent, boolean autoInstall, String expectedSha,
                                  long expectedBytes, String category) {
         if (url == null || url.isEmpty()) return;
-        final String rawName = (filename == null || filename.isEmpty()) ? "download" : filename;
+        final String name = (filename == null || filename.isEmpty()) ? "download" : filename;
         final String dlCategory = safeCategory(category);
 
         /*
@@ -1950,17 +2181,6 @@ public class JsBridge {
               未登录 / 没点 / 查询失败 都算「没点」。
             */
             final boolean starred = hasStarredSelf();
-            /*
-              名字去重放在这里、而不是方法入口：
-
-              它要查 DownloadManager 的历史记录（一次 ContentResolver 查询），
-              属于 I/O，不能压在主线程上 —— 入口那一行是跑在主线程的。
-
-              又必须在真正入队之前算好：同一个名字若已被上一次下载占用，
-              这一次就得用让开后的名字，否则 DownloadManager 会直接覆盖写入，
-              前一个文件就没了。
-            */
-            final String name = uniqueDownloadName(activity, rawName, dlCategory);
             activity.runOnUiThread(() -> {
                 try {
                     ensureDownloadDir();
@@ -2073,36 +2293,17 @@ public class JsBridge {
      * 「下不到」——用户已经等了半天，再让他失败一次就过分了。
      * 注意是**直链**，不是加速镜像：加速那 10 条是给「正常用户」的待遇。
      */
-    private void startThrottledDownload(String url, String name, String headersJson,
-                                        String sha, boolean autoInstall, String category) {
-        try {
-            ensureDownloadDir();
-
-            /* 先写私有目录：公共目录在这个阶段写不了（分区存储） */
-            File dir = activity.getExternalFilesDir(null);
-            if (dir == null) dir = activity.getFilesDir();
-            File sub = new File(dir, DOWNLOAD_SUBDIR);
-            if (!sub.exists() && !sub.mkdirs()) {
-                /* 私有目录都建不出来，那是真没辙了 —— 直接放行全速 */
-                fallbackToDirect(url, name, headersJson, sha, autoInstall, "无法创建下载目录", category);
-                return;
-            }
-            File target = new File(sub, safeName(name));
-
-            long tid = throttledSeq.getAndDecrement();
-            TlTask t = new TlTask(tid, name, url, headersJson, sha, autoInstall, target, category);
-            throttledTasks.put(tid, t);
-
-            Map<String, String> headers = headersFrom(headersJson);
-
-            Toast.makeText(activity,
-                    "开始下载 " + name + "（限速通道）",
-                    Toast.LENGTH_SHORT).show();
-            // 绿勾浮条（前端 UI.toastOk 的同一句话，走 JS 通道弹）
-            runJs("try{if(window.UI&&UI.toastOk)UI.toastOk('给作者点个 Star 吧',3200);}catch(e){}");
-
-            ThrottledDownloader.Handle h = ThrottledDownloader.start(
-                    url, target, headers, new ThrottledDownloader.Listener() {
+    /**
+     * 限速下载 / 续传接管共用的进度与收尾回调。
+     *
+     * 抽出来是因为「换道续传接管」走的也是 ThrottledDownloader，只是不限速；
+     * 收尾（校验 → 搬公共目录 → 写历史 → 装 APK）完全一样，
+     * 各写一份迟早改漏一处。
+     */
+    private ThrottledDownloader.Listener makeTlListener(TlTask t, String url, String name,
+                                                        String headersJson, String sha,
+                                                        boolean autoInstall, String category) {
+        return new ThrottledDownloader.Listener() {
                         @Override public void onProgress(long done, long total, long bps) {
                             t.done = done;
                             t.total = total;
@@ -2117,6 +2318,21 @@ public class JsBridge {
                                 String bad = null;
                                 if (sha != null && !sha.isEmpty()) {
                                     bad = verifyShaFile(file, sha);
+                                } else {
+                                    /*
+                                      没有 sha 时的兜底：至少比对长度。
+
+                                      Release 附件常常不提供 sha，以前那种情况
+                                      `if (sha != null && !sha.isEmpty())` 直接
+                                      整段跳过，什么校验都不做 —— 「下完了」和
+                                      「下对了」成了两回事，旧包就这么被搬进
+                                      公共目录甚至装上。
+
+                                      ThrottledDownloader 内部已经按 Content-Length
+                                      判过一轮，这里再拿 t.total 跟落盘文件比对
+                                      一次，是第二道闸。
+                                    */
+                                    bad = verifySize(file, t.total, bytes);
                                 }
                                 if (bad != null) {
                                     /* 包不对：不留了，也没法装。当失败处理并放行全速。 */
@@ -2128,7 +2344,12 @@ public class JsBridge {
                                     });
                                     return;
                                 }
-                                boolean moved = moveToPublicDownloads(file, name, category);
+                                String[] movedName = new String[1];
+                                boolean moved = moveToPublicDownloads(file, name,
+                                        category, movedName);
+                                if (moved && movedName[0] != null && !movedName[0].isEmpty()) {
+                                    t.outName = movedName[0];
+                                }
                                 activity.runOnUiThread(() -> {
                                     throttledTasks.remove(t.id);
                                     finishThrottled(t, true, bytes, null, moved);
@@ -2145,7 +2366,42 @@ public class JsBridge {
                                 fallbackToDirect(url, name, headersJson, sha, autoInstall, reason, category);
                             });
                         }
-                    });
+                    };
+    }
+
+    private void startThrottledDownload(String url, String name, String headersJson,
+                                        String sha, boolean autoInstall, String category) {
+        try {
+            ensureDownloadDir();
+
+            /* 先写私有目录：公共目录在这个阶段写不了（分区存储） */
+            File dir = activity.getExternalFilesDir(null);
+            if (dir == null) dir = activity.getFilesDir();
+            File sub = new File(dir, DOWNLOAD_SUBDIR);
+            if (!sub.exists() && !sub.mkdirs()) {
+                /* 私有目录都建不出来，那是真没辙了 —— 直接放行全速 */
+                fallbackToDirect(url, name, headersJson, sha, autoInstall, "无法创建下载目录", category);
+                return;
+            }
+            /* 开工前清一下过期残骸：老版本按文件名命名的 .part 已经读不到了，
+               留着只会占地方（详见 ThrottledDownloader.sweepStale）。 */
+            ThrottledDownloader.sweepStale(sub);
+            File target = new File(sub, safeName(name));
+
+            long tid = throttledSeq.getAndDecrement();
+            TlTask t = new TlTask(tid, name, url, headersJson, sha, autoInstall, target, category);
+            throttledTasks.put(tid, t);
+
+            Map<String, String> headers = headersFrom(headersJson);
+
+            Toast.makeText(activity,
+                    "开始下载 " + name + "（限速通道）",
+                    Toast.LENGTH_SHORT).show();
+            // 绿勾浮条（前端 UI.toastOk 的同一句话，走 JS 通道弹）
+            runJs("try{if(window.UI&&UI.toastOk)UI.toastOk('给作者点个 Star 吧',3200);}catch(e){}");
+
+            ThrottledDownloader.Handle h = ThrottledDownloader.start(url, target, headers,
+                    makeTlListener(t, url, name, headersJson, sha, autoInstall, category));
             t.handle = h;
 
             startWatch();
@@ -2170,7 +2426,7 @@ public class JsBridge {
                     "限速通道没走通，已改用直链下载", Toast.LENGTH_SHORT).show();
 
             DlTask t = new DlTask(name, url, headersJson, null, sha, autoInstall,
-                    DownloadChannels.candidates(url, false, null),   // false = 不许走镜像
+                    DownloadChannels.candidates(url, false),   // false = 不许走镜像
                     safeCategory(category));
             if (!startTask(t)) {
                 Toast.makeText(activity, "下载失败", Toast.LENGTH_SHORT).show();
@@ -2197,6 +2453,10 @@ public class JsBridge {
         try {
             JSONObject o = new JSONObject();
             o.put("name", t.filename);
+            /* 落盘名：限速通道的文件也走 moveToPublicDownloads，
+             * 那里同样会避让重名，所以必须记实际名字。 */
+            o.put("saved", t.outName == null || t.outName.isEmpty()
+                    ? t.filename : t.outName);
             o.put("url", t.originUrl == null ? "" : t.originUrl);
             o.put("dlId", -1);          // 限速任务没有 DownloadManager id
             o.put("ok", ok);
@@ -2206,7 +2466,9 @@ public class JsBridge {
             o.put("sha", t.expectedSha == null ? "" : t.expectedSha);
             synchronized (dlHistory) {
                 loadHistoryLocked();
-                dlHistory.put(0, o);
+                /* 同上：put(0, o) 是替换不是插入 */
+                prependHistoryLocked(o);
+                dedupeLatestLocked();
                 while (dlHistory.length() > HISTORY_MAX) {
                     dlHistory.remove(dlHistory.length() - 1);
                 }
@@ -2301,6 +2563,28 @@ public class JsBridge {
     }
 
     /**
+     * 没有 sha 时的兜底校验：拿「应下字节数」跟落盘文件比一比。
+     *
+     * 只能防住"下短了/下长了"这类一眼可见的错，防不住"长度恰好相同但内容
+     * 不同"—— 那种只有 sha 能判。但总比什么都不做强：旧版本和新版本的
+     * 附件长度多数时候是不一样的。
+     *
+     * 拿不到期望长度（分块传输）时返回 null，不拦 —— 没有依据的拦截比
+     * 不拦截更糟，那会让用户一次都下不成。
+     */
+    private String verifySize(File file, long expectedTotal, long reportedBytes) {
+        if (file == null || !file.exists()) return "下载好的文件不见了";
+        long actual = file.length();
+        if (expectedTotal > 0 && actual != expectedTotal) {
+            return "文件大小不对（应为 " + expectedTotal + " 字节，实际 " + actual + " 字节）";
+        }
+        if (expectedTotal <= 0 && reportedBytes > 0 && actual != reportedBytes) {
+            return "文件大小不对（应为 " + reportedBytes + " 字节，实际 " + actual + " 字节）";
+        }
+        return null;
+    }
+
+    /**
      * 把限速下载好的文件从应用私有目录搬进公共下载目录 Download/githup/。
      *
      * ═══════════════ 为什么不能直接 FileOutputStream 写过去 ═══════════════
@@ -2325,14 +2609,29 @@ public class JsBridge {
      * @return true = 已搬进公共目录；false = 没搬成（文件仍留在私有目录，
      *         调用方据此改提示文案，见 finishThrottled 的 moved 参数）
      */
-    private boolean moveToPublicDownloads(File file, String name, String category) {
+    private boolean moveToPublicDownloads(File file, String name, String category,
+                                          String[] nameOut) {
         if (file == null || !file.exists()) return false;
         final String cat = safeCategory(category);
+
+        /*
+          同样要先避让重名 —— 限速通道也会覆盖别人的文件。
+
+          ⚠️ 以前 Android 9 及以下那支有一句 `if (dst.exists()) dst.delete();`，
+          那是覆盖本身；Android 10+ 那边交给了 MediaStore，它会自己把同名
+          改成 foo(1).apk，名字跟记录里存的对不上，后面「打开 / 删除」就扑空。
+
+          所以这里也走 uniqueName 主动编号，落盘名由我们决定，不交给系统猜。
+        */
+        final String outName = uniqueName(name, category, true);
+        /* 同上：同名覆盖，先清旧的，保证落盘名就是 outName */
+        purgeExistingInDownloads(outName, category, true);
+        if (nameOut != null && nameOut.length > 0) nameOut[0] = outName;
 
         /* Android 9 及以下：没有分区存储这回事，直接文件系统搬就行，比 MediaStore 稳 */
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             try {
-                File dst = new File(publicDownloadDir(cat), safeName(name));
+                File dst = new File(publicDownloadDir(cat), safeName(outName));
                 File parent = dst.getParentFile();
                 if (parent != null && !parent.exists()) parent.mkdirs();
                 if (dst.exists()) //noinspection ResultOfMethodCallIgnored
@@ -2352,7 +2651,7 @@ public class JsBridge {
         java.io.OutputStream out = null;
         try {
             android.content.ContentValues cv = new android.content.ContentValues();
-            cv.put(MediaStore.Downloads.DISPLAY_NAME, safeName(name));
+            cv.put(MediaStore.Downloads.DISPLAY_NAME, safeName(outName));
             /* RELATIVE_PATH 必须带 "Download/" 前缀，写 "githup" 是无效的；
                有分类时再往下挂一级，如 Download/githup/议题 */
             cv.put(MediaStore.Downloads.RELATIVE_PATH,
@@ -2470,8 +2769,9 @@ public class JsBridge {
              * 去拼 —— 拼出来的路径在这里是不存在的。 */
             id = safeEnqueue(dm, t, false);
         }
-        if (id <= 0) return false;
+        if (id <= 0) { t.switching = false; return false; }
         t.id = id;
+        t.switching = false;      /* 发车完成，watchTick 可以正常观察它了 */
         t.startedAt = System.currentTimeMillis();
         t.lastAt = t.startedAt;
         t.lastBytes = 0;
@@ -2582,6 +2882,9 @@ public class JsBridge {
                 long id = (Long) key;
                 DlTask t = downloads.get(id);
                 if (t == null) continue;
+                /* 换道中：旧任务已摘掉、新任务还没发车，它的 DM id 已经作废。
+                   不跳过就会拿作废的状态再判一次「慢 / 卡死」，触发二次换道。 */
+                if (t.switching) continue;
                 long status = -1, sofar = -1;
                 android.database.Cursor c = null;
                 try {
@@ -2670,12 +2973,43 @@ public class JsBridge {
                     continue;
                 }
                 t.stallAt = now;
+                /*
+                  喂一个采样点给「慢速建议」。放在这里而不是换道分支里，是因为
+                  两种情况都要抓：
+                    · 慢到触发换道（下面会切走）
+                    · 慢但被进度保护放过了（已下不少、速度还没到绝望）
+                      —— 这种用户是干等着，最需要一句提示
+                */
+                noteSlowSample(now, sofar, speed);
                 if (speed >= MIN_SPEED_BPS) {
                     t.slowStrikes = 0;
                     continue;
                 }
                 if (now - t.firstDataAt < GRACE_MS) continue;
-                if (++t.slowStrikes >= SLOW_STRIKES) switchChannel(t, "速度太慢");
+                if (++t.slowStrikes >= SLOW_STRIKES) {
+                    /*
+                      ═══ 进度保护 ═══
+
+                      仅仅因为「慢」要换道时，先算一笔账：
+
+                        换道 = 换 URL = DownloadManager 无法续传，
+                               已经下好的部分很可能全部作废。
+
+                      已经下了 KEEP_GOING_BYTES 以上、且速度还没低到绝望
+                      （还有 GIVE_UP_SPEED_BPS），那就继续等 —— 重来的代价
+                      大概率大于继续等的代价。
+
+                      注意这里用的是 sofar（DownloadManager 报的已下载字节），
+                      不依赖是否接管成功，判据稳定。
+                    */
+                    if (sofar >= KEEP_GOING_BYTES && speed >= GIVE_UP_SPEED_BPS) {
+                        t.slowStrikes = 0;    // 清零，下个窗口重新观察
+                        continue;
+                    }
+                    /* 走到这里 = 真的因为慢要换道了，这是一次实打实的「慢」 */
+                    recordSlowEvent(now);
+                    switchChannel(t, "速度太慢");
+                }
             }
         } catch (Throwable ignored) { }
         if (downloads.isEmpty()) {
@@ -2686,6 +3020,202 @@ public class JsBridge {
     }
 
     /** 当前通道不行，换下一条重下；所有通道都试过了才报失败 */
+    /* ═══════════════ 换道续传的「接管」 ═══════════════
+     *
+     * 换道为什么不能交给 DownloadManager 续传 ——
+     *
+     *   DownloadManager 的每次 enqueue 都是一个独立任务、写进一个独立文件。
+     *   给它加 Range 头，服务端确实只回「剩余那一段」，但 DownloadManager
+     *   会把这**一段**当成整个文件写下去 —— Android 10+ 上 MediaStore 遇到
+     *   同名还会自动改名成 xxx(1).apk，于是我们手里只剩一个残缺的片段，
+     *   而原来下了一半的那个文件还停在原地。
+     *
+     *   它绝不会「追加到已有文件后面」，因为一个下载任务对应一个目标文件
+     *   是它的基本模型，没有"续写别人的文件"这个概念。
+     *
+     *   所以上层按磁盘真实大小一验就发现对不上，只好整份重下 —— 用户看到
+     *   的就是「换个通道，进度条回到 0，白等半天」，而且**还多等了一轮**。
+     *
+     * 于是换道续传改由 ThrottledDownloader 接管：它是自己拿着字节流写文件的，
+     * 能以 append 模式打开已有的 .part 从指定偏移接着写。
+     */
+
+    /** 私有目录里的落盘位置（限速通道与接管通道共用同一套） */
+    private File throttledTarget(String name) {
+        File dir = activity.getExternalFilesDir(null);
+        if (dir == null) dir = activity.getFilesDir();
+        File sub = new File(dir, DOWNLOAD_SUBDIR);
+        if (!sub.exists() && !sub.mkdirs()) return null;
+        return new File(sub, safeName(name));
+    }
+
+    /**
+     * 把 DownloadManager 已经下到的字节复制到 .part 里，作为接管的起点。
+     *
+     * ⚠️ 必须在 dm.remove 之前调用 —— 摘掉任务后就读不到文件了。
+     *
+     * @return 实际复制的字节数（0 = 读不到，别接管）
+     */
+    private long copyPrefixToPart(DlTask t, long want) {
+        if (want <= 0) return 0;
+        DownloadManager dm = (DownloadManager) activity.getSystemService(Context.DOWNLOAD_SERVICE);
+        if (dm == null || t.id <= 0) return 0;
+
+        android.database.Cursor c = null;
+        OutputStream out = null;
+        long written = 0;
+        File part = null;
+        try {
+            /*
+              ⚠️ 以前只读 COLUMN_LOCAL_URI 一个来源，读不到就直接放弃接管
+              —— 这就是「换个通道，进度归零」的直接原因。
+
+              Android 10+ 分区存储下，DownloadManager 下载中的条目挂着
+              IS_PENDING=1，很多 ROM 此刻根本不给读（openInputStream 返回空
+              或第一次 read 就 -1）；而 COLUMN_LOCAL_FILENAME 在 Q+ 上又已经
+              废弃。两个来源都抓瞎，接管必然失败，换道必然整份重下。
+
+              现在按顺序试三条路，哪条通走哪条：
+
+                1) COLUMN_LOCAL_URI     —— content:// 条目（最标准）
+                2) COLUMN_LOCAL_FILENAME —— Android 9- 给真实路径，部分 ROM 也给
+                3) 目标路径直读          —— 有的 ROM 直接往最终位置写，
+                                            落盘文件本身就有已经下好的前缀
+            */
+            String uriStr = null;
+            String pathStr = null;
+            try {
+                c = dm.query(new DownloadManager.Query().setFilterById(t.id));
+                if (c != null && c.moveToFirst()) {
+                    int i = c.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI);
+                    if (i >= 0) uriStr = c.getString(i);
+                    int j = c.getColumnIndex(DownloadManager.COLUMN_LOCAL_FILENAME);
+                    if (j >= 0) pathStr = c.getString(j);
+                }
+            } catch (Throwable ignored) { }
+            finally { if (c != null) { try { c.close(); } catch (Throwable ignored) { } } }
+
+            File target = throttledTarget(t.filename);
+            if (target == null) return 0;
+            /* 用**换道后**的 URL 算 .part 路径 —— 必须与随后 resume() 里
+               tmpFile 算出来的完全一致，写错地方等于什么都没接管。 */
+            part = ThrottledDownloader.partFileFor(target, t.url());
+            File dir = part.getParentFile();
+            if (dir != null && !dir.exists() && !dir.mkdirs()) return 0;
+
+            out = new FileOutputStream(part, false);
+            byte[] buf = new byte[64 * 1024];
+
+            /* 来源 1：content:// 条目 */
+            if (uriStr != null && !uriStr.isEmpty()) {
+                written = drainTo(out, buf, want,
+                        activity.getContentResolver().openInputStream(android.net.Uri.parse(uriStr)));
+            }
+            /* 来源 2：真实文件路径（Android 9- / 部分 ROM） */
+            if (written <= 0 && pathStr != null && !pathStr.isEmpty()) {
+                try {
+                    File f = new File(pathStr);
+                    if (f.exists() && f.canRead()) {
+                        written = drainTo(out, buf, want, new FileInputStream(f));
+                    }
+                } catch (Throwable ignored) { }
+            }
+            /* 来源 3：最终落盘位置直读（有的 ROM 直接写目标文件） */
+            if (written <= 0 && target.exists() && target.canRead()) {
+                try {
+                    written = drainTo(out, buf, want, new FileInputStream(target));
+                } catch (Throwable ignored) { }
+            }
+
+            if (written <= 0) return 0;
+            out.flush();
+            /* 记在任务上：起点字节数与 .part 位置必须成对，缺一个接不了管 */
+            t.resumePart = part;
+            t.resumeSeed = written;
+            return written;
+        } catch (Throwable e) {
+            return 0;
+        } finally {
+            if (out != null) { try { out.close(); } catch (Throwable ignored) { } }
+            if (written <= 0 && part != null) {
+                try { part.delete(); } catch (Throwable ignored) { }
+            }
+        }
+    }
+
+    /** 从 in 里最多读 want 字节写进 out，返回实际写入数；in 为 null 返回 0 */
+    private static long drainTo(OutputStream out, byte[] buf, long want, InputStream src) {
+        if (src == null) return 0;
+        long w = 0;
+        try {
+            while (w < want) {
+                int n = src.read(buf, 0, (int) Math.min(buf.length, want - w));
+                if (n < 0) break;          // 文件还在写，能读多少算多少
+                out.write(buf, 0, n);
+                w += n;
+                if (n == 0) break;         // 读不出东西，别空转
+            }
+        } catch (Throwable ignored) { }
+        finally { try { src.close(); } catch (Throwable ignored) { } }
+        return w;
+    }
+
+    /** 放弃接管：删掉 .part，清掉字段（之后这个任务整份重下） */
+    private void discardResumePart(DlTask t) {
+        try {
+            if (t.resumePart != null && t.resumePart.exists()) t.resumePart.delete();
+        } catch (Throwable ignored) { }
+        t.resumePart = null;
+        t.resumeSeed = 0;
+    }
+
+    /**
+     * 接管下载：从 resumeSeed 往后接着下，走 ThrottledDownloader 但**不限速**。
+     *
+     * @return true = 接管已启动；false = 起不来，调用方应退回整份重下
+     */
+    private boolean startResumeTakeover(DlTask t) {
+        try {
+            File target = throttledTarget(t.filename);
+            if (target == null) return false;
+            /* 前缀必须还在 —— 期间被清掉就别接管了 */
+            if (t.resumePart == null || !t.resumePart.exists()
+                    || t.resumePart.length() < t.resumeSeed) return false;
+
+            long tid = throttledSeq.getAndDecrement();
+            TlTask tl = new TlTask(tid, t.filename, t.url(), t.headersJson,
+                    t.expectedSha, t.autoInstall, target, t.category);
+            throttledTasks.put(tid, tl);
+
+            Map<String, String> headers = headersFrom(t.headersJson);
+            /*
+              走镜像时把凭据摘掉：那些 Authorization 是用户的私有令牌，
+              不能交到第三方代理手上（直连那一条保留，那正是需要令牌的场景）。
+            */
+            if (DownloadChannels.hasAuthHeader(t.headersJson)
+                    && !DownloadChannels.DIRECT.equals(DownloadChannels.channelKey(t.url()))) {
+                Map<String, String> safe = new HashMap<String, String>();
+                for (Map.Entry<String, String> e : headers.entrySet()) {
+                    if (isCredentialKey(e.getKey())) continue;
+                    safe.put(e.getKey(), e.getValue());
+                }
+                headers = safe;
+            }
+
+            ThrottledDownloader.Handle h = ThrottledDownloader.resume(
+                    t.url(), target, headers,
+                    makeTlListener(tl, t.url(), t.filename, t.headersJson,
+                            t.expectedSha, t.autoInstall, t.category),
+                    t.resumeSeed, t.expectedBytes);
+            tl.handle = h;
+            startWatch();
+            return true;
+        } catch (Throwable e) {
+            android.util.Log.w("githup", "续传接管启动失败", e);
+            return false;
+        }
+    }
+
     private void switchChannel(DlTask t, String why) {
         switchChannel(t, why, -1);
     }
@@ -2706,13 +3236,18 @@ public class JsBridge {
      */
     private void switchChannel(DlTask t, String why, long bytes, boolean quiet) {
         DownloadManager dm = (DownloadManager) activity.getSystemService(Context.DOWNLOAD_SERVICE);
-        if (dm != null && t.id > 0) {
-            try { dm.remove(t.id); } catch (Throwable ignored) { }
-            downloads.remove(t.id);
-            autoInstalls.remove(t.id);
-            expectedShas.remove(t.id);
-        }
+        /* ── 先把「已经拿到多少字节」问出来，再摘掉这个下载 ──
+           摘掉之后 DownloadManager 就查不到了，顺序不能反。 */
+        long got = bytes > 0 ? bytes : queryBytesSoFar(dm, t.id);
+        if (got < 0) got = 0;
+
         if (t.idx + 1 >= t.urls.size()) {
+            if (dm != null && t.id > 0) {
+                try { dm.remove(t.id); } catch (Throwable ignored) { }
+                downloads.remove(t.id);
+                autoInstalls.remove(t.id);
+                expectedShas.remove(t.id);
+            }
             /* 一条都不剩了：这才算真正的失败，落进历史里 */
             addHistory(t, false, bytes);
             final String n = t.filename;
@@ -2732,19 +3267,266 @@ public class JsBridge {
         */
         t.firstDataAt = 0;
         t.stallAt = 0;
-        if (!startTask(t)) {
-            addHistory(t, false, bytes);
-            final String n = t.filename;
-            notifyUpdateAborted("start-failed");
-            activity.runOnUiThread(() -> Toast.makeText(activity,
-                    "下载失败：" + n, Toast.LENGTH_SHORT).show());
-            return;
+        t.switching = true;
+
+        /*
+          ── 把已经下好的那一半接管过来 ──
+
+          ⚠️ 必须在 dm.remove **之前**做：摘掉任务后 DownloadManager 就把
+             文件收走了，再也读不到已经下好的字节。
+        */
+        final long base = t.resumeFrom + got;      // 累计：上一次的起点 + 这一段拿到的
+        /*
+          ⚠️ expectedBytes 不能再当硬门槛。
+
+          以前要求 t.expectedBytes > 0 —— 而这个值是发车前用 HEAD 探出来的，
+          很多镜像对 HEAD 直接不响应。探不到就永远走不了续传，
+          换道必然整份重下。
+
+          现在它只是**软条件**：探到了就顺带校验总长（见 ThrottledDownloader
+          的 206 分支），探不到就不校验 —— 反正换过去的是同一个 URL 的内容，
+          真出问题还有 sha 兜底。没有总长就不让续传，属于把「更谨慎」
+          凌驾于「别让用户白等」之上。
+        */
+        final boolean worthResume = !t.noResume
+                && base >= RESUME_MIN_BYTES
+                && (t.expectedBytes <= 0 || base < t.expectedBytes);
+        if (worthResume) {
+            long seeded = copyPrefixToPart(t, base);
+            /*
+              实际能读到的可能少于 base —— DownloadManager 还在写这个文件。
+              太少就不值得接管：省下的时间还不如一次探测请求的开销。
+            */
+            if (seeded < RESUME_MIN_BYTES / 2) {
+                discardResumePart(t);
+                /*
+                  ⚠️ 以前这里直接 `t.noResume = true` —— 失败一次就终身放弃。
+
+                  而失败的原因常常只是「这一次没读到」：MediaStore 条目还挂
+                  着 IS_PENDING、文件刚被回收、ROM 实现不同。判成终身的话，
+                  后面每一次换道都必然整份重下 —— 用户看到的就是「一换通道
+                  就从零开始」。
+
+                  现在记次数，连续失败 RESUME_FAIL_LIMIT 次才认命。
+                */
+                if (++t.resumeFails >= RESUME_FAIL_LIMIT) t.noResume = true;
+            } else {
+                t.resumeFails = 0;      // 成功过一次就重新计数
+            }
         }
-        final String ch = t.channel();
-        if (quiet) return;
-        activity.runOnUiThread(() -> Toast.makeText(activity,
-                why + "，已切换到" + ch, Toast.LENGTH_SHORT).show());
+        if (dm != null && t.id > 0) {
+            try { dm.remove(t.id); } catch (Throwable ignored) { }
+            downloads.remove(t.id);
+            autoInstalls.remove(t.id);
+            expectedShas.remove(t.id);
+        }
+
+        /*
+          ── 断点续传 ──
+
+          以前换道一律从头开始：dm.remove 摘掉旧任务，再用新 URL 发一个全新的
+          DownloadManager 请求。新请求不带 Range，服务端自然从第 0 字节发 ——
+          已经下了一半的几十 MB 全部作废，进度条回到 0。用户看到的就是
+          「换个通道，白等半天」。
+
+          现在：摘掉旧任务前先记下拿到多少字节，新通道从**这个字节往后**接着要。
+
+          ═══ 现在的门槛 ═══
+
+            1) 已经拿到的字节够多（RESUME_MIN_BYTES = 32KB）。
+               ⚠️ 以前是 128KB —— 而换道恰恰是因为慢（连续两轮 < 15KB/s），
+               6 秒最多也就下 90KB，永远够不着，续传等于没写。
+            2) 知道文件总长就顺带校验（expectedBytes > 0 时比对
+               Content-Range）；不知道就不校验，靠 sha 兜底。
+               ⚠️ 以前把它当硬门槛，而总长是发车前用 HEAD 探的，
+               很多镜像不响应 HEAD —— 探不到就永远走不了续传。
+
+          还有一条兜底在 finishDownload：续传下完之后**按磁盘上的真实大小**
+          再验一次。ROM 的 DownloadManager 若把续传的内容写进了新文件
+          （而不是追加到原来那个），大小必然对不上 —— 那就认栽，
+          noResume 置位，之后这个任务老老实实整份重下。
+          所以最坏情况只是「白试一次」，不会比现在更差。
+        */
+        /* DownloadManager 那条路不再带 Range —— 它续不了（见上面说明）。
+           接管与否全看 resumeSeed。 */
+        t.resumeFrom = 0;
+
+        final String reason = why;
+        /* 探测要发网络请求，必须在后台线程 —— 这个入口有时是从
+           runOnUiThread 里调进来的（见 finishDownload 的「文件不完整」分支）。 */
+        new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    /*
+                      ⚠️ 这里以前先跑 probeResume() 探一次（发 Range 请求、确认
+                      206 且总长一致才敢接管）。**那次探测要花一个完整往返** ——
+                      跨国镜像常常 1~3 秒，超时上限 8 秒。用户已经因为慢等了
+                      一轮，换道时还要干等一次探测，而这期间一个字节都没在下。
+
+                      现在直接接管：总长校验并进正式请求里做（ThrottledDownloader
+                      的 206 分支会比对 Content-Range），省掉一整次往返。
+                      新通道不支持 Range 时它会收到 200，自己截断重写 ——
+                      结果等价于从头下，不会比现在更差。
+                    */
+                    if (t.resumeSeed > 0 && t.resumePart != null) {
+                        if (startResumeTakeover(t)) {
+                            if (!quiet) {
+                                final String ch = t.channel();
+                                final long from = t.resumeSeed;
+                                activity.runOnUiThread(() -> Toast.makeText(activity,
+                                        reason + "，已切换到" + ch +
+                                        "（从第 " + (from / 1024) + " KB 继续）",
+                                        Toast.LENGTH_SHORT).show());
+                            }
+                            return;
+                        }
+                        discardResumePart(t);   // 接管没起来，整份重来
+                    }
+                    if (!startTask(t)) {
+                        addHistory(t, false, bytes);
+                        final String n = t.filename;
+                        notifyUpdateAborted("start-failed");
+                        activity.runOnUiThread(() -> Toast.makeText(activity,
+                                "下载失败：" + n, Toast.LENGTH_SHORT).show());
+                        return;
+                    }
+                    if (quiet) return;
+                    final String ch = t.channel();
+                    activity.runOnUiThread(() -> Toast.makeText(activity,
+                            reason + "，已切换到" + ch,
+                            Toast.LENGTH_SHORT).show());
+                } catch (Throwable e) {
+                    /* 兜底：换道线程自己炸了也不能把任务丢在半路 */
+                    t.switching = false;
+                    discardResumePart(t);
+                    if (!startTask(t)) {
+                        addHistory(t, false, bytes);
+                        notifyUpdateAborted("start-failed");
+                    }
+                }
+            }
+        }, "ch-switch").start();
     }
+
+    /** 问 DownloadManager 这个任务当前拿到多少字节；查不到返回 -1 */
+    private long queryBytesSoFar(DownloadManager dm, long id) {
+        if (dm == null || id <= 0) return -1;
+        android.database.Cursor c = null;
+        try {
+            c = dm.query(new DownloadManager.Query().setFilterById(id));
+            if (c == null || !c.moveToFirst()) return -1;
+            int bi = c.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR);
+            return bi >= 0 ? c.getLong(bi) : -1;
+        } catch (Throwable ignored) {
+            return -1;
+        } finally {
+            if (c != null) { try { c.close(); } catch (Throwable ignored) { } }
+        }
+    }
+
+    /**
+     * 下载完成后，把文件的**确切落盘位置**问出来。
+     *
+     * ═══ 为什么要这个 ═══
+     *
+     * 以前的历史只存文件名，要找文件时拿名字去拼
+     * `Download/githup/xxx.apk`。这有三个躲不掉的问题：
+     *
+     *   1) Android 10+ 分区存储下，拼出来的路径未必是真实位置
+     *      （ROM 可能带 (1) 后缀、可能放在别的卷）
+     *   2) 同名文件分不清 —— 删 A 可能删到 B
+     *   3) 最要命的：拼错了就以为「文件不在了」，于是又加一套磁盘扫描
+     *      去补回，扫描再出错…越修越绕（这几版反复出的问题都源于此）
+     *
+     * 现在改成和 YunX 的 savePath 同一个思路：**下载完成的那一刻就把
+     * 确切位置记下来**。之后打开、删除、判断在不在，全部直接用它。
+     *
+     * 有确切位置就不需要「猜」，不需要猜就不需要那套容易出错的扫描同步。
+     *
+     * @return content:// URI 或绝对路径；查不到返回空串
+     */
+    private String queryFinalUri(long dlId) {
+        if (dlId <= 0) return "";
+        DownloadManager dm = (DownloadManager) activity.getSystemService(Context.DOWNLOAD_SERVICE);
+        if (dm == null) return "";
+        android.database.Cursor c = null;
+        try {
+            c = dm.query(new DownloadManager.Query().setFilterById(dlId));
+            if (c == null || !c.moveToFirst()) return "";
+            /* Android 10+ 给 content://media/external/downloads/<id> */
+            int i = c.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI);
+            if (i >= 0) {
+                String u = c.getString(i);
+                if (u != null && !u.isEmpty()) return u;
+            }
+            /* Android 9 及以下给真实绝对路径 */
+            int j = c.getColumnIndex(DownloadManager.COLUMN_LOCAL_FILENAME);
+            if (j >= 0) {
+                String p = c.getString(j);
+                if (p != null && !p.isEmpty()) return p;
+            }
+        } catch (Throwable ignored) {
+        } finally {
+            if (c != null) { try { c.close(); } catch (Throwable ignored) { } }
+        }
+        return "";
+    }
+
+    /**
+     * 这个 uri 指向的文件还在不在。
+     *
+     * 只认确切位置，不按名字猜：
+     *   · content:// —— 用 ContentResolver 打开，能开就是在
+     *   · 绝对路径  —— File.exists()
+     */
+    private boolean uriAlive(String uri) {
+        if (uri == null || uri.isEmpty()) return false;
+        try {
+            if (uri.startsWith("content://")) {
+                android.net.Uri u = android.net.Uri.parse(uri);
+                android.database.Cursor c = null;
+                try {
+                    c = activity.getContentResolver().query(u,
+                            new String[]{"_id"}, null, null, null);
+                    return c != null && c.moveToFirst();
+                } finally {
+                    if (c != null) { try { c.close(); } catch (Throwable ignored) { } }
+                }
+            }
+            return new File(uri).exists();
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    /** 按确切位置删文件。返回是否删掉了 */
+    private boolean deleteByUri(String uri) {
+        if (uri == null || uri.isEmpty()) return false;
+        try {
+            if (uri.startsWith("content://")) {
+                return activity.getContentResolver()
+                        .delete(android.net.Uri.parse(uri), null, null) > 0;
+            }
+            File f = new File(uri);
+            return f.exists() && f.delete();
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    /*
+      换道续传的**预检探测已经删掉**。
+
+      以前这里有个 probeResume()：换道前先发一个 Range 请求，确认新通道
+      回 206 且总长一致，才敢接管。问题见 switchChannel 里的说明 ——
+      那次探测要花一个完整往返，期间一个字节都没在下。
+
+      现在总长校验并进正式请求（ThrottledDownloader 的 206 分支读
+      Content-Range 比对），省掉一整次往返。新通道不支持 Range 时它收到
+      200，自己截断重写，结果等价于从头下，不会更差。
+
+      少一次往返 = 换道后更快出数据，这正是用户要的。
+    */
 
     /**
      * 组装下载请求。subDir = true 时落到 Download/githup/ 下，
@@ -2752,19 +3534,54 @@ public class JsBridge {
      */
     private DownloadManager.Request buildRequest(String url, String filename,
                                                  String headersJson, String userAgent,
-                                                 boolean subDir, String category) {
+                                                 boolean subDir, String category,
+                                                 String[] nameOut, long resumeFrom) {
         DownloadManager.Request req = new DownloadManager.Request(Uri.parse(url));
         req.setTitle(filename);
         req.setDescription("githup 下载");
         req.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+        /*
+          落盘前先处理重名。
+
+          ⚠️ 最早没有这一步，直接 `downloadSubPath(filename, category)` 当路径：
+          同名附件（app-release.apk 满地都是）后下的会把先下的**整个文件覆盖掉**。
+
+          中间一版改成自动编号（foo.apk → foo-2.apk → foo-3.apk），
+          用户明确不要 —— 不想看到一串编号副本。
+
+          现在是**同名覆盖**：先用 purgeExistingInDownloads 清掉旧的，
+          再让新文件用原名落下。磁盘上始终只有一份。
+        */
+        String outName = uniqueName(filename, category, subDir);
+        /*
+          同名覆盖：先把旧的同名文件清掉。
+          不清的话 Android 10+ 的 DownloadManager / MediaStore 会自动把它
+          改名成 foo(1).apk，落盘名就不再是我们记进历史的这个名字了。
+
+          ⚠️ 续传时**绝不能清** —— 那个「旧的同名文件」正是我们已经下了一半
+          的内容，清掉就等于续传了个寂寞。续传要的就是让新数据追加到它后面。
+        */
+        if (resumeFrom <= 0) purgeExistingInDownloads(outName, category, subDir);
+        if (nameOut != null && nameOut.length > 0) nameOut[0] = outName;
         req.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS,
-                subDir ? downloadSubPath(filename, category) : safeName(filename));
+                subDir ? downloadSubPath(outName, category) : safeName(outName));
+        /* 记下真正落到磁盘上的名字：历史要靠它「打开 / 删除」，
+         * 存原名的话一旦加了 -2 后缀就永远定位不到真文件。 */
+        req.setTitle(outName);
         req.allowScanningByMediaScanner();
         req.addRequestHeader("User-Agent",
                 (userAgent == null || userAgent.isEmpty()) ? "githup" : userAgent);
         // 默认按 API 语义请求；调用方可覆盖
         req.addRequestHeader("Accept", "*/*");
         req.addRequestHeader("X-GitHub-Api-Version", "2022-11-28");
+        /*
+          续传：只要从这个字节往后的部分。
+
+          Range 是**客户端请求头**，服务端愿意就回 206 给这一段，不愿意就回
+          200 给整份（说明它无视 Range）—— 那一段就按整份写，
+          真漏过来（服务端头尾不一致）也还有 finishDownload 的大小校验兜底。
+        */
+        if (resumeFrom > 0) req.addRequestHeader("Range", "bytes=" + resumeFrom + "-");
         /*
           走镜像时把凭据摘掉。
 
@@ -2879,7 +3696,10 @@ public class JsBridge {
     private static final long SIZE_TOLERANCE = 32 * 1024;
 
     private static final String PREF_DL = "githup_dl";
-    private static final String KEY_CHANNEL = "last_channel";
+    /** 「下载慢」建议被用户永久关掉 */
+    private static final String KEY_ADVICE_OFF = "advice_off";
+    /** 用户手动指定的下载通道；空 = 自动 */
+    private static final String KEY_CH_PREF = "ch_pref";
 
     /** 记录下载任务，便于完成后提示安装 APK / 卡住时换道重下 */
     private final java.util.Map<Long, DlTask> downloads = new java.util.concurrent.ConcurrentHashMap<>();
@@ -2931,6 +3751,9 @@ public class JsBridge {
 
         /** 下载分类（已清洗）：议题 / release；空串 = githup 根目录 */
         String category;
+
+        /** 搬进公共目录后的实际文件名（可能被避让成 foo-2.apk） */
+        String outName = "";
     }
 
     /** 一个下载任务的完整状态。换道时要靠它原样重下一次，所以都存着 */
@@ -2963,6 +3786,53 @@ public class JsBridge {
          */
         long stallAt = 0;
         /**
+         * 断点续传：本次发车从文件的第几个字节开始要。
+         *
+         * 0 = 从头下（默认，也是所有非续传场景的值）。
+         * > 0 = 只向服务端要「从这个字节往后的部分」，前面已经拿到的不再重下。
+         *
+         * ⚠️ 它是**累计**的：换一次道续一次，第二次续传的起点是
+         *    「上一次的起点 + 这一段实际拿到的字节」，不是这一段的长度。
+         */
+        long resumeFrom = 0;
+        /**
+         * 这个任务从此**不再尝试续传**。
+         *
+         * 续传能不能成取决于 ROM 的 DownloadManager 怎么处理 Range + 已存在的
+         * 目标文件（有的追加、有的另起一个 foo (1).apk）。试出来不行就认了，
+         * 之后老老实实整份重下 —— 每次换道都白试一遍比不试更糟。
+         */
+        boolean noResume = false;
+        /**
+         * 接管连续失败的次数。
+         *
+         * 读不到 DownloadManager 的半成品**不等于这条路永远走不通** ——
+         * 很可能只是这一次的时机问题（MediaStore 条目还挂着 IS_PENDING、
+         * 文件刚被回收、ROM 自己的实现不同）。以前失败一次就永久置
+         * noResume，等于把一次偶然判成终身。
+         *
+         * 现在记次数，超过 RESUME_FAIL_LIMIT 才认命。
+         */
+        int resumeFails = 0;
+        /**
+         * 续传接管：DownloadManager 已经下到的那一段，被复制到这个 .part 里。
+         *
+         * 换道续传不能再交给 DownloadManager（它只会把「剩余那一段」写进
+         * 另一个文件），所以交给 ThrottledDownloader 从 .part 后面接着写。
+         * null = 这次换道不接管（走原来的整份重下）。
+         */
+        File resumePart = null;
+        /** 已经写进 resumePart 的字节数（= 新通道要从哪里开始要） */
+        long resumeSeed = 0;
+        /**
+         * 正在换道中（已摘掉旧任务、新任务还没发车）。
+         *
+         * 换道要做一次探测请求，只能在后台线程跑；这期间 watchTick 还会
+         * 扫到这个任务，而它的 DM id 已经作废 —— 不跳过的话会拿旧状态
+         * 再判一次「慢 / 卡死」，触发第二次换道，任务就乱了。
+         */
+        boolean switching = false;
+        /**
          * 这条文件应该有多大（字节），0 = 未知。
          *
          * 用来抓「下完了但它其实是坏的」：镜像把请求 302 到一个 HTML 错误页、
@@ -2992,23 +3862,27 @@ public class JsBridge {
          */
         String category;
 
+        /**
+         * 真正落到磁盘上的文件名。
+         *
+         * 通常等于 filename，但撞名时会被 uniqueName 改成 foo-2.apk。
+         * 历史和「打开 / 删除」都必须用它 —— 存原名的话，一旦加了后缀
+         * 就永远定位不到真文件（用户点了「打开」却报「文件不在了」）。
+         */
+        String savedName = "";
+
+        /** 给历史用的落盘名：没算出来就退回原始名 */
+        String outName() {
+            return (savedName == null || savedName.isEmpty()) ? filename : savedName;
+        }
+
         String url() { return urls.get(Math.min(idx, urls.size() - 1)); }
 
         /** 给进度条看的通道名，如「加速 1」/「直连」 */
         String channel() { return DownloadChannels.channelName(url()); }
 
-        /** 这条通道的稳定标识，用于「上次成功过就优先用它」 */
+        /** 这条通道的稳定标识，如 "https://ghfast.top/" / "direct" */
         String channelKey() { return DownloadChannels.channelKey(url()); }
-    }
-
-    /** 上次成功走通的通道（空 = 还没记录过） */
-    private String readLastChannel() {
-        try {
-            return activity.getSharedPreferences(PREF_DL, Context.MODE_PRIVATE)
-                    .getString(KEY_CHANNEL, "");
-        } catch (Throwable t) {
-            return "";
-        }
     }
 
     /**
@@ -3020,27 +3894,717 @@ public class JsBridge {
      */
     private long safeEnqueue(DownloadManager dm, DlTask t, boolean subDir) {
         try {
-            return dm.enqueue(buildRequest(t.url(), t.filename, t.headersJson,
-                    t.userAgent, subDir, t.category));
+            String[] nameOut = new String[1];
+            long id = dm.enqueue(buildRequest(t.url(), t.filename, t.headersJson,
+                    t.userAgent, subDir, t.category, nameOut, t.resumeFrom));
+            if (id > 0 && nameOut[0] != null && !nameOut[0].isEmpty()) {
+                t.savedName = nameOut[0];
+            }
+            return id;
         } catch (Throwable e) {
             android.util.Log.w("githup", "enqueue 失败", e);
             return -1;
         }
     }
 
-    private void saveLastChannel(String ch) {
+    /* ═══════════════ 通道自选 + 实时测速 ═══════════════
+     *
+     * 用户要的是「我自己挑一条通道」，以及「自动选最快的」。
+     *
+     * 关键约束：**绝不自动测速**。以前试过发车前探测各通道，结果用户
+     * 点完下载要干等几秒，比走错通道再换还难受。这里的测速只在用户
+     * 主动打开通道面板时才跑，而且是并发的、结果逐个显现，不阻塞任何
+     * 正在进行的下载。
+     */
+
+    /**
+     * 测速目标 —— **必须是真实的文件下载链接，不能用网页地址**。
+     *
+     * 这是上一版「只有一条通道测得出速度」的根因：
+     * 原来用的是 `https://github.com/Buwrt/githup`（一个普通网页），
+     * 而 ghproxy 这类加速镜像**只代理文件下载**（Release 附件、源码包、
+     * raw 文件），网页路径它们要么不认、要么回一段几十字节的 HTML 错误页 ——
+     * 于是绝大多数通道被判成「不可用」，只有个别镜像碰巧能代理网页才测出速度。
+     *
+     * 换成 Release 附件直链：这是所有镜像的标准用法，成功率天差地别。
+     * 文件约 1MB，读满 64KB 就够算速度了。
+     */
+    private static final String PROBE_TARGET =
+            "https://github.com/Buwrt/githup/releases/download/v1.2.15/githup-v1.2.15.apk";
+    /**
+     * 云速通道专用的测速目标 —— 必须是 **raw 类地址**。
+     *
+     * 见 {@link #measureChannel}：jsdelivr 只代理仓库文件，
+     * 用上面那个 Release 附件去测它一定 404。
+     */
+    private static final String PROBE_TARGET_RAW =
+            "https://raw.githubusercontent.com/Buwrt/githup/main/README.md";
+    /** 单条通道的测速预算（毫秒） */
+    private static final int PROBE_BUDGET_MS = 5_000;
+    /**
+     * 每条通道测多久（毫秒）。
+     *
+     * ⚠️ 原来是「读固定字节就停」，这是个 bug：
+     *   setReadTimeout 是**单次 read 的超时**，不是总时长。慢通道要花很久
+     *   才能凑够目标字节，于是它一直挂着，最后一律被判成「不可用」——
+     *   慢 ≠ 不可用，20KB/s 的通道明明能下，却被标成失败。
+     *   这就是「只有加速 3 能用」的真正原因：**不是别的镜像挂了，
+     *   是它们稍慢一点就被误判成死链**。
+     *
+     * 改成读固定时长：这个时间内读多少算多少，慢通道也能给出真实速度。
+     */
+    /*
+      通道从 10 条扩到 24 条后，一轮测速的总耗时必须压住，否则用户点开
+      面板要等很久才看到第一屏结果。所以窗口从 3 秒收到 2 秒 ——
+      2 秒足够读出几十 KB，算速度完全够用。
+    */
+    private static final int PROBE_WINDOW_MS = 2_000;
+    /** 单条通道最多读多少字节 —— 兜住快通道，也保证样本够大（太小算不准） */
+    private static final int PROBE_MAX_BYTES = 1024 * 1024;
+    /**
+     * 测速专用线程池（6 条）。
+     *
+     * · 不能跟下载任务抢 pool 那 8 条线程，否则排不上队；
+     * · 也不能一次全开 11 条：11 个 HTTPS 连接同时打出去会互相抢带宽，
+     *   在弱网下连首字节都挤不出来，本来能通的也会被挤成超时。
+     *   6 条一批，剩下的排队等空位，总耗时可控，结果也更准。
+     */
+    /** 是否在持续测速中（面板开着 = true） */
+    private volatile boolean probing = false;
+    /**
+     * 测速结果的新鲜度上限。
+     *
+     * 自动模式要拿「当前」最快的通道，但不能用一小时前的速度做决定 ——
+     * 那时最快的现在未必还快。超过这个时长没测过，就当没数据，退回固定
+     * 顺序，让换道机制去兜底。
+     */
+    private static final long PROBE_FRESH_MS = 10 * 60 * 1000L;
+    /** 最后一次跑完一整轮测速的时间戳（0 = 从没测过） */
+    private volatile long probeAt = 0;
+    /**
+     * 各通道连续失败次数。
+     *
+     * 通道从 10 扩到 24 之后，死链会明显变多。如果每轮都在这些死链上
+     * 完整等一遍超时，一轮能拖到一分钟以上 —— 用户点开面板半天看不到
+     * 结果，体验直接崩掉。
+     *
+     * 所以连续失败达到阈值就让这条「休眠」几轮：休眠期间直接标成不可用
+     * 并跳过，不发起连接。冷却结束后再给它一次机会（免费镜像随时可能
+     * 复活，不能永久拉黑）。
+     */
+    private final java.util.Map<String, Integer> probeFails =
+            new java.util.HashMap<>();
+    /** 连续失败几次进入休眠 */
+    private static final int PROBE_FAIL_MAX = 2;
+    /** 休眠几轮 */
+    private static final int PROBE_COOL_ROUNDS = 3;
+    /** 通道 key -> 还剩几轮休眠 */
+    private final java.util.Map<String, Integer> probeCool =
+            new java.util.HashMap<>();
+    /** 两轮测速之间的间隔（毫秒） */
+    private static final int PROBE_GAP_MS = 1_500;
+    /** 测速循环用的主线程 Handler */
+    private final android.os.Handler probeHandler =
+            new android.os.Handler(android.os.Looper.getMainLooper());
+    private final java.util.concurrent.ExecutorService probePool =
+            java.util.concurrent.Executors.newFixedThreadPool(8);
+
+    private final Object probeLock = new Object();
+    /** 通道 key -> 实测速度（字节/秒）；-1 = 不可用；没有这个 key = 还在测 */
+    private volatile java.util.Map<String, Long> probeBps = new java.util.HashMap<>();
+
+    /*
+      ═══════ 慢速建议 ═══════
+
+      思路来自 komi-store 的 SlowDownloadDetector：它自己不做加速，而是
+      **盯着速度，慢到一定程度就主动告诉用户「你该开镜像了」**。
+
+      为什么 githup 也需要这一层：换道是**静默**的 —— 用户只看到进度条
+      一直在爬，不知道软件已经在后台换了好几条通道，更不知道「其实可以
+      自己挑一条」。加上这一层之后，慢到一定程度会明确提示一次。
+
+      参数直接沿用 komi-store 的取值（它那套是调过的）：
+        · 观察窗口 30 秒 —— 太短会把「刚建连」误判成慢
+        · 慢的判据 < 100 KB/s
+        · 10 分钟内累计 3 次才提醒 —— 偶尔卡一下不打扰
+    */
+    /** 慢速事件的统计窗口 */
+    private static final long SLOW_WINDOW_MS = 10 * 60 * 1000L;
+    /** 单次「慢」的观察窗口（要持续这么久才算数） */
+    private static final long SLOW_SUSTAINED_MS = 30 * 1000L;
+    /** 低于这个速度算慢 */
+    private static final long SLOW_THRESHOLD_BPS = 100 * 1024L;
+    /** 窗口内累计几次才提醒 */
+    private static final int SLOW_TRIGGER = 3;
+    /** 提醒过一次之后的静默时长，避免反复弹 */
+    private static final long SLOW_SNOOZE_MS = 10 * 60 * 1000L;
+
+    /** 速度采样点 {时刻, 累计字节}，用于算 30 秒窗口内的平均速度 */
+    private final java.util.ArrayDeque<long[]> slowSamples = new java.util.ArrayDeque<>();
+    /** 每一次判定为「慢」的时刻 */
+    private final java.util.ArrayDeque<Long> slowEvents = new java.util.ArrayDeque<>();
+    private long slowSnoozeUntil = 0;
+
+    /**
+     * 喂一个速度采样点。
+     *
+     * 只在**已有数据进账**之后才喂（建连期一个字节都没有，那不是慢）。
+     * 窗口攒够 30 秒就算一次平均速度，低于阈值记一次慢事件。
+     */
+    private void noteSlowSample(long now, long sofar, long speed) {
+        slowSamples.addLast(new long[]{now, sofar});
+        while (!slowSamples.isEmpty() && slowSamples.peekFirst()[0] < now - SLOW_SUSTAINED_MS) {
+            slowSamples.pollFirst();
+        }
+        if (slowSamples.size() < 2) return;
+        long[] a = slowSamples.peekFirst();
+        long[] b = slowSamples.peekLast();
+        long span = b[0] - a[0];
+        if (span < SLOW_SUSTAINED_MS - 500) return;      /* 窗口还没攒满 */
+        long dB = b[1] - a[1];
+        if (dB < 0) dB = 0;
+        long avg = dB * 1000L / (span <= 0 ? 1 : span);
+        if (avg < SLOW_THRESHOLD_BPS) recordSlowEvent(now);
+    }
+
+    /** 记一次「慢」，够次数就提醒 */
+    private void recordSlowEvent(long now) {
+        slowEvents.addLast(now);
+        while (!slowEvents.isEmpty() && slowEvents.peekFirst() < now - SLOW_WINDOW_MS) {
+            slowEvents.pollFirst();
+        }
+        if (slowEvents.size() < SLOW_TRIGGER) return;
+        slowEvents.clear();
+        fireSlowAdvice(now);
+    }
+
+    /**
+     * 真的提醒一次。
+     *
+     * 三道闸，缺一个都会变成骚扰：
+     *   1) 用户点过「不再提示」 —— 永久不问（存盘）
+     *   2) 刚提醒过 —— 静默 10 分钟
+     *   3) 用户**已经手动指定过通道** —— 他自己挑过了，再说就是废话
+     *      （这一条对应 komi-store 里「已经开了镜像就不再建议」）
+     */
+    private void fireSlowAdvice(long now) {
+        try {
+            android.content.SharedPreferences sp =
+                    activity.getSharedPreferences(PREF_DL, Context.MODE_PRIVATE);
+            if (sp.getBoolean(KEY_ADVICE_OFF, false)) return;
+            if (now < slowSnoozeUntil) return;
+            String pref = readPreferredChannel();
+            if (pref != null && !pref.isEmpty() && !"auto".equals(pref)) return;
+            slowSnoozeUntil = now + SLOW_SNOOZE_MS;
+            runJs("(function(){try{window.DlAdvice && window.DlAdvice.show();}catch(e){}})()");
+        } catch (Throwable ignored) { }
+    }
+
+    /** 用户点了「不再提示」 */
+    @JavascriptInterface
+    public void dismissSlowAdvice() {
         try {
             activity.getSharedPreferences(PREF_DL, Context.MODE_PRIVATE)
-                    .edit().putString(KEY_CHANNEL, ch).apply();
+                    .edit().putBoolean(KEY_ADVICE_OFF, true).apply();
         } catch (Throwable ignored) { }
+    }
+
+    /** 用户指定的通道 key；空 = 自动（按 MIRRORS 固定顺序） */
+    private String readPreferredChannel() {
+        try {
+            return activity.getSharedPreferences(PREF_DL, Context.MODE_PRIVATE)
+                    .getString(KEY_CH_PREF, "");
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
+    private void savePreferredChannel(String key) {
+        try {
+            activity.getSharedPreferences(PREF_DL, Context.MODE_PRIVATE)
+                    .edit().putString(KEY_CH_PREF, key == null ? "" : key).apply();
+        } catch (Throwable ignored) { }
+    }
+
+    /** 当前选中的通道 key（前端用来打勾）；空串 = 自动 */
+    @JavascriptInterface
+    public String getChannel() {
+        return readPreferredChannel();
+    }
+
+    /**
+     * 选定通道。
+     *
+     * key = "auto"：自动 —— 取当前测速结果里最快的那条；还没测过就清空，
+     * 走默认的固定顺序。
+     * key = 某条通道（如 "https://ghfast.top/" 或 "direct"）：锁定它。
+     */
+    @JavascriptInterface
+    public void setChannel(String key) {
+        if (key == null) key = "";
+        /*
+          自动模式存的就是 "auto" 这个**模式**，不是当时最快的那条通道。
+
+          以前是把当时最快的那条锁死写进 prefs —— 那不叫自动，那叫
+          「在某一瞬间自动了一次」，之后速度怎么变都跟它无关了。
+          存 "auto" 之后，每次发车都重新去查当前最快的那条，
+          实时数据变了，起步通道跟着变。
+        */
+        savePreferredChannel(key);
+    }
+
+    /** 已知测速结果里最快的那条；没有新鲜结果返回 null */
+    private String fastestKnownChannel() {
+        return fastestKnownChannel(-1);
+    }
+
+    /**
+     * 已知测速结果里最快的那条。
+     *
+     * @param maxAgeMs 允许的最大数据年龄；<0 表示用默认新鲜度（PROBE_FRESH_MS）
+     * @return 最快的通道 key；没有结果 / 数据过期 返回 null
+     */
+    private String fastestKnownChannel(long maxAgeMs) {
+        long budget = maxAgeMs < 0 ? PROBE_FRESH_MS : maxAgeMs;
+        long at = probeAt;
+        if (at <= 0) return null;                                  // 从没测过
+        if (System.currentTimeMillis() - at > budget) return null;  // 数据过期
+        String best = null;
+        long bv = 0;
+        synchronized (probeLock) {
+            for (java.util.Map.Entry<String, Long> e : probeBps.entrySet()) {
+                Long v = e.getValue();
+                if (v == null || v <= 0) continue;
+                if (v > bv) { bv = v; best = e.getKey(); }
+            }
+        }
+        return best;
+    }
+
+    /* ═══════════ 预热：让面板一打开就有数字 ═══════════
+     *
+     * 原先只在用户点开面板时才起测，于是总要「测量中…」等几秒。
+     * 改成后台提前测好：结果落盘，面板打开时先显示上次成绩，
+     * 同时在后台刷新一轮 —— 数字立刻可见，且是新鲜的。
+     */
+
+    /** 预热结果的有效期：超过就重新测 */
+    private static final long PROBE_TTL_MS = 10 * 60 * 1000L;
+    /** 上次预热完成的时间戳 */
+    private static final String SP_PROBE_AT = "probe_at";
+    /** 上次预热结果："key:bps|key:bps" */
+    private static final String SP_PROBE_VAL = "probe_val";
+
+    /** 启动时调用：有缓存且还新鲜就直接用，否则后台静默测一轮 */
+    void warmupChannelProbe() {
+        long at = 0;
+        try {
+            at = activity.getSharedPreferences(PREF_DL, Context.MODE_PRIVATE)
+                    .getLong(SP_PROBE_AT, 0);
+        } catch (Throwable ignored) { }
+        if (System.currentTimeMillis() - at < PROBE_TTL_MS) {
+            loadCachedProbe();          // 有新鲜缓存，直接用
+            return;
+        }
+        /* 有正在下载的任务就不凑热闹 —— 别跟用户抢带宽 */
+        if (!downloads.isEmpty()) return;
+        /*
+          后台预热只跑**一轮**，不进持续模式 —— 那时面板没开，没必要
+          一直跑；跑一轮把成绩存下来，用户下次打开面板就能立刻看到数字。
+        */
+        synchronized (probeLock) { probing = false; }
+        runProbeRound();
+    }
+
+    private void loadCachedProbe() {
+        try {
+            android.content.SharedPreferences sp =
+                    activity.getSharedPreferences(PREF_DL, Context.MODE_PRIVATE);
+            String raw = sp.getString(SP_PROBE_VAL, "");
+            if (raw == null || raw.isEmpty()) return;
+            java.util.Map<String, Long> m = new java.util.HashMap<>();
+            for (String seg : raw.split("\\|")) {
+                if (seg.isEmpty()) continue;
+                int c = seg.lastIndexOf(':');
+                if (c <= 0) continue;
+                try {
+                    m.put(seg.substring(0, c), Long.parseLong(seg.substring(c + 1)));
+                } catch (NumberFormatException ignored) { }
+            }
+            if (!m.isEmpty()) {
+                synchronized (probeLock) { probeBps = m; }
+                /* 缓存里的时间戳也恢复，否则进程重启后自动选择会以为没数据 */
+                probeAt = sp.getLong(SP_PROBE_AT, 0);
+            }
+        } catch (Throwable ignored) { }
+    }
+
+    private void saveCachedProbe() {
+        try {
+            StringBuilder sb = new StringBuilder();
+            synchronized (probeLock) {
+                boolean first = true;
+                for (java.util.Map.Entry<String, Long> e : probeBps.entrySet()) {
+                    if (first) first = false; else sb.append('|');
+                    sb.append(e.getKey()).append(':').append(e.getValue());
+                }
+            }
+            activity.getSharedPreferences(PREF_DL, Context.MODE_PRIVATE)
+                    .edit()
+                    .putString(SP_PROBE_VAL, sb.toString())
+                    .putLong(SP_PROBE_AT, System.currentTimeMillis())
+                    .apply();
+        } catch (Throwable ignored) { }
+    }
+
+    /**
+     * 开启**持续**测速：跑完一轮自动接着跑下一轮，速度数字一直在跳。
+     *
+     * 用户要的是「实时数据」—— 面板开着就一直在测，能看到各通道此刻的
+     * 快慢，而不是测一次定终身。所以这里不是测完即止，而是循环。
+     *
+     * 必须调 stopChannelProbe() 收摊，否则面板关了线程还在跑（费电、费流量）。
+     */
+    @JavascriptInterface
+    public void startChannelProbe() {
+        synchronized (probeLock) {
+            probing = true;
+            /* 用户主动打开面板：清空休眠，给所有通道一次机会。
+               冷却只是为了避免死链拖慢轮询，不该拦着用户主动测。 */
+            probeCool.clear();
+            probeFails.clear();
+            /*
+              ⚠️ 这里**不要清空** probeBps。
+
+              清空的话每轮一开始所有通道都变回「测量中」，界面整片闪一下
+              再逐个出数字 —— 看着像卡了，也不是「实时」该有的样子。
+              保留上一轮的值，新结果回来时逐个替换，数字直接跳变，
+              这才是持续刷新。只有第一次打开（本来就没值）才会显示
+              「测量中」。
+            */
+        }
+        runProbeRound();
+    }
+
+    /** 停止持续测速。面板关闭时必须调 */
+    @JavascriptInterface
+    public void stopChannelProbe() {
+        synchronized (probeLock) {
+            probing = false;
+        }
+        saveCachedProbe();
+    }
+
+    /** 跑一轮：11 条通道并发，全部回来后如果还在「持续」就自动接下一轮 */
+    private void runProbeRound() {
+        final java.util.List<String> keys = new java.util.ArrayList<>();
+        for (String m : DownloadChannels.MIRRORS) keys.add(m);
+        keys.add(DownloadChannels.DIRECT);
+        final java.util.concurrent.atomic.AtomicInteger left =
+                new java.util.concurrent.atomic.AtomicInteger(keys.size());
+        for (final String k : keys) {
+            probePool.execute(new Runnable() {
+                @Override public void run() {
+                    /*
+                      ⚠️ measureChannel() 必须在锁**外**跑。
+
+                      它一次要花几秒（连接 + 读 2 秒窗口）。如果握着
+                      probeLock 去调它，24 条通道就得一条一条排队 ——
+                      并发线程池形同虚设，一轮要跑好几分钟。
+                      只在更新结果那一小段加锁。
+                    */
+                    boolean sleep = false;
+                    synchronized (probeLock) {
+                        Integer cool = probeCool.get(k);
+                        if (cool != null && cool > 0) {
+                            /* 休眠中：直接判不可用，不发起连接。
+                               省下的正是「等一个死链超时」的那几秒。 */
+                            probeCool.put(k, cool - 1);
+                            sleep = true;
+                        }
+                    }
+                    long bps = sleep ? -1 : measureChannel(k);
+                    synchronized (probeLock) {
+                        if (!sleep) {
+                            if (bps < 0) {
+                                int f = (probeFails.get(k) == null ? 0 : probeFails.get(k)) + 1;
+                                probeFails.put(k, f);
+                                if (f >= PROBE_FAIL_MAX) {
+                                    probeCool.put(k, PROBE_COOL_ROUNDS);
+                                    probeFails.put(k, 0);
+                                }
+                            } else {
+                                probeFails.put(k, 0);   // 活了就清零
+                            }
+                        }
+                        probeBps.put(k, bps);
+                    }
+                    /* 全部跑完才落盘：写一半的结果没意义，而且下次读进来
+                       会缺几条，面板上就又出现「测量中」。 */
+                    if (left.decrementAndGet() != 0) return;
+                    /* 整轮跑完，这批数据才算「新鲜」，可以拿去做自动选择 */
+                    probeAt = System.currentTimeMillis();
+                    saveCachedProbe();
+                    boolean goon;
+                    synchronized (probeLock) { goon = probing; }
+                    if (!goon) return;
+                    /* 两轮之间喘口气：既避免把镜像打得太狠（都是免费服务），
+                       也让用户有时间看清上一轮的数字。 */
+                    probeHandler.postDelayed(new Runnable() {
+                        @Override public void run() {
+                            boolean goon2;
+                            synchronized (probeLock) { goon2 = probing; }
+                            if (goon2) runProbeRound();
+                        }
+                    }, PROBE_GAP_MS);
+                }
+            });
+        }
+    }
+
+    /** 测一条通道：连上、读一小段，用耗时算吞吐。失败/超时返回 -1 */
+    private long measureChannel(String key) {
+        String url;
+        if (DownloadChannels.DIRECT.equals(key)) {
+            url = PROBE_TARGET;
+        } else if (DownloadChannels.isTemplated(key)) {
+            /*
+              云速（jsdelivr）只代理仓库文件，拿 Release 附件去测必然 404。
+              必须换一个 raw 类目标，否则面板上它会永远显示「不可用」——
+              而实际上它是最快的那条（CI 实测 155MB/s）。
+            */
+            url = DownloadChannels.templatedUrl(PROBE_TARGET_RAW);
+            if (url == null) return -1;
+        } else {
+            url = key + PROBE_TARGET;
+        }
+        HttpURLConnection c = null;
+        try {
+            c = (HttpURLConnection) new URL(url).openConnection();
+            c.setRequestMethod("GET");
+            c.setInstanceFollowRedirects(true);
+            c.setConnectTimeout(PROBE_BUDGET_MS);
+            c.setReadTimeout(PROBE_BUDGET_MS);
+            c.setRequestProperty("User-Agent", "githup");
+            /* 只要前几十 KB 就能算出吞吐，没必要把整个文件拉完 ——
+               顺带避免「测个速度反而吃掉用户几十 MB 流量」 */
+            c.setRequestProperty("Range", "bytes=0-" + (PROBE_MAX_BYTES - 1));
+            int code = c.getResponseCode();
+            /* 206 = 服务端支持断点续传（我们主动要了 Range），这是正常且更快的；
+               200 = 不支持 Range，直接从头读也一样算。两者都算通。 */
+            if (code != 200 && code != 206 && (code < 200 || code >= 400)) return -1;
+            InputStream in = null;
+            byte[] buf = new byte[16 * 1024];
+            long got = 0;
+            long firstByteAt = 0;
+            long last = 0;
+            try {
+                in = c.getInputStream();
+                int n;
+                /*
+                  ⚠️ 计时的起点必须是**首字节到达**，不是「发起请求」。
+
+                  这里踩过一个坑：上一版把 t0 取在 getResponseCode() 之前，
+                  deadline = t0 + 3 秒。但 getResponseCode() 要完成 DNS、
+                  TLS 握手、等响应头 —— 第三方镜像是跨国代理，光这一步
+                  常常就要 2~4 秒。等它返回时 3 秒窗口已经用光，循环一次
+                  都不执行，got 恒为 0，于是**所有通道**一律被判成
+                  「不可用」。本来能用的加速 3 也跟着挂了。
+
+                  连接慢 ≠ 通道死。所以：
+                    · 连接 / 等响应头的耗时**不计入**速度窗口
+                    · 首字节迟迟不来（超过 read timeout）才算真不通，
+                      由 SocketTimeoutException 兜住
+                    · 窗口从首字节起算，这段才真正反映吞吐
+                */
+                while (got < PROBE_MAX_BYTES && (n = in.read(buf)) > 0) {
+                    long now = android.os.SystemClock.elapsedRealtime();
+                    if (got == 0) {
+                        firstByteAt = now;                      // 首字节到达，开始计窗口
+                    } else if (now - firstByteAt >= PROBE_WINDOW_MS) {
+                        break;                                  // 窗口到了，收
+                    }
+                    got += n;
+                    last = now;
+                }
+            } finally {
+                if (in != null) { try { in.close(); } catch (Throwable ignored) { } }
+            }
+            /* 一个字节都没读到 = 这条通道根本没在送数据，才算真不可用 */
+            if (got <= 0) return -1;
+            /*
+              正常情况 dt 会接近 3 秒（读满窗口）。只有流提前结束时 dt 才小。
+              给个 200ms 的下限：只捞到一两包就结束的话，直接除会算出
+              天文数字（16KB / 1ms = 16MB/s），那不是真实速度。
+            */
+            /*
+              ⚠️ 下限 200ms + 上限 512KB，天花板只有 512KB/0.2s ≈ 2.6MB/s。
+
+              快通道几十毫秒就把 512KB 读完了，dt 被硬拉到 200ms，
+              算出来一律是 2.5 MB/s —— 面板上所有能用的通道都显示同一个
+              数字，用户根本分不出哪条更快，「测速」就白测了。
+
+              所以样本放大到 1MB、下限收到 100ms：天花板抬到约 10MB/s，
+              快通道之间就能拉开差距。慢通道读不满 1MB 也不会多耗流量
+              —— 窗口到了就收，不是非得读满。
+            */
+            long dt = last - firstByteAt;
+            if (dt < 100) dt = 100;
+            return got * 1000L / dt;
+        } catch (Throwable t) {
+            return -1;
+        } finally {
+            if (c != null) { try { c.disconnect(); } catch (Throwable ignored) { } }
+        }
+    }
+
+    /**
+     * 通道列表 + 各自的实时速度。
+     *
+     * state: pending（还在测）/ ok / fail
+     */
+    @JavascriptInterface
+    public String channelProbe() {
+        org.json.JSONArray out = new org.json.JSONArray();
+        synchronized (probeLock) {
+            int i = 0;
+            for (String m : DownloadChannels.MIRRORS) {
+                i++;
+                /* 第二组是未经实测的候选，界面上标注出来 —— 用户看到
+                   「候选」就知道这条可能压根用不了，别误以为软件坏了。 */
+                boolean verified = i <= DownloadChannels.VERIFIED_COUNT;
+                /* 名字统一走 channelLabel：第 1 条叫「云析通道」、第 2 条
+                 * 「云速通道」，其后「加速1」「加速2」…。i 从 1 起，减 1 换下标。 */
+                out.put(channelItem(m, DownloadChannels.channelLabel(i - 1), hostOf(m),
+                        probeBps.get(m), verified));
+            }
+            out.put(channelItem(DownloadChannels.DIRECT, "直连", "github.com",
+                    probeBps.get(DownloadChannels.DIRECT), true));
+        }
+        return out.toString();
+    }
+
+    private static org.json.JSONObject channelItem(String key, String name,
+                                                   String host, Long bps,
+                                                   boolean verified) {
+        org.json.JSONObject o = new org.json.JSONObject();
+        try {
+            o.put("key", key);
+            o.put("name", name);
+            o.put("host", host);
+            o.put("verified", verified);
+            /* 适用范围（云速 = 「仅仓库文件」），前端原样显示 */
+            String sc = DownloadChannels.scopeOf(key);
+            if (sc != null && !sc.isEmpty()) o.put("scope", sc);
+            if (bps == null) {
+                o.put("state", "pending");
+                o.put("bps", 0);
+            } else if (bps < 0) {
+                o.put("state", "fail");
+                o.put("bps", 0);
+            } else {
+                o.put("state", "ok");
+                o.put("bps", bps.longValue());
+            }
+        } catch (Throwable ignored) { }
+        return o;
+    }
+
+    /** "https://ghfast.top/" -> "ghfast.top" */
+    private static String hostOf(String mirrorPrefix) {
+        try {
+            String h = mirrorPrefix;
+            int i = h.indexOf("://");
+            if (i >= 0) h = h.substring(i + 3);
+            while (h.endsWith("/")) h = h.substring(0, h.length() - 1);
+            return h;
+        } catch (Throwable t) {
+            return mirrorPrefix;
+        }
     }
 
     /**
      * 生成候选下载地址。具体规则（哪些域名可加速、带令牌必须直连）
      * 都在 DownloadChannels 里，那边是纯逻辑、能单测。
+     *
+     * 用户手动挑过通道的话，把那条顶到最前 —— 这是「客户选择哪个就走
+     * 哪个通道」的落点。没挑过（自动）就保持固定顺序。
      */
     private List<String> candidateUrls(String url, boolean allowMirror) {
-        return DownloadChannels.candidates(url, allowMirror, readLastChannel());
+        List<String> c = DownloadChannels.candidates(url, allowMirror);
+        String pref = readPreferredChannel();
+        if (pref == null || pref.isEmpty() || c.size() <= 1) return c;
+
+        /*
+          自动模式：**每次发车都重新查**当前最快的那条。
+
+          这里就是「实时选择」的落点 —— 存的不是某条通道，而是 "auto"
+          这个意图，所以实时数据变了，起步通道跟着变，不需要用户再点一次。
+
+          查不到新鲜数据（从没测过 / 结果过期）就退回固定顺序，
+          剩下的交给换道机制：走错了也会被 switchChannel 换掉。
+        */
+        final boolean isAuto = "auto".equals(pref);
+        if (isAuto) {
+            String best = fastestKnownChannel();
+            if (best == null) return c;
+            pref = best;
+        }
+
+        /*
+          ⚠️ 手动挑的通道可能**压根进不了候选链**。
+
+          云速（jsdelivr）只代理仓库文件，下载 Release 附件时 buildUrl
+          返回 null，candidates() 直接把它剔掉了。于是下面的循环一条都
+          匹配不上，什么都不做 —— 候选链保持原样，下载照常成功。
+
+          结果就是用户看到的怪事：明明选了云速、面板上它还标着「不可用」，
+          东西却下载下来了。**因为压根没走它**。以前这里静默跳过，用户
+          只能自己猜。现在说明白：它适用于哪类文件、这次实际走了哪条。
+        */
+        if (!isAuto && !c.isEmpty()) {
+            boolean hit = false;
+            for (String u : c) {
+                if (pref.equals(DownloadChannels.channelKey(u))) { hit = true; break; }
+            }
+            if (!hit) {
+                final String why = DownloadChannels.isTemplated(pref)
+                        ? "（这条只代理仓库里的文件，Release 附件用不上）"
+                        : "";
+                int ri = indexOfKey(c.get(0));
+                final String real = ri < 0 ? "直连"
+                        : DownloadChannels.channelLabel(ri);
+                activity.runOnUiThread(() -> Toast.makeText(activity,
+                        "已选通道不适用于这个文件" + why + "，本次改用" + real,
+                        Toast.LENGTH_LONG).show());
+                return c;
+            }
+        }
+
+        for (int i = 0; i < c.size(); i++) {
+            if (pref.equals(DownloadChannels.channelKey(c.get(i)))) {
+                String hit = c.remove(i);
+                c.add(0, hit);
+                break;
+            }
+        }
+        return c;
+    }
+
+    /**
+     * 候选链第一条在 MIRRORS 里的下标（用来取名字）；直连返回 -1。
+     *
+     * 注意传进来的已经是**拼好的**地址（mirror + 原 URL），所以只能拿
+     * host 反查 —— 再用 buildUrl 正推会拼成「前缀 + 前缀 + 原地址」，
+     * 一条都匹配不上。
+     */
+    private static int indexOfKey(String builtUrl) {
+        String h = hostOf(builtUrl);
+        if (h == null || h.isEmpty()) return -1;
+        for (int i = 0; i < DownloadChannels.MIRRORS.length; i++) {
+            if (h.equals(hostOf(DownloadChannels.MIRRORS[i]))) return i;
+        }
+        return -1;
     }
 
     /**
@@ -3240,6 +4804,109 @@ public class JsBridge {
      */
     private static final long QUIET_FAIL_MS = 8_000;
 
+    /**
+     * 续传的最小 worthwhile 字节数。
+     *
+     * 只拿到几十 KB 就换道的话，续传省下的时间和一次探测请求的开销差不多，
+     * 还多一层出错的可能 —— 不如干净地重来。
+     */
+    /**
+     * 接管续传的最低字节数。
+     *
+     * ═══ 为什么从 128KB 降到 32KB ═══
+     *
+     * 这个门槛和「换道时机」是打架的：
+     *
+     *   换道是因为**慢**（连续两轮低于 15KB/s）才换 —— 慢就意味着下得少。
+     *   宽限 3 秒 + 两轮 1.5 秒 ≈ 6 秒，按临界 15KB/s 算也就 90KB，
+     *   **根本到不了 128KB**。于是每次换道都因为「字节不够」放弃续传、
+     *   整份重下 —— 用户看到的就是「换个通道，进度条回到 0，白等半天」。
+     *
+     *   换句话说：门槛定得越高，越是只有「下得快」的通道才能续传，
+     *   而真正需要续传的恰恰是那些下得慢的。
+     *
+     * 32KB 的理由：低于这个量级，省下的时间还不如一次连接的建立开销；
+     * 高于它就开始有净收益。换道场景下这个量级是够得着的。
+     */
+    private static final long RESUME_MIN_BYTES = 32 * 1024;
+    /**
+     * 接管连续失败几次才放弃续传（见 switchChannel）。
+     *
+     * 为什么不是失败一次就放弃：读不到 DownloadManager 的半成品常常只是
+     * 「这一次没读到」，判成终身的话后面每次换道都必然整份重下。
+     */
+    private static final int RESUME_FAIL_LIMIT = 3;
+    /**
+     * 进度保护：已经下了这么多字节之后，**仅仅因为「慢」就不再换道**。
+     *
+     * ═══ 为什么 ═══
+     *
+     * 换道必然要换 URL，而 DownloadManager 换 URL 就没法续传（每次
+     * enqueue 都是独立任务、写进独立文件）。接管半成品这条路又不一定
+     * 读得到（见 copyPrefixToPart）。所以换道的真实代价是：
+     * **已经下好的那部分可能全部作废，进度归零。**
+
+     * 已经下了 1MB 说明通道是通的，只是慢。这时候继续等，大概率比
+     * 「扔掉 1MB 从头再来」更快 —— 尤其新通道未必更好。
+
+     * 完全停滞（一个字节都不来）和连接超时不受这条限制：那种情况下
+     * 已下载量往往很小，且等下去没有意义。
+     */
+    private static final long KEEP_GOING_BYTES = 1024L * 1024L;
+    /**
+     * 但也不能因为「已经下了不少」就永远死等：速度低到这个程度
+     * （MIN_SPEED_BPS 的四分之一）说明通道基本废了，重来比干等划算。
+     */
+    private static final long GIVE_UP_SPEED_BPS = MIN_SPEED_BPS / 4;
+
+    /* 换道预检的探测超时常量已删 —— 那次探测本身已经去掉，
+       见 switchChannel 里的说明（省掉一整次往返）。 */
+
+    /**
+     * 读磁盘上这个文件的真实大小（字节），读不到返回 -1。
+     *
+     * Android 10+ 走 MediaStore：分区存储下 App 自己按路径 stat 会被拒，
+     * 而 DownloadManager 落盘的文件就是在公共 Downloads 里，MediaStore
+     * 查得到。Android 9 及以下直接看文件。
+     */
+    private long downloadedFileSize(String name, String category) {
+        if (name == null || name.isEmpty()) return -1;
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                String rel = "Download/" + DOWNLOAD_SUBDIR
+                        + (category == null || category.isEmpty() ? "" : "/" + safeCategory(category));
+                /* 有的 ROM 存相对路径时带尾斜杠、有的不带，两种都试 */
+                String[] rels = { rel + "/", rel };
+                for (String r : rels) {
+                    android.database.Cursor c = null;
+                    try {
+                        c = activity.getContentResolver().query(
+                                android.provider.MediaStore.Downloads.getContentUri(
+                                        android.provider.MediaStore.VOLUME_EXTERNAL),
+                                new String[]{ android.provider.MediaStore.MediaColumns.SIZE },
+                                android.provider.MediaStore.MediaColumns.DISPLAY_NAME + "=? AND "
+                                        + android.provider.MediaStore.MediaColumns.RELATIVE_PATH + "=?",
+                                new String[]{ name, r }, null);
+                        if (c != null && c.moveToFirst()) {
+                            int i = c.getColumnIndex(android.provider.MediaStore.MediaColumns.SIZE);
+                            return i >= 0 ? c.getLong(i) : -1;
+                        }
+                    } catch (Throwable ignored) {
+                    } finally {
+                        if (c != null) { try { c.close(); } catch (Throwable ignored) { } }
+                    }
+                }
+                return -1;
+            }
+            File dir = publicDownloadDir(category);
+            if (dir == null) return -1;
+            File f = new File(dir, name);
+            return f.exists() ? f.length() : -1;
+        } catch (Throwable ignored) {
+            return -1;
+        }
+    }
+
     private void finishDownload(final long id) {
         final DlTask t = downloads.remove(id);
         if (t == null) return;          // 已经被别的入口收尾过了
@@ -3267,7 +4934,13 @@ public class JsBridge {
             switchChannel(t, "下载失败", bytes, isQuickGiveUp(t));
             return;
         }
-        if (t.expectedBytes > 0 && bytes > 0 && bytes != t.expectedBytes) {
+        /*
+          续传时 DownloadManager 报的 bytes 只是**这一段**的长度
+          （它不知道之前已经有了多少）。所以判断「下全了没有」必须加上起点。
+        */
+        long totalBytes = t.resumeFrom + bytes;
+
+        if (t.expectedBytes > 0 && totalBytes > 0 && totalBytes != t.expectedBytes) {
             /*
               大小对不上 —— 这不是「下载失败」那么明显，但同样不能用。
               最常见的成因是镜像返回了一段残缺的文件（下到一半断了却报了
@@ -3278,35 +4951,76 @@ public class JsBridge {
               Content-Length 与 DownloadManager 的统计口径偶尔差几字节，
               卡死在完全相等会把好包也拦掉。
             */
-            long diff = Math.abs(bytes - t.expectedBytes);
+            long diff = Math.abs(totalBytes - t.expectedBytes);
             if (diff > SIZE_TOLERANCE) {
                 /* lambda 里用到的都必须是 final / effectively final，
                    所以 LOST 要在外面先取好 */
                 final long got = bytes;
                 final String ch = t.channel();
                 final boolean quiet = isQuickGiveUp(t);
+                /*
+                  续传出来的大小不对：多半是这台机器的 DownloadManager 把
+                  续传的内容写进了新文件（而不是追加到原来那个半截文件），
+                  于是磁盘上要么只有尾巴、要么是两份叠在一起。
+
+                  认栽：这个任务从此不续传，整份重下一次。
+                  只认栽一次 —— 之后 noResume 一直为真，不会再白白多试。
+                */
+                if (t.resumeFrom > 0 && !t.noResume) {
+                    t.noResume = true;
+                    t.resumeFrom = 0;
+                    activity.runOnUiThread(() -> switchChannel(t, "续传失败，重新下载", 0, true));
+                    return;
+                }
                 activity.runOnUiThread(() -> switchChannel(t, "文件不完整（" + ch + "）", got, quiet));
                 return;
             }
         }
-        final long size = bytes;
+        /*
+          续传后的第二道校验：**看磁盘上真实的大小**。
+
+          上面那道用的是 DownloadManager 报的数字，它只反映这一段；
+          这里读的是文件的实际长度，能抓出「续传的内容没追加到原文件上」
+          这种情况 —— 那是最容易得到坏包的一种失败。
+
+          对不上就按上面同一套处理：认栽一次，之后整份重下。
+        */
+        if (t.resumeFrom > 0 && t.expectedBytes > 0) {
+            long real = downloadedFileSize(t.savedName, t.category);
+            if (real > 0 && Math.abs(real - t.expectedBytes) > SIZE_TOLERANCE) {
+                if (!t.noResume) {
+                    t.noResume = true;
+                    t.resumeFrom = 0;
+                    activity.runOnUiThread(() -> switchChannel(t, "续传失败，重新下载", 0, true));
+                    return;
+                }
+                final long got2 = bytes;
+                final String ch2 = t.channel();
+                activity.runOnUiThread(() -> switchChannel(t, "文件不完整（" + ch2 + "）", got2, true));
+                return;
+            }
+            if (real > 0) totalBytes = real;
+        }
+        final long size = totalBytes;
         activity.runOnUiThread(() -> {
             /*
-              这条通道跑通了，记下来 —— 下次同网络环境直接先试它。
+              不再记录「上次哪条通道通了」。
 
-              但**直连不记**：它是兜底通道，candidates() 里永远排在最后，
-              记了也没用；更麻烦的是它会被下一次的「上次通道」逻辑误读成
-              「这网络直连能通，优先直连」，而这正是 1.1.4 之前下载变慢的根源。
-              只记镜像通道，语义才干净：记的是「哪条加速通」。
+              那套记忆会让**每一次**下载都被历史上某一次偶然的成功改写顺序 ——
+              用户看到的就是「一上来就是加速 3」，而它此刻未必还快。
+              去掉之后起步永远按 MIRRORS 的固定顺序（加速 1 优先），
+              慢了照旧走 switchChannel 换道，行为可预期。
             */
-            String okChannel = t.channelKey();
-            if (!DownloadChannels.DIRECT.equals(okChannel)) saveLastChannel(okChannel);
             addHistory(t, true, size);
             boolean isApk = t.filename.toLowerCase().endsWith(".apk");
             if (!inst && !isApk) {
                 /* 普通文件：下完告诉一声存哪了，省得去 Download 里翻 */
+                /* 子目录要带上：文件按来源分目录存放（Download/githup/release/…），
+                 * 提示里只说 githup/ 的话用户去根目录找不到，会以为下载丢了。 */
+                String catNow = safeCategory(t.category);
                 Toast.makeText(activity,
-                        "已保存到 Download/" + DOWNLOAD_SUBDIR + "/" + t.filename,
+                        "已保存到 Download/" + DOWNLOAD_SUBDIR +
+                                (catNow.isEmpty() ? "" : "/" + catNow) + "/" + t.filename,
                         Toast.LENGTH_SHORT).show();
                 return;
             }
@@ -3327,7 +5041,10 @@ public class JsBridge {
 
             /* 交给外部（安装器）的地址统一用 content://：
              * DownloadManager 给的 file:// 在 Android 7+ 会被静默拦掉。 */
-            Uri uri = DownloadProvider.uriFor(activity.getPackageName(), name);
+            /* 带上 category（release / 议题）：文件按来源分目录存放，
+             * 不带的话 openFile 会去根目录找，子目录里的包会
+             * FileNotFoundException → 被误判成「校验失败」而拦下安装。 */
+            Uri uri = DownloadProvider.uriFor(activity.getPackageName(), name, t.category);
 
             /* 校验读文件必须走 DownloadManager 自己的地址，不要手拼公共目录路径 ——
              * Android 10+ 分区存储下那条路径拿不到文件，会把完好的包误判成
@@ -3382,6 +5099,10 @@ public class JsBridge {
 
     /** 删除某个已完成下载产出的文件（走 DownloadManager 的地址，别拼路径） */
     private boolean deleteDownloadedFile(long downloadId, String name) {
+        return deleteDownloadedFile(downloadId, name, "");
+    }
+
+    private boolean deleteDownloadedFile(long downloadId, String name, String sub) {
         boolean gone = false;
         DownloadManager dm = (DownloadManager) activity.getSystemService(Context.DOWNLOAD_SERVICE);
         if (dm != null && downloadId > 0) {
@@ -3389,21 +5110,177 @@ public class JsBridge {
             try { gone = dm.remove(downloadId) > 0; } catch (Throwable ignored) { }
         }
         /* 再按名字兜一次：老记录（升级前下载的）里没有 dlId，
-         * 或者记录已经不在 DownloadManager 里了，就按文件名找 */
+         * 或者记录已经不在 DownloadManager 里了，就按文件名找。
+         * 子目录要带上，否则删不到分目录存放的文件。 */
         try {
-            File f = DownloadProvider.resolve(activity, name);
+            File f = DownloadProvider.resolve(activity, name, sub);
             if (f != null && f.exists() && f.delete()) gone = true;
         } catch (Throwable ignored) { }
+        try {
+            File direct = subOf(sub, name);
+            if (direct != null && direct.exists() && direct.delete()) gone = true;
+        } catch (Throwable ignored) { }
+        return gone;
+    }
+
+    /**
+     * 目标位置有没有叫这个名字的文件。
+     *
+     * 精确点名，不去枚举整个目录：只问「这个目录里有没有这个文件」。
+     *
+     * · Android 10+：MediaStore 按 DISPLAY_NAME + RELATIVE_PATH 精确匹配。
+     *   有的 ROM 给 RELATIVE_PATH 带尾斜杠、有的不带，两种都试一遍。
+     *   ⚠️ 不能拿 DownloadManager 历史的路径尾段当依据 —— 在 Android 10+
+     *   上 COLUMN_LOCAL_FILENAME 已废弃（多数机型直接给 null），退回
+     *   COLUMN_LOCAL_URI 拿到的是 content://…/12345，取尾段得到的是**数字 id**
+     *   而不是文件名，永远匹配不上。
+     * · Android 9 及以下：直接 File.exists()。
+     *
+     * 查不到一律当「没有」 —— 宁可偶尔覆盖，也不能因为查不动就拒绝下载。
+     */
+    private boolean nameExistsInDownloads(String name, String category, boolean subDir) {
+        if (name == null || name.isEmpty()) return false;
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            try {
+                File f = new File(publicDownloadDir(safeCategory(category)), safeName(name));
+                return f.exists();
+            } catch (Throwable ignored) {
+                return false;
+            }
+        }
+        String rel = DOWNLOAD_SUBDIR + "/" + safeName(name);
+        String cat = safeCategory(category);
+        if (subDir && !cat.isEmpty()) rel = DOWNLOAD_SUBDIR + "/" + cat + "/" + safeName(name);
+        String relSlash = rel + "/";
+        android.content.ContentResolver cr = activity.getContentResolver();
+        for (String r : new String[]{rel, relSlash}) {
+            Cursor c = null;
+            try {
+                c = cr.query(MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL),
+                        new String[]{MediaStore.MediaColumns._ID},
+                        MediaStore.MediaColumns.DISPLAY_NAME + "=? AND "
+                                + MediaStore.MediaColumns.RELATIVE_PATH + "=?",
+                        new String[]{safeName(name), r}, null);
+                if (c != null && c.moveToFirst()) return true;
+            } catch (Throwable ignored) {
+                /* 查不动就当没有，别把下载卡在这 */
+            } finally {
+                if (c != null) { try { c.close(); } catch (Throwable ignored) { } }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 落盘名 —— **就是原名，不加任何后缀**。
+     *
+     * ═══ 为什么改回覆盖 ═══
+     *
+     * 以前这里会避让重名：`foo.apk` → `foo-2.apk` → `foo-3.apk`。
+     * 用户明确不要这个：同一个文件下多次，就该是同一个名字、同一个文件，
+     * 而不是堆一串 `-2 -3 -4` 的副本。
+     *
+     * 现在的语义是**同名覆盖**：新下载的替换掉旧的，磁盘上始终只有一份。
+     * 这也和「历史跟着本地走」一致 —— 一个文件对应一条记录。
+     *
+     * ═══ 关键：必须保证落盘名**确定** ═══
+     *
+     * Android 10+ 用 MediaStore insert 时，如果同名文件已存在，系统会自动
+     * 把它改成 `foo(1).apk` —— 于是实际落盘名和我们记在历史里的名字对不上，
+     * 「打开 / 删除」就永远定位不到。
+     *
+     * 所以落盘前要先调用 {@link #purgeExistingInDownloads} 把同名条目清掉，
+     * 让系统无处可"自动改名"。调用方在拿这个名字之后必须做这一步。
+     */
+    private String uniqueName(String filename, String category, boolean subDir) {
+        String base = safeName(filename);
+        if (base.isEmpty()) base = "download";
+        return base;
+    }
+
+    /**
+     * 落盘前清掉同名文件，保证新文件能用**原名**落下。
+     *
+     * 不做这一步，Android 10+ 的 MediaStore 会把重名文件自动改成
+     * `foo(1).apk`，落盘名就不再是我们记进历史的那个名字了。
+     *
+     * @return 是否清掉了旧文件
+     */
+    private boolean purgeExistingInDownloads(String name, String category, boolean subDir) {
+        if (name == null || name.isEmpty()) return false;
+        boolean gone = false;
+        try {
+            File direct = subOf(safeCategory(category), name);
+            if (direct != null && direct.exists()) {
+                if (direct.delete()) gone = true;
+            }
+        } catch (Throwable ignored) { }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            String cat = safeCategory(category);
+            String rel = DOWNLOAD_SUBDIR + "/" + safeName(name);
+            if (subDir && !cat.isEmpty()) rel = DOWNLOAD_SUBDIR + "/" + cat + "/" + safeName(name);
+            android.content.ContentResolver cr = activity.getContentResolver();
+            for (String r : new String[]{rel, rel + "/"}) {
+                Cursor c = null;
+                try {
+                    c = cr.query(MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL),
+                            new String[]{MediaStore.MediaColumns._ID},
+                            MediaStore.MediaColumns.DISPLAY_NAME + "=? AND "
+                                    + MediaStore.MediaColumns.RELATIVE_PATH + "=?",
+                            new String[]{safeName(name), r}, null);
+                    if (c == null) continue;
+                    while (c.moveToNext()) {
+                        long id = c.getLong(0);
+                        try {
+                            if (cr.delete(MediaStore.Downloads.getContentUri(
+                                    MediaStore.VOLUME_EXTERNAL, id), null, null) > 0) gone = true;
+                        } catch (Throwable ignored) { }
+                    }
+                } catch (Throwable ignored) {
+                } finally {
+                    if (c != null) { try { c.close(); } catch (Throwable ignored) { } }
+                }
+            }
+        }
         return gone;
     }
 
     /** 文件名是否已经落在磁盘上（用来判断「打开」能不能点得动） */
     private boolean downloadedFileExists(String name) {
+        return downloadedFileExists(name, "");
+    }
+
+    /**
+     * @param sub Download/githup/ 下的子目录（如 "release"）；空串 = 根目录。
+     *
+     * 带上它才能找到按来源分目录存放的文件 —— 以前只按名字去根目录找，
+     * 子目录里的文件永远定位不到，用户点「打开」就弹「文件不在了」。
+     */
+    private boolean downloadedFileExists(String name, String sub) {
         try {
-            File f = DownloadProvider.resolve(activity, name);
-            return f != null && f.exists();
+            File f = DownloadProvider.resolve(activity, name, sub);
+            if (f != null && f.exists()) return true;
+            /* 兜底：MediaStore / 文件系统都没查到时，再直接扫一次目录。
+               某些 ROM 的 MediaStore 索引滞后（刚下的文件还没进库），
+               这时文件系统是唯一可靠的判据。 */
+            File direct = subOf(sub, name);
+            return direct != null && direct.exists();
         } catch (Throwable ignored) {
             return false;
+        }
+    }
+
+    /** Download/githup/ + 子目录 + 文件名的直接路径 */
+    private File subOf(String sub, String name) {
+        try {
+            File root = publicDownloadDir("");
+            if (root == null) return null;
+            String s = (sub == null) ? "" : sub;
+            File dir = s.isEmpty() ? root : new File(root, s);
+            return new File(dir, safeName(name));
+        } catch (Throwable ignored) {
+            return null;
         }
     }
 
@@ -3418,66 +5295,836 @@ public class JsBridge {
     private static final String SP_DL_HISTORY = "dl_history";
     private static final int HISTORY_MAX = 30;
 
-    /** 最新的在最前。JSONArray 非线程安全：UI 线程写、JS 线程读，得锁 */
-    private final org.json.JSONArray dlHistory = new org.json.JSONArray();
+    /**
+     * 最新的在最前。JSONArray 非线程安全：UI 线程写、JS 线程读，得锁。
+     *
+     * 非 final：重载时整个换掉（JSONArray 没有 clear()）。
+     */
+    private org.json.JSONArray dlHistory = new org.json.JSONArray();
 
+    /**
+     * 从磁盘重载历史。
+     *
+     * 以前有一句 `if (dlHistory.length() > 0) return;` —— 只加载一次。
+     * 那让内存成了"第二本账"：一旦内存和磁盘对不上（进程被杀、写入丢失、
+     * 别的路径改过 SP），页面就永远读着旧的那份，看不到新记录。
+     *
+     * 现在**每次都以磁盘为真源**重新解析。历史才 30 条，解析一次不到
+     * 1 毫秒，轮询 800ms 一次，开销可以忽略；换来的是"页面上看到的
+     * 就是磁盘上有的"，不可能再分叉。
+     */
     private void loadHistoryLocked() {
-        if (dlHistory.length() > 0) return;
+        org.json.JSONArray fresh = new org.json.JSONArray();
         try {
             String s = activity.getSharedPreferences(PREF_DL, Context.MODE_PRIVATE)
                     .getString(SP_DL_HISTORY, "[]");
             org.json.JSONArray a = new org.json.JSONArray(s);
-            for (int i = 0; i < a.length() && i < HISTORY_MAX; i++) dlHistory.put(a.get(i));
+            for (int i = 0; i < a.length() && i < HISTORY_MAX; i++) fresh.put(a.get(i));
         } catch (Throwable ignored) { }
+        dlHistory = fresh;
     }
 
+    /**
+     * 诊断：把磁盘和内存两边的情况都摊出来。
+     *
+     * 加它是因为「历史记不住」排查了好几轮都没找到 —— 根因在运行时
+     * （apply 异步 + 装自己被杀进程），静态看代码完全正常。与其继续猜，
+     * 不如让 App 自己把真相说出来：磁盘上到底有几条、内存里几条、
+     * 最后一次写入是什么时候。
+     */
+    @JavascriptInterface
+    public String downloadHistoryDiag() {
+        synchronized (dlHistory) {
+            try {
+                String disk = activity.getSharedPreferences(PREF_DL, Context.MODE_PRIVATE)
+                        .getString(SP_DL_HISTORY, "[]");
+                int diskN = 0;
+                try { diskN = new org.json.JSONArray(disk).length(); } catch (Throwable ignored) { }
+                org.json.JSONObject o = new org.json.JSONObject();
+                o.put("diskCount", diskN);
+                o.put("diskBytes", disk == null ? 0 : disk.length());
+                o.put("memCount", dlHistory.length());
+                o.put("max", HISTORY_MAX);
+                return o.toString();
+            } catch (Throwable ignored) {
+                return "{}";
+            }
+        }
+    }
+
+    /**
+     * 落盘。
+     *
+     * ⚠️⚠️ 必须用 commit()（同步），不能用 apply()（异步）。
+     *
+     * ═══════ 这就是「下载历史记不住」的根因 ═══════
+     *
+     * 场景是这样的 —— 而它在这个 App 里**每次都会发生**：
+     *
+     *   1. 下载完成 → addHistory() → put(0, o) → apply()
+     *   2. 紧接着 installFinished() → openInstaller() 拉起安装器
+     *   3. **装的是 githup 自己**（用户下的就是本 App 的更新包）
+     *   4. 覆盖安装自己 → **App 进程立刻被系统杀掉**
+     *   5. apply() 只是把修改排进了异步队列，**还没来得及写磁盘**
+     *      → 这一条历史**永久丢失**
+     *
+     * 下次启动读到的还是旧内容，用户看到的就是「记录被覆盖 / 没了」。
+     * 偶尔能留住一条，是那次 apply 恰好赶在被杀之前落了盘 —— 所以现象
+     * 看起来随机、时好时坏。
+     *
+     * commit() 是同步写：返回时数据已在磁盘上。代价是阻塞调用线程
+     * （一次几十毫秒，历史才 30 条，可忽略），换来的是「写完就一定在」。
+     * 历史这种丢一次就解释不清的数据，必须同步。
+     */
     private void saveHistoryLocked() {
         try {
             activity.getSharedPreferences(PREF_DL, Context.MODE_PRIVATE)
-                    .edit().putString(SP_DL_HISTORY, dlHistory.toString()).apply();
+                    .edit().putString(SP_DL_HISTORY, dlHistory.toString()).commit();
         } catch (Throwable ignored) { }
     }
 
     /** 收尾时写一条历史。ok=false 也会记 —— 失败了才知道要去重试 */
+    /**
+     * 把一条新记录放到最前面，并累积保留旧记录。
+     *
+     * ═══ 为什么不直接 dlHistory.put(0, o) ═══
+     *
+     * org.json.JSONArray 的 put(int index, Object value) 语义是
+     * **设置该下标的值**，不是「插入并后移」：
+     *
+     *     if (index < values.size())      values.set(index, value);   // 替换
+     *     else if (index == values.size()) values.add(value);          // 追加
+     *
+     * 所以每下载一次 put(0, o)，就是**把第 0 条换成新的** —— 历史永远
+     * 只有一条，跟下的是什么文件、叫什么名字一点关系都没有。
+     *
+     * 用户看到的就是「下载一次，上一条就没了」。这个 bug 从 v1.2.14 起
+     * 一直存在，之前几轮查落盘、查子目录、查磁盘同步都没查到这行 ——
+     * 它读起来就是「放一条新的在最前面」，意图对，实现错。
+     *
+     * JSONArray 没有「插入到指定位置」这个方法，只能重建数组。
+     */
+    private void prependHistoryLocked(JSONObject fresh) {
+        try {
+            org.json.JSONArray next = new org.json.JSONArray();
+            next.put(fresh);
+            for (int i = 0; i < dlHistory.length() && next.length() < HISTORY_MAX; i++) {
+                next.put(dlHistory.opt(i));
+            }
+            dlHistory = next;
+        } catch (Throwable ignored) { }
+    }
+
+    /**
+     * 同名去重：只保留最新那条。
+     *
+     * ═══ 为什么要这个 ═══
+     *
+     * 落盘是**同名覆盖**（用户明确不要 -2 / -3 后缀），第二次下载会把
+     * 第一次的文件物理删掉。如果历史里留两条，它们指向的是同一个文件：
+     *
+     *   · 点开旧的那条，看到的是新下载的内容 —— 以为是「第一次没了」
+     *   · 删其中一条 → 文件没了 → 另一条还在，但点开报「文件不在了」
+     *   · 两条长得一模一样，还白占 30 条配额
+     *
+     * 所以覆盖落盘的另一半必须是：历史里也只留一条。
+     */
+    private void dedupeLatestLocked() {
+        try {
+            /* 第一遍：按「子目录/落盘名」去重，只留最新那条 */
+            java.util.Set<String> seen = new java.util.HashSet<>();
+            org.json.JSONArray pass1 = new org.json.JSONArray();
+            for (int i = 0; i < dlHistory.length(); i++) {
+                JSONObject o = dlHistory.optJSONObject(i);
+                if (o == null) continue;
+                String key = dedupeKeyOf(o);
+                if (seen.contains(key)) continue;   // 已有更新的同款，跳过
+                seen.add(key);
+                pass1.put(o);
+                if (pass1.length() >= HISTORY_MAX) break;
+            }
+            /*
+              第二遍：老版本落在**根目录**（sub 为空）的同名记录，
+              被带子目录的新记录顶掉。
+
+              ═══ 为什么要这一遍 ═══
+
+              改成按来源分目录后，同一个附件会存在两处：
+                · 旧版本下的  Download/githup/xxx.apk           （sub = ""）
+                · 新版本下的  Download/githup/release/xxx.apk   （sub = "release"）
+
+              两条都在历史里的话，列表上就是两个一模一样的名字 ——
+              用户又要问「我下载一次为什么有两条」。
+
+              新记录（带子目录）是当前的，老记录是旧版本遗留，顶掉它。
+              注意：只动**记录**，根目录那个旧文件不删 —— 万一它还被别处引用。
+            */
+            java.util.Set<String> withSub = new java.util.HashSet<>();
+            for (int i = 0; i < pass1.length(); i++) {
+                JSONObject o = pass1.optJSONObject(i);
+                if (o == null || !o.optBoolean("ok", false)) continue;
+                String sub = o.optString("sub", "");
+                if (!sub.isEmpty()) {
+                    String saved = o.optString("saved", "");
+                    if (saved.isEmpty()) saved = o.optString("name", "");
+                    if (!saved.isEmpty()) withSub.add(saved);
+                }
+            }
+            org.json.JSONArray next = new org.json.JSONArray();
+            for (int i = 0; i < pass1.length(); i++) {
+                JSONObject o = pass1.optJSONObject(i);
+                if (o == null) continue;
+                if (o.optBoolean("ok", false)) {
+                    String sub = o.optString("sub", "");
+                    String saved = o.optString("saved", "");
+                    if (saved.isEmpty()) saved = o.optString("name", "");
+                    if (sub.isEmpty() && !saved.isEmpty() && withSub.contains(saved)) continue;
+                }
+                next.put(o);
+                if (next.length() >= HISTORY_MAX) break;
+            }
+            dlHistory = next;
+        } catch (Throwable ignored) { }
+    }
+
+    /** 去重键 = 子目录/落盘名；失败记录按 原始url 区分（它们没有落盘名概念） */
+    private static String dedupeKeyOf(JSONObject o) {
+        String saved = o.optString("saved", "");
+        if (saved.isEmpty()) saved = o.optString("name", "");
+        String sub = o.optString("sub", "");
+        if (!o.optBoolean("ok", false)) return "fail:" + o.optString("url", "") + "|" + saved;
+        return sub + "/" + saved;
+    }
+
     private void addHistory(DlTask t, boolean ok, long bytes) {
         synchronized (dlHistory) {
             loadHistoryLocked();
+            /* 有新下载了，说明用户想看到记录 —— 解除「已清空」标记，
+             * 让下次历史为空时还能自动补回。 */
+            try {
+                activity.getSharedPreferences(PREF_DL, Context.MODE_PRIVATE)
+                        .edit().putBoolean(SP_DL_CLEARED, false).apply();
+            } catch (Throwable ignored) { }
             try {
                 JSONObject o = new JSONObject();
                 o.put("name", t.filename);
+                /* 真正落盘的名字（撞名时带 -2 后缀）：「打开 / 删除」用它定位。
+                 * 只存 filename 的话，加过后缀的记录会永远找不到自己的文件。 */
+                o.put("saved", t.outName());
+                /*
+                  记下子目录（release / 议题 / actions…）。
+
+                  ⚠️ 以前这里没写 sub，于是正常记录的 sub 是空串；而「本地补回」
+                  扫磁盘扫出来的那条带着真实子目录（"release"）。去重键是
+                  "子目录/落盘名"，两者算出的 key 不同 —— 去重失效，
+                  **下了一次却列出两条一模一样的记录**。
+
+                  用户看到的就是「我下载一次，为什么有两条」。
+                */
+                o.put("sub", t.category == null ? "" : t.category);
                 o.put("url", t.originUrl == null ? "" : t.originUrl);
                 /* 记下 DownloadManager 的下载 id：「删除」要按它删才删得掉真文件。
                  * 以前只存文件名，删除时去拼公共目录路径，Android 10+ 上删的是
                  * 沙箱里的影子路径，文件还在原地。 */
                 o.put("dlId", t.id);
+                /*
+                  确切落盘位置（content:// URI 或绝对路径），打开 / 删除 /
+                  判断在不在都用它 —— 见 queryFinalUri 的说明。
+
+                  只在成功时有意义：失败的任务没有产出文件。
+                */
+                o.put("uri", ok ? queryFinalUri(t.id) : "");
                 o.put("ok", ok);
                 o.put("bytes", bytes);
                 o.put("time", System.currentTimeMillis());
                 o.put("install", t.autoInstall);
                 o.put("sha", t.expectedSha == null ? "" : t.expectedSha);
-                dlHistory.put(0, o);
+                /* put(0, o) 是替换不是插入 —— 见 prependHistoryLocked 的说明 */
+                prependHistoryLocked(o);
+                /* 落盘是同名覆盖，历史里也只留最新那条 */
+                dedupeLatestLocked();
                 while (dlHistory.length() > HISTORY_MAX) dlHistory.remove(dlHistory.length() - 1);
                 saveHistoryLocked();
             } catch (Throwable ignored) { }
         }
     }
 
-    private void removeHistoryLocked(String name) {
+    /**
+     * 删一条历史。
+     *
+     * ⚠️ 以前是「按名字删所有匹配项」：两个仓库下同名附件（app-release.apk
+     * 太常见）时，删其中一条会把另一条也删掉 —— 用户看到的就是「记录莫名
+     * 其妙少了一条」，于是以为历史不可靠。
+     *
+     * 现在优先按 dlId 精确定位（它唯一），只删**一条**。没有 dlId 的老记录
+     * 才退回按落盘名匹配，同样只删一条。
+     */
+    private void removeHistoryLocked(long dlId, String saved) {
         synchronized (dlHistory) {
             loadHistoryLocked();
-            for (int i = dlHistory.length() - 1; i >= 0; i--) {
-                JSONObject o = dlHistory.optJSONObject(i);
-                if (o != null && name.equals(o.optString("name"))) dlHistory.remove(i);
+            int target = -1;
+            if (dlId > 0) {
+                for (int i = 0; i < dlHistory.length(); i++) {
+                    JSONObject o = dlHistory.optJSONObject(i);
+                    if (o != null && o.optLong("dlId", -1) == dlId) { target = i; break; }
+                }
             }
+            if (target < 0 && saved != null && !saved.isEmpty()) {
+                for (int i = 0; i < dlHistory.length(); i++) {
+                    JSONObject o = dlHistory.optJSONObject(i);
+                    if (o == null) continue;
+                    if (saved.equals(o.optString("saved", "")) ||
+                            saved.equals(o.optString("name", ""))) { target = i; break; }
+                }
+            }
+            if (target >= 0) dlHistory.remove(target);
             saveHistoryLocked();
         }
     }
+
+    /* ─────────────── 以磁盘为准：把已存在的文件补回历史 ─────────────── */
+
+    /** 用户主动清空过记录：置位后就不再自动扫回来，否则「清空」等于白点 */
+    private static final String SP_DL_CLEARED = "dl_cleared";
+    /** 已经补回过一次，避免每次启动都去查 MediaStore */
+    private static final String SP_DL_RECOVERED = "dl_recovered";
+    /** 补回节流：页面 800ms 轮询一次，不能每次都扫 */
+    private static final long RECOVER_GAP_MS = 10_000L;
+    private volatile long lastRecoverAt = 0;
+
+    /**
+     * 扫 Download/githup/ 下**真实存在**的文件。
+     *
+     * @return [文件名, 字节数, 最后修改毫秒]
+     */
+    private java.util.List<Object[]> collectDownloadedFiles() {
+        java.util.List<Object[]> out = new java.util.ArrayList<>();
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                Cursor c = null;
+                try {
+                    c = activity.getContentResolver().query(
+                            MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL),
+                            new String[]{MediaStore.MediaColumns.DISPLAY_NAME,
+                                    MediaStore.MediaColumns.SIZE,
+                                    MediaStore.MediaColumns.DATE_MODIFIED,
+                                    MediaStore.MediaColumns.RELATIVE_PATH},
+                            MediaStore.MediaColumns.RELATIVE_PATH + " LIKE ?",
+                            new String[]{"Download/" + DOWNLOAD_SUBDIR + "%"}, null);
+                    if (c == null) return out;
+                    while (c.moveToNext()) {
+                        String rel = c.getString(3);
+                        if (rel == null) continue;
+                        /* 只认自己的目录：Download/githup 本身及其子目录。
+                         * LIKE 'Download/githup%' 会误带 Download/githupfoo，
+                         * 这里再精确判一次。 */
+                        if (!rel.equals("Download/" + DOWNLOAD_SUBDIR) &&
+                                !rel.equals("Download/" + DOWNLOAD_SUBDIR + "/") &&
+                                !rel.startsWith("Download/" + DOWNLOAD_SUBDIR + "/")) continue;
+                        String n = c.getString(0);
+                        if (n == null || n.isEmpty()) continue;
+                        long sz = c.getLong(1);
+                        long mod = c.getLong(2) * 1000L;   // DATE_MODIFIED 是秒
+                        if (mod <= 0) mod = System.currentTimeMillis();
+                        /* 记下相对于 Download/githup/ 的子目录。
+                         * 没有它，「打开」会去 Download/githup/ 根目录找，
+                         * 子目录里的文件永远定位不到 → 弹「文件不在了」。 */
+                        String sub = subOfRel(rel);
+                        out.add(new Object[]{n, sz, mod, sub});
+                    }
+                } catch (Throwable ignored) {
+                } finally {
+                    if (c != null) { try { c.close(); } catch (Throwable ignored) { } }
+                }
+                return out;
+            }
+            /* Android 9 及以下：直接遍历文件系统 */
+            File root = publicDownloadDir("");
+            if (root == null || !root.isDirectory()) return out;
+            collectFilesRec(root, out);
+        } catch (Throwable ignored) { }
+        return out;
+    }
+
+    private void collectFilesRec(File dir, java.util.List<Object[]> out) {
+        collectFilesRec(dir, "", out);
+    }
+
+    private void collectFilesRec(File dir, String relSub, java.util.List<Object[]> out) {
+        File[] fs = dir.listFiles();
+        if (fs == null) return;
+        for (File f : fs) {
+            if (f.isDirectory()) {
+                collectFilesRec(f, relSub.isEmpty() ? f.getName()
+                        : relSub + "/" + f.getName(), out);
+            } else if (f.isFile()) {
+                long mod = f.lastModified();
+                out.add(new Object[]{f.getName(), f.length(),
+                        mod > 0 ? mod : System.currentTimeMillis(), relSub});
+            }
+        }
+    }
+
+    /** 从 MediaStore 的 RELATIVE_PATH 里剥出相对于 Download/githup/ 的子目录 */
+    private static String subOfRel(String rel) {
+        if (rel == null || rel.isEmpty()) return "";
+        String p = rel.replace('\\', '/');
+        while (p.endsWith("/")) p = p.substring(0, p.length() - 1);
+        String prefix = "Download/" + DOWNLOAD_SUBDIR;
+        if (!p.startsWith(prefix)) return "";
+        String rest = p.substring(prefix.length());
+        while (rest.startsWith("/")) rest = rest.substring(1);
+        return rest;
+    }
+
+    /**
+     * 把磁盘上存在、历史里没有的文件补进历史。
+     *
+     * ═══════ 为什么要这个 ═══════
+     *
+     * 历史只记「本次 App 自己下载过什么」。凡是没走记录路径留下来的文件
+     * —— 上上轮 apply() 异步落盘被杀进程吞掉的那条、装旧版本前下的、
+     * 别的原因丢了的 —— 磁盘上有，下载管理里却看不到。
+     *
+     * 用户看到的「第一个下载的记录被第二个覆盖没了」，实际是：
+     * **文件两个都在**（文件管理器里能看到），**历史只剩后写进去的那条**。
+     *
+     * 所以判据不能是「历史里记了什么」，得是「磁盘上有什么」：
+     * 文件在 → 记录就该在。
+     *
+     * @return 补回了几条
+     */
+    private int recoverHistoryFromDiskLocked() {
+        return recoverHistoryFromDiskLocked(dropRootDuplicates(collectDownloadedFiles()));
+    }
+
+    private int recoverHistoryFromDiskLocked(java.util.List<Object[]> files) {
+        if (files == null || files.isEmpty()) return 0;
+
+        /* 已有的落盘名（补回只补缺失的，不重复加） */
+        /* key = 子目录/文件名：同名不同目录是两个不同的文件，不能互相挡 */
+        java.util.Set<String> known = new java.util.HashSet<>();
+        for (int i = 0; i < dlHistory.length(); i++) {
+            JSONObject o = dlHistory.optJSONObject(i);
+            if (o == null) continue;
+            String sv = o.optString("saved", "");
+            String sb = o.optString("sub", "");
+            if (!sv.isEmpty()) known.add(keyOf(sb, sv));
+            String nm = o.optString("name", "");
+            if (!nm.isEmpty()) known.add(keyOf(sb, nm));
+            /* 老记录没有 sub：也按「任意目录同名」挡一下，避免重复补 */
+            if (!sv.isEmpty()) known.add(keyOf("", sv));
+        }
+
+        int added = 0;
+        for (Object[] f : files) {
+            String n = (String) f[0];
+            String sub = f.length > 3 ? String.valueOf(f[3]) : "";
+            if (n == null || n.isEmpty()) continue;
+            if (known.contains(keyOf(sub, n))) continue;
+
+            /*
+              已有同名记录、但它的 sub 是空串（老版本留下的，或早期没写 sub
+              的那批）—— 这不是新文件，就是它。把 sub 补全即可，**不要新增**。
+
+              不补全的话，"release/foo.apk"（磁盘上）和 "foo.apk"（记录里）
+              算两个 key，去重键对不上，列表里就会出现两条一模一样的记录。
+            */
+            JSONObject exist = findNoSubLocked(n);
+            if (exist != null) {
+                try {
+                    exist.put("sub", sub);
+                    exist.put("saved", n);
+                    known.add(keyOf(sub, n));
+                } catch (Throwable ignored) { }
+                continue;
+            }
+            try {
+                JSONObject o = new JSONObject();
+                o.put("name", n);
+                o.put("saved", n);
+                o.put("sub", f.length > 3 ? String.valueOf(f[3]) : "");
+                o.put("url", "");                    // 老文件没有原始地址，重试不了
+                o.put("dlId", 0);                    // 也没有 DownloadManager id
+                o.put("ok", true);
+                o.put("bytes", ((Long) f[1]));
+                o.put("time", ((Long) f[2]));
+                o.put("install", false);
+                o.put("sha", "");
+                o.put("recovered", true);            // 标出来，前端显示「本地补回」
+                dlHistory.put(o);
+                known.add(keyOf(sub, n));
+                added++;
+            } catch (Throwable ignored) { }
+        }
+        if (added > 0) {
+            sortHistoryLocked();
+            trimHistoryLocked();
+        }
+        return added;
+    }
+
+    /** 历史去重的键：子目录 + 文件名 */
+    private static String keyOf(String sub, String name) {
+        String s = (sub == null) ? "" : sub;
+        return s.isEmpty() ? name : s + "/" + name;
+    }
+
+    /**
+     * 同一个文件只留一条记录（保留最新的）。
+     *
+     * ═══ 为什么需要 ═══
+     *
+     * 落盘改成**同名覆盖**之后，磁盘上一个文件只有一份。而历史是每次
+     * 下载追加一条，同名下两次就会有两条记录指向同一个文件 ——
+     * 用户看到的是「同一个文件列出了两遍」。
+     *
+     * 要求「历史跟着本地走」，那就是：一个文件 ↔ 一条记录。
+     *
+     * 只按「子目录/落盘名」去重，不动失败记录（它没有文件，且留着
+     * 是为了让用户重试）。
+     */
+    private int dedupeHistoryLocked() {
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        java.util.List<Integer> dead = new java.util.ArrayList<>();
+        try {
+            /* 已按时间倒序：先遇到的就是最新的，后面再遇到同名的都是旧的 */
+            for (int i = 0; i < dlHistory.length(); i++) {
+                JSONObject o = dlHistory.optJSONObject(i);
+                if (o == null) continue;
+                if (!o.optBoolean("ok", false)) continue;      // 失败记录不去重
+                String saved = o.optString("saved", "");
+                if (saved.isEmpty()) saved = o.optString("name", "");
+                if (saved.isEmpty()) continue;
+                String sub = o.optString("sub", "");
+                String k = keyOf(sub, saved);
+                if (!seen.add(k)) dead.add(i);
+            }
+        } catch (Throwable ignored) {
+            return 0;
+        }
+        for (int i = dead.size() - 1; i >= 0; i--) {
+            try { dlHistory.remove(dead.get(i).intValue()); } catch (Throwable ignored) { }
+        }
+        return dead.size();
+    }
+
+    /** 按时间倒序（最新在前） */
+    private void sortHistoryLocked() {
+        try {
+            java.util.List<JSONObject> l = new java.util.ArrayList<>();
+            for (int i = 0; i < dlHistory.length(); i++) {
+                JSONObject o = dlHistory.optJSONObject(i);
+                if (o != null) l.add(o);
+            }
+            l.sort((a, b) -> Long.compare(b.optLong("time", 0), a.optLong("time", 0)));
+            org.json.JSONArray fresh = new org.json.JSONArray();
+            for (JSONObject o : l) fresh.put(o);
+            dlHistory = fresh;
+        } catch (Throwable ignored) { }
+    }
+
+    private void trimHistoryLocked() {
+        try {
+            while (dlHistory.length() > HISTORY_MAX) dlHistory.remove(dlHistory.length() - 1);
+        } catch (Throwable ignored) { }
+    }
+
+    /* ─────────────── 磁盘 ⇄ 历史 双向同步 ─────────────── */
+
+    private volatile long lastSyncAt = 0;
+    private static final long SYNC_GAP_MS = 10_000L;
+
+    /**
+     * 找一条落盘名匹配、但 sub 为空的记录（老版本留下的那批）。
+     *
+     * 用来在补回时「补全」而不是「新增」—— 它们是同一个文件。
+     */
+    private JSONObject findNoSubLocked(String saved) {
+        try {
+            for (int i = 0; i < dlHistory.length(); i++) {
+                JSONObject o = dlHistory.optJSONObject(i);
+                if (o == null) continue;
+                String sv = o.optString("saved", "");
+                if (sv.isEmpty()) sv = o.optString("name", "");
+                if (!sv.equals(saved)) continue;
+                if (o.optString("sub", "").isEmpty()) return o;
+            }
+        } catch (Throwable ignored) { }
+        return null;
+    }
+
+    /**
+     * 本地文件没了 → 记录跟着消失。
+     *
+     * ═══ 为什么需要这个 ═══
+     *
+     * 用户在文件管理器里删了文件（或在系统「最近下载」里删），
+     * App 这边毫不知情 —— 记录还挂着，点「打开」才被告知「文件不在了」。
+     * 要求就是「本地卸载了，软件里也要跟着卸载」。
+     *
+     * @param onDisk 磁盘上真实存在的文件（key = "子目录/文件名" 和 "文件名"）
+     * @return 删了几条
+     */
+    private int pruneHistoryLocked(java.util.Set<String> onDisk) {
+        int removed = 0;
+        java.util.List<Integer> dead = new java.util.ArrayList<>();
+        try {
+            for (int i = 0; i < dlHistory.length(); i++) {
+                JSONObject o = dlHistory.optJSONObject(i);
+                if (o == null) continue;
+                /* 只看成功记录：失败的那条本来就没有文件，留在那是给用户
+                 * 「重试」用的，按文件在不在一刀切会把重试入口抹掉。 */
+                if (!o.optBoolean("ok", false)) continue;
+                String saved = o.optString("saved", "");
+                if (saved.isEmpty()) saved = o.optString("name", "");
+                if (saved.isEmpty()) continue;
+                String sub = o.optString("sub", "");
+                /*
+                  磁盘集合里同时放了带 sub 和不带 sub 两种 key：
+                  老记录的 sub 是空串，只能用不带 sub 的那个 key 匹配上。
+                */
+                if (!onDisk.contains(keyOf(sub, saved)) && !onDisk.contains(saved)) {
+                    dead.add(i);
+                }
+            }
+        } catch (Throwable ignored) {
+            return 0;
+        }
+        if (dead.isEmpty()) return 0;
+        for (int i = dead.size() - 1; i >= 0; i--) {
+            try {
+                dlHistory.remove(dead.get(i).intValue());
+                removed++;
+            } catch (Throwable ignored) { }
+        }
+        return removed;
+    }
+
+    /**
+     * 剔除「根目录遗留的同名文件」。
+     *
+     * ═══ 为什么要这一步 ═══
+     *
+     * 现在的规则是所有下载都落在 `Download/githup/&lt;分类&gt;/xxx.apk`
+     * （release / 议题 / actions…）。但**更早的版本落的是根目录**
+     * `Download/githup/xxx.apk`。升级上来之后，磁盘上就同时存在两个同名文件：
+
+     *     Download/githup/githup-v1.2.15.apk          ← 旧版本留下的
+     *     Download/githup/release/githup-v1.2.15.apk  ← 现在真正用的
+
+     * 扫描会把两个都收进来，于是「我明明只下载了一次，列表里却有两条
+     * 一模一样的记录」—— 其中一条还带着「本地补回」，看着更像是软件出错。
+
+     * 规则：同名文件**优先认子目录下的那个**，根目录的同名条目跳过。
+     * 它只是历史遗留，不是用户当前关心的文件。
+     */
+    private java.util.List<Object[]> dropRootDuplicates(java.util.List<Object[]> files) {
+        java.util.Set<String> inSub = new java.util.HashSet<>();
+        try {
+            for (Object[] f : files) {
+                if (f == null || f.length < 4) continue;
+                String sub = f[3] == null ? "" : String.valueOf(f[3]);
+                if (!sub.isEmpty()) inSub.add(String.valueOf(f[0]));
+            }
+            if (inSub.isEmpty()) return files;
+            java.util.List<Object[]> out = new java.util.ArrayList<>();
+            for (Object[] f : files) {
+                if (f == null || f.length < 4) continue;
+                String n = String.valueOf(f[0]);
+                String sub = f[3] == null ? "" : String.valueOf(f[3]);
+                if (sub.isEmpty() && inSub.contains(n)) continue;   // 根目录的同名遗留
+                out.add(f);
+            }
+            return out;
+        } catch (Throwable ignored) {
+            return files;
+        }
+    }
+
+    /**
+     * 磁盘扫描结果 → 查找集合。
+     *
+     * 同时放两种 key：带子目录的（精确）和不带的（老记录没 sub 时的兜底）。
+     */
+    private java.util.Set<String> diskKeySet(java.util.List<Object[]> files) {
+        java.util.Set<String> out = new java.util.HashSet<>();
+        for (Object[] f : files) {
+            if (f == null || f.length == 0) continue;
+            String n = String.valueOf(f[0]);
+            if (n == null || n.isEmpty()) continue;
+            String sub = (f.length > 3 && f[3] != null) ? String.valueOf(f[3]) : "";
+            if (!sub.isEmpty()) out.add(keyOf(sub, n));
+            out.add(n);
+        }
+        return out;
+    }
+
+    /**
+     * 双向同步：先把没了的删掉，再把新出现的补回来。
+     *
+     * ═══ 安全网（非常重要，这里踩过大坑）═══
+     *
+     * 如果磁盘上**一个文件都扫不到**，而历史里却有成功记录 —— 那几乎
+     * 不可能是用户真把文件全删了，而是**查询本身失效**（ROM 的 MediaStore
+     * 抽风、没给存储权限、外部存储没挂载）。
+     *
+     * 这时一条都不删。宁可留几条幽灵记录，也不能把整份历史清空且不可
+     * 恢复 —— 之前正是这类逻辑误清过一次，教训很痛。
+     *
+     * 判据用「磁盘扫描结果为空」而不是「记录全被判死」：后者在用户只有
+     * 一条记录、且真的删掉了那个文件时会被误判成失效，导致该删的没删。
+     *
+     * 只扫一次磁盘，prune 和 recover 共用这份结果 —— 30 条记录逐个查
+     * MediaStore 要 30 次跨进程调用，太慢。
+     */
+    private boolean syncWithDiskLocked(boolean force) {
+        /*
+          ═══ 还原 v1.2.14：不再做「以磁盘为准」的双向同步 ═══
+
+          v1.2.14 的历史就是**一本自己记的账**：下载完记一条，删记录就
+          少一条，跟磁盘上到底有什么无关。
+
+          后来为了修「文件在、记录没了」加了一套同步：扫描 Download/githup/
+          ——磁盘上有、历史没有的补回来（recover），历史里有、磁盘上没有
+          的删掉（prune），再按落盘名去重（dedupe）。
+
+          这套东西在单层目录下问题不大，但和「按来源分子目录」叠在一起后
+          反复出问题：补回的带 sub、正常记录不带 sub，去重键不同导致同一
+          个文件记两条；根目录老文件和子目录新文件又重复…越修越绕。
+
+          既然这次连目录都还原成单层了，同步这套一并关掉 —— 回到最简单
+          的记账模型，少一层猜测就少一类 bug。
+
+          实现上**不删代码**，只在这里不动返回 false：
+            · 免去改十几处调用点，风险最小
+            · 万一以后还想开回来，改一行就行
+        */
+        return false;
+    }
+
+    /**
+     * 立刻同步一次再返回（进页面时用，不等 10 秒节流）。
+     *
+     * 页面刚打开时用户最想看到「现在磁盘上有什么」，等 10 秒会以为坏了。
+     */
+    @JavascriptInterface
+    public String downloadHistoryNow() {
+        synchronized (dlHistory) {
+            loadHistoryLocked();
+            syncWithDiskLocked(true);
+            return dlHistory.toString();
+        }
+    }
+
+    /**
+     * 本地文件没了 → 记录也跟着没（按 uri 定点核对）。
+     *
+     * ═══ 要求 ═══
+     *
+     * 用户在文件管理器里删掉文件，下载管理里那条记录也要跟着消失；
+     * 反过来记录里有、磁盘上也确实有，就不能乱删。
+     *
+     * ═══ 为什么这次敢做（以前这套反复出事）═══
+     *
+     * 以前是「按文件名拼路径去找」：拼错了就以为文件不在了，
+     * 于是把整份历史清空 —— 用户看到的就是「记录莫名其妙全没了」。
+     *
+     * 现在每条成功记录都带着**确切落盘位置**（uri，见 queryFinalUri），
+     * 判断方式从「猜它在哪」变成「问它在不在」：
+     *
+     *     uriAlive(uri)  →  content:// 走 ContentResolver 查询
+     *                       绝对路径  走 File.exists()
+     *
+     * 定点查询，不存在「拼错路径」这回事。
+     *
+     * ═══ 安全网 ═══
+     *
+     *   1) uri 为空的记录**不参与剔除**。老版本下载的记录没有 uri，
+     *      无从判断它在不在 —— 宁可留着，也不能因为查不到就删。
+     *   2) 失败记录（ok=false）不动：它本来就没有文件，留着是给「重试」用的。
+     *   3) 带 uri 的记录**全部**被判成「不在了」时，一律不删。
+     *      几乎不可能是真删光了，更可能是查询整体失效
+     *      （ROM 的 MediaProvider 抽风 / 存储没挂载）。
+     *      保住数据比「看起来同步」重要。
+     *
+     * @return 是否发生过剔除（调用方据此决定是否存盘）
+     */
+    private boolean pruneMissingByUriLocked() {
+        if (dlHistory.length() == 0) return false;
+        long now = System.currentTimeMillis();
+        if (now - lastUriCheckAt < URI_CHECK_GAP_MS) return false;
+        lastUriCheckAt = now;
+
+        int total = 0;          // 带 uri 的成功记录数
+        int dead = 0;           // 其中已被判「文件不在了」的
+        boolean changed = false;
+        for (int i = dlHistory.length() - 1; i >= 0; i--) {
+            JSONObject o = dlHistory.optJSONObject(i);
+            if (o == null) continue;
+            if (!o.optBoolean("ok", false)) continue;      // 失败记录不动
+            String uri = o.optString("uri", "");
+            if (uri.isEmpty()) continue;                   // 没位置信息，不判断
+            total++;
+            if (fileReallyGone(o, uri)) dead++;
+        }
+        /* 安全网 3：全军覆没 = 查询本身不可信，一条都不删 */
+        if (total > 0 && dead == total) {
+            android.util.Log.w("githup",
+                    "历史核对：全部 " + total + " 条都判为文件不存在，疑查询失效，跳过剔除");
+            return false;
+        }
+        for (int i = dlHistory.length() - 1; i >= 0; i--) {
+            JSONObject o = dlHistory.optJSONObject(i);
+            if (o == null) continue;
+            if (!o.optBoolean("ok", false)) continue;
+            String uri = o.optString("uri", "");
+            if (uri.isEmpty()) continue;
+            if (!fileReallyGone(o, uri)) continue;
+            dlHistory.remove(i);            // 本地确实没了，记录跟着走
+            changed = true;
+        }
+        return changed;
+    }
+
+    /**
+     * 这条记录指向的文件是不是**真的没了**。
+     *
+     * ═══ 光看 uri 是不够的 ═══
+     *
+     * uri 是 MediaStore 的条目地址。用户在系统「最近下载」里把那条删掉，
+     * 条目就没了 —— 但**文件本身还在磁盘上**。
+     *
+     * 只看 uri 的话，用户清一下系统的下载列表，我们这边就会把记录全删光，
+     * 而文件好好地在 Download/githup/ 里躺着。
+     *
+     * ═══ 所以两步确认 ═══
+     *
+     *   1) uri 还活着            → 文件在，不删
+     *   2) uri 死了，但按「落盘名 + 子目录」还能在磁盘上找到 → 文件在，不删
+     *   3) uri 死了、路径也找不到                          → 确实没了，删
+     */
+    private boolean fileReallyGone(JSONObject o, String uri) {
+        if (uriAlive(uri)) return false;
+        String saved = o.optString("saved", "");
+        if (saved.isEmpty()) saved = o.optString("name", "");
+        if (saved.isEmpty()) return false;     // 连名字都没有，无从判断，不删
+        String sub = o.optString("sub", "");
+        return !downloadedFileExists(saved, sub);
+    }
+
+    /** 历史核对节流：页面 800ms 轮询一次，不必每次都查 uri */
+    private static final long URI_CHECK_GAP_MS = 5_000L;
+    private volatile long lastUriCheckAt = 0;
 
     /** 下载历史（JSON 数组，最新在前），给「下载管理」页 */
     @JavascriptInterface
     public String downloadHistory() {
         synchronized (dlHistory) {
             loadHistoryLocked();
+            syncWithDiskLocked(false);
+            /* 本地文件没了 → 记录也跟着没（见 pruneMissingByUriLocked） */
+            if (pruneMissingByUriLocked()) saveHistoryLocked();
             return dlHistory.toString();
         }
     }
@@ -3539,20 +6186,70 @@ public class JsBridge {
                 return;
             }
             final String name = o.optString("name", "");
+
+            /*
+              ⚠️ 以前这里有一行：
+
+                  if (name.isEmpty() || name.contains("/") || ...) return;
+
+              它挡在 open / delete / retry / clear **所有分支之前**，而
+              「清空记录」根本不带 name（clearHistory 只发 {action:'clear'}）
+              → name="" → 直接 return → **清空永远执行不到**。
+
+              用户点「清空历史」没反应，就是这个。
+
+              这行校验本意是防路径穿越（open/delete 要用 name 拼路径），
+              但它只该管**需要 name 的那几个分支**。现在把 clear 提到它前面，
+              并把校验各自下沉到用到的地方。
+            */
+            if ("clear".equals(act)) {
+                synchronized (dlHistory) {
+                    loadHistoryLocked();
+                    while (dlHistory.length() > 0) dlHistory.remove(0);
+                    /* 记一笔「用户主动清空过」：置位后不再自动把磁盘上的文件
+                     * 扫回历史，否则「清空记录」点完又冒出来，等于白点。
+                     *
+                     * 用 commit()：这个值一旦没落盘，下次启动历史为空时会
+                     * 被补回逻辑重新填满 —— 用户看到的就是「清空没作用」。 */
+                    try {
+                        activity.getSharedPreferences(PREF_DL, Context.MODE_PRIVATE)
+                                .edit().putBoolean(SP_DL_CLEARED, true).commit();
+                    } catch (Throwable ignored) { }
+                    saveHistoryLocked();
+                }
+                Toast.makeText(activity, "已清空下载记录", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            /* 下面几个分支都要用 name 定位文件，校验放在这里 */
             if (name.isEmpty() || name.contains("/") || name.contains("\\") || name.contains("..")) return;
             if ("open".equals(act)) {
                 /* 存在性判断也要走 resolve()：以前用 fileFor() 拼公共目录路径，
                  * Android 10+ 下明明文件在、却报「文件不在了」，点了没反应。 */
-                if (!downloadedFileExists(name)) {
+                String saved = o.optString("saved", "");
+                if (saved.isEmpty()) saved = name;
+                /* 子目录也要带上：文件按来源分目录存放（Download/githup/release/…），
+                 * 只按名字去根目录找永远找不到 → 弹「文件不在了」。 */
+                String sub = o.optString("sub", "");
+                /*
+                  ═══ 优先用记录的**确切落盘位置**（uri）═══
+
+                  有 uri 就直接用它 —— 那是下载完成时系统告诉我们的真实位置，
+                  不必再拿 saved + sub 去拼路径猜。
+                */
+                String openUri = o.optString("uri", "");
+                boolean haveUri = !openUri.isEmpty() && uriAlive(openUri);
+                if (!haveUri && !downloadedFileExists(saved, sub)) {
                     Toast.makeText(activity, "文件不在了（可能已被删除）", Toast.LENGTH_SHORT).show();
                     return;
                 }
-                Uri u = DownloadProvider.uriFor(activity.getPackageName(), name);
-                if (name.toLowerCase().endsWith(".apk")) {
+                Uri u = haveUri ? android.net.Uri.parse(openUri)
+                        : DownloadProvider.uriFor(activity.getPackageName(), saved, sub);
+                if (saved.toLowerCase().endsWith(".apk")) {
                     openInstaller(u);
                 } else {
                     Intent i = new Intent(Intent.ACTION_VIEW);
-                    i.setDataAndType(u, DownloadProvider.mimeFor(name));
+                    i.setDataAndType(u, DownloadProvider.mimeFor(saved));
                     i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
                     try {
                         activity.startActivity(i);
@@ -3565,8 +6262,22 @@ public class JsBridge {
                  * 以前那种 fileFor(name).delete() 在 Android 10+ 上删的是
                  * 沙箱里的影子路径，文件纹丝不动。 */
                 long dlId = o.optLong("dlId", -1);
-                boolean gone = deleteDownloadedFile(dlId, name);
-                removeHistoryLocked(name);
+                /* 用落盘名定位真文件：撞名时被改成 foo-2.apk 的那一半，
+                 * 只有 saved 指得对，原名会删错（甚至删到另一条记录的文件）。 */
+                String saved = o.optString("saved", "");
+                if (saved.isEmpty()) saved = name;
+                /* 子目录要带上：文件按来源分目录存放（Download/githup/release/…），
+                 * 不带的话只删得到根目录的同名文件，子目录里的那个删不掉 ——
+                 * 用户点了删除，文件还在，下次同步又把它补回来。 */
+                String sub = o.optString("sub", "");
+                /*
+                  有确切位置就按它删 —— 不会误伤同名文件，
+                  也不会因为拼错路径而「删了但文件还在」。
+                */
+                String delUri = o.optString("uri", "");
+                boolean gone = !delUri.isEmpty() && deleteByUri(delUri);
+                if (!gone) gone = deleteDownloadedFile(dlId, saved, sub);
+                removeHistoryLocked(dlId, saved);
                 Toast.makeText(activity, gone ? "已删除文件和记录" : "记录已删除",
                         Toast.LENGTH_SHORT).show();
             } else if ("retry".equals(act)) {
@@ -3577,12 +6288,8 @@ public class JsBridge {
                 }
                 enqueueDownload(url, name, null, null,
                         o.optBoolean("install", false), o.optString("sha", ""));
-            } else if ("clear".equals(act)) {
-                synchronized (dlHistory) {
-                    while (dlHistory.length() > 0) dlHistory.remove(0);
-                    saveHistoryLocked();
-                }
             }
+            /* clear 已在前面单独处理（它没有 name，不能走这里的校验） */
         } catch (Throwable ignored) { }
     }
 
@@ -3652,8 +6359,55 @@ public class JsBridge {
         }
     }
 
+    /*
+      ═══ 原生提示统一接入错误日志 ═══
+
+      以前这里只是弹一句话，完全没有采集。而 JsBridge 里 12 处 toast()
+      有 9 处是出错提示 —— 于是「用户看得见、日志里没有」：
+      保存失败、解压失败、找不到 APK，全都不留痕迹。
+
+      前端 UI.toast 早就接了日志（UI.logTrouble），但那是 WebView 里的
+      另一套，跟原生 Toast 毫无关系。现在两边对称。
+
+      改这一处即可覆盖全部调用点，因为它们都得经过这里。
+    */
     private void toast(final String msg) {
+        logToastOnce(msg);
         activity.runOnUiThread(() -> Toast.makeText(activity, msg, Toast.LENGTH_LONG).show());
+    }
+
+    /** 同一句只记一次：自动重试能把同一句刷上百遍，淹没真正有价值的首条 */
+    private static final java.util.Set<String> LOGGED_TOASTS =
+            java.util.Collections.synchronizedSet(new java.util.HashSet<String>());
+
+    /**
+     * 提示里像是出错的，顺手记一笔。
+     *
+     * <p>用词保守 —— 只认明确的出错词。「已保存到相册」这类正常
+     * 反馈绝不能记成错误，否则日志会被成功提示刷满，比没有还糟。
+     */
+    private void logToastOnce(String msg) {
+        if (msg == null || msg.isEmpty()) return;
+        if (!looksLikeTrouble(msg)) return;
+        if (!LOGGED_TOASTS.add(msg)) return;        // 同一句已记过
+        try {
+            LogBook.error(activity, "原生提示", msg);
+        } catch (Throwable ignored) {
+            /* 采集自己崩了绝不能影响 App 主流程 */
+        }
+    }
+
+    private static final String[] TROUBLE_WORDS = {
+            "失败", "出错", "错误", "异常", "不可用", "无法", "没能", "没成功",
+            "超时", "中断", "拒绝", "找不到", "不存在", "已停止", "拦截", "阻止",
+            "连不上", "没反应", "被限制", "已过期", "不完整"
+    };
+
+    private static boolean looksLikeTrouble(String msg) {
+        for (String w : TROUBLE_WORDS) {
+            if (msg.contains(w)) return true;
+        }
+        return false;
     }
 
     /** 用系统安装器打开 APK。Android 7.0+ 必须走 content:// 并授予临时读权限。 */

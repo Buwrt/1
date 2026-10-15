@@ -119,6 +119,19 @@ public class WebViewActivity extends Activity {
         root.addView(bar, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(2)));
 
+        // 埋点三：应用内浏览器也要过一遍（它是 JS 桥之外的另一个入口）
+        Guard.Result g = Guard.verify(this);
+        if (!g.ok) {
+            App.sBrokenRing = g.brokenRing;
+            App.sBrokenDetail = g.detail;
+            App.sBrokenCode = g.code;
+            LogBook.error(this, "打开内置浏览器时校验没通过",
+                    "第 " + g.brokenRing + " 环，" + g.detail + "（代码 " + g.code + "）");
+            App.goBlocked(this);
+            finish();
+            return;
+        }
+
         // ---- WebView ----
         /* 整套配置收在 makeWebView() 里：渲染进程被回收之后要按同一套规格
          * 再做一个顶上去，写两遍必然某一边漏一样。 */

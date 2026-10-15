@@ -1,0 +1,76 @@
+# 由 githup App 生成（Android Gradle）· 2026-10-08
+# 修改说明：首次生成，未做改动
+# 每个步骤都带注释，可直接修改；改完请在上方填写修改说明再保存。
+
+name: Build APK
+
+on:
+  workflow_dispatch:   # 允许在 App 里点「手动触发构建」
+    inputs:
+      app_name:
+        description: 安装包名称
+        default: 'app'
+      version_name:
+        description: 版本号（versionName）
+        default: '1.0.0'
+      version_code:
+        description: 版本代号（versionCode，整数）
+        default: '1'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest   # GitHub 免费提供的 Linux 构建机
+    steps:
+      # 1. 把仓库代码拉到构建机上
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 2. 准备 JDK（Gradle 8 需要 17，老项目可改成 11）
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # 3. gradlew 必须可执行，否则报 Permission denied
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew || true
+
+      # 4. 改成你在 App 里填的版本号（同时兼容 build.gradle 与 .kts）
+      - name: Set version
+        env:
+          VN: ${{ github.event.inputs.version_name }}
+          VC: ${{ github.event.inputs.version_code }}
+        run: |
+          for f in $(find . -name "build.gradle" -o -name "build.gradle.kts"); do
+            sed -i -E "s/versionName.*/versionName = \"$VN\"/" "$f"
+            sed -i -E "s/versionCode.*/versionCode = $VC/" "$f"
+          done
+          echo "版本已设为 $VN ($VC)"
+
+      # 5. 构建；命令可以按需改，例如只编某个模块 :app:assembleDebug
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --no-daemon
+
+      # 把产物改成你指定的安装包名称
+      - name: Rename APK
+        env:
+          NAME: ${{ github.event.inputs.app_name }}
+          VN: ${{ github.event.inputs.version_name }}
+        run: |
+          APK=$(find . -name "*.apk" | head -1)
+          if [ -n "$APK" ]; then
+            D=$(dirname "$APK")
+            mv "$APK" "$D/$NAME-$VN.apk"
+            echo "产物: $D/$NAME-$VN.apk"
+          fi
+
+      # 上传产物：构建完后在 App 里点开这条运行记录即可下载、自动安装
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.inputs.app_name }}-${{ github.event.inputs.version_name }}
+          path: |
+            **/build/outputs/apk/**/*.apk
+            **/build/outputs/bundle/**/*.aab
+          if-no-files-found: error

@@ -526,6 +526,16 @@
           '清空', true).then(function (ok) {
           if (!ok) return;
           UI.loading(true);
+          /*
+            进通知页 = 用户主动来看消息。顺手让原生侧也立刻查一遍 ——
+            这样后台提醒有没有在工作，当场就能验证（有新通知会直接弹到
+            系统通知栏），不用干等 15 分钟才知道。
+
+            注意这不是开关，只是把下一轮检查提前；失败也无所谓，
+            页面本身的数据照常从前端接口来。
+          */
+          try { if (window.NativeBridge && window.NativeBridge.checkNotificationsNow) window.NativeBridge.checkNotificationsNow(); } catch (e) {}
+
           window.API.paged('/notifications', { all: 'true', per_page: 100 }, 5).then(function (r) {
             var reads = (r.data || []).filter(function (n) { return !n.unread; });
             if (!reads.length) { UI.loading(false); UI.toast('没有已读通知'); return; }

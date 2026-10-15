@@ -180,8 +180,12 @@ final class FilePick {
      */
     static InputStream base64Encoding(final InputStream in) {
         return new InputStream() {
-            private final byte[] inBuf = new byte[3 * 4096];    // 3 的倍数
-            private final byte[] outBuf = new byte[4 * 4096];   // 对应 inBuf/3*4
+            /* 每块 3 的倍数。以前是 3*4096=12KB，对 17MB 的 APK 意味着
+             * 一千四百多次「读 + 编码 + 数组分配」。放大到 3*16384=48KB
+             * 后次数降到四分之一，且下游那层 64KB 的输出缓冲能一次凑满
+             * 一条 TLS 记录 —— 少一次中间拷贝，吞吐更连贯。 */
+            private final byte[] inBuf = new byte[3 * 16384];   // 3 的倍数
+            private final byte[] outBuf = new byte[4 * 16384];  // 对应 inBuf/3*4
             private int outPos = 0, outLen = 0;
             private boolean eof = false;
 
@@ -210,7 +214,6 @@ final class FilePick {
                             android.util.Base64.NO_WRAP);
                     System.arraycopy(enc, 0, outBuf, 0, enc.length);
                     outLen = enc.length;
-                    outPos = 0;
                     outPos = 0;
                 } catch (Throwable t) {
                     if (t instanceof java.io.IOException) throw (java.io.IOException) t;

@@ -90,18 +90,208 @@ final class DownloadChannels {
      * 下载一个 Release 附件验证**（不能只看域名能不能打开），并且确认拿到的是
      * 文件本身。顺序也要按当时的实测速度重排。
      */
+    /*
+      ═══════ 加速通道清单（CI 实测后重排） ═══════
+
+      验证方式：tools/probe-channels.py + .github/workflows/probe-channels.yml
+      在 GitHub Actions 里跑，runner 是真实公网出口（打包环境有白名单策略，
+      所有外部域名一律 403，在那里测的结果无效）。
+      结果归档在 ci/channel-probe.{txt,json}。
+
+      ── 第一组：CI 实测可用（8 条）──
+      判据：状态码 200/206 + 真读到字节 + Content-Type 是 APK 而非 HTML。
+      按实测速度从快到慢排，起步优先走前面的。
+
+      ── 第二组：CI 测不出来，但**不应删除**的（8 条）──
+
+      ⚠️ 这是本轮最需要说明的判断。
+
+      它们在 CI 里报的是 429（Too Many Requests）/ 403 / 超时，看起来
+      像「不可用」。但 GitHub Actions 的 runner 在**美国机房**，而这些
+      是面向中国用户的加速镜像 —— 对海外 IP 限流或直接封禁非常常见。
+
+      也就是说：CI 收到 429/403 **不等于国内用户用不了**。如果照着这份
+      结果把它们删掉，很可能恰恰删掉了国内最好用的几条。
+
+      所以按失败原因分类处理：
+        · DNS 解析失败 → 域名真没了，全球都解析不了 → **删**
+        · 返回 HTML    → 已不是文件代理            → **删**
+        · SSL 证书失败 → App 里也会校验失败        → **删**
+        · 429 / 403 / 超时 → 服务还活着，只是拒绝了 CI 的海外 IP
+                           → **保留**，标「待观察」
+
+      保留的这些在界面上会标「候选」，用户点一下测速就知道自己那边能不能用。
+
+      ── 已删除（8 条，附实测失败原因）──
+        gh.xxooo.cf           DNS 不存在
+        mirror.ghproxy.com    DNS 不存在
+        ghproxy.cfd           DNS 不存在
+        gh.jiasu.in           DNS 不存在
+        gh.xmly.dev           DNS 不存在
+        hub.gitmirror.com     DNS 不存在
+        mirror.houlang.cloud  返回 HTML 页面，不是文件
+        dgithub.xyz           SSL 证书校验失败
+    */
+    /**
+     * ═══ 云速通道（fastly.jsdelivr.net）═══
+     *
+     * 来自 komi-store 的内置镜像清单（BundledMirrors）。它和上面那些镜像
+     * **不是同一种拼法**：普通镜像是「前缀 + 完整原 URL」，而 jsdelivr 要
+     * 把地址拆开重组成 `/gh/{owner}/{repo}@{ref}/{path}`。
+     *
+     * 所以它在 MIRRORS 里是一个**占位标记**（就写域名前缀），真正拼 URL
+     * 走 {@link #buildUrl} —— 不能拿它去 `前缀 + 原URL`，那样拼出来是
+     * `fastly.jsdelivr.net/https://github.com/...`，必然 404。
+     *
+     * ═══ 只对 raw 文件生效 ═══
+     *
+     * jsdelivr 只代理**仓库里的文件**，不代理 Release 附件。komi-store 里
+     * 也是这么标的（`trafficKinds = RAW_FILE_ONLY`）。所以：
+     *   · raw.githubusercontent.com/...            → 走
+     *   · github.com/o/r/blob|raw/ref/...          → 走
+     *   · github.com/o/r/releases/download/...     → 不走（会返回 404）
+     * 判不出来就整条跳过，绝不能拼一个必然失败的地址进去。
+     *
+     * ═══ CI 实测（真实公网出口）═══
+     *
+     *     fastly.jsdelivr.net  HTTP 200  ttfb 106ms  155590 KB/s  text/markdown
+     *     cdn.gh-proxy.org     HTTP 200  ttfb 519ms    8162 KB/s  （云析对照）
+     *
+     * 比云析快约 19 倍 —— jsdelivr 是正规 CDN，不是第三方小代理，
+     * 稳定性和速度都不是一个量级。这也是它值得单独做一套模板拼法的原因。
+     *
+     * 同批实测被淘汰的 komi-store 镜像（别再往回加）：
+     *   gh.api.99988866.xyz  —— SSL 握手失败（SSLV3_ALERT_HANDSHAKE_FAILURE）
+     *   github.moeyy.xyz     —— DNS 解析不了（和 githup 历史记录一致）
+     *   ghps.cc              —— HTTP 403（和 githup 历史记录一致，当年是
+     *                           「下到 208KB 就断」，现在直接拒）
+     */
+    static final String TEMPLATED = "https://fastly.jsdelivr.net/";
+
+    /** 这条通道是不是「模板型」（不能用「前缀 + 原 URL」拼） */
+    static boolean isTemplated(String m) {
+        return m != null && m.startsWith(TEMPLATED);
+    }
+
+    /**
+     * 把 raw 类地址改写成云速（jsdelivr）的地址。
+     *
+     * @return 拼好的地址；不是 raw 类地址（或抠不出字段）返回 null
+     */
+    static String templatedUrl(String url) {
+        if (url == null || url.isEmpty()) return null;
+        String h = hostOf(url);
+        if (h == null) return null;
+        if (!"raw.githubusercontent.com".equals(h) && !"github.com".equals(h)) return null;
+
+        int scheme = url.indexOf("://");
+        String rest = scheme < 0 ? url : url.substring(scheme + 3);
+        int pathStart = rest.indexOf('/');
+        if (pathStart < 0) return null;
+        /* 去掉 query / fragment */
+        int end = rest.length();
+        for (int i = pathStart; i < rest.length(); i++) {
+            char c = rest.charAt(i);
+            if (c == '?' || c == '#') { end = i; break; }
+        }
+        String path = rest.substring(pathStart, end);
+
+        java.util.List<String> sg = new ArrayList<>();
+        for (String x : path.split("/")) if (!x.isEmpty()) sg.add(x);
+
+        String owner, repo, ref, tail;
+        if ("raw.githubusercontent.com".equals(h)) {
+            /* /owner/repo/ref/path...  至少 4 段 */
+            if (sg.size() < 4) return null;
+            owner = sg.get(0); repo = sg.get(1); ref = sg.get(2);
+            tail = String.join("/", sg.subList(3, sg.size()));
+        } else {
+            /* /owner/repo/blob|raw/ref/path...  至少 5 段 */
+            if (sg.size() < 5) return null;
+            String verb = sg.get(2);
+            if (!"raw".equals(verb) && !"blob".equals(verb)) return null;
+            owner = sg.get(0); repo = sg.get(1); ref = sg.get(3);
+            tail = String.join("/", sg.subList(4, sg.size()));
+        }
+        if (owner.isEmpty() || repo.isEmpty() || ref.isEmpty() || tail.isEmpty()) return null;
+        return TEMPLATED + "gh/" + owner + "/" + repo + "@" + ref + "/" + tail;
+    }
+
+    /**
+     * 统一入口：把「通道 + 原地址」拼成真正要请求的 URL。
+     *
+     * 所有遍历 MIRRORS 的地方（下载候选链、取图换通道、测速）**都必须走这里**，
+     * 不能自己写 `m + url` —— 云速是模板型，那样拼必然失败。
+     *
+     * @return 拼好的地址；这条通道不适用（比如云速遇到 Release 附件）返回 null，
+     *         调用方应当跳过
+     */
+    static String buildUrl(String m, String url) {
+        if (m == null || m.isEmpty() || url == null) return null;
+        if (isTemplated(m)) return templatedUrl(url);
+        return m + url;
+    }
+
+    /**
+     * 这条通道的适用范围说明；空串 = 什么都能下。
+     *
+     * 为什么要标：云速（jsdelivr）只代理仓库里的文件，Release 附件它
+     * 根本不认。以前面板上只写一个「不可用」，用户就以为这条坏了 ——
+     * 实际上它是**这一类文件用不上**，不是坏了。写清楚省得误会。
+     */
+    static String scopeOf(String m) {
+        if (isTemplated(m)) return "仅仓库文件";
+        return "";
+    }
+
+    /** 这条通道对 url 适不适用（云速遇到 Release 附件就不适用） */
+    static boolean appliesTo(String m, String url) {
+        return buildUrl(m, url) != null;
+    }
+
     static final String[] MIRRORS = {
-            "https://ghproxy.imciel.com/",
-            "https://gh.xxooo.cf/",
-            "https://gh-proxy.com/",
-            "https://ghfast.top/",
-            "https://ghproxy.net/",
-            "https://github.boki.moe/",
-            "https://gh.idayer.com/",
-            "https://gh.ddlc.top/",
-            "https://ghfile.geekertao.top/",
-            "https://gh.noki.icu/",
+            /* —— 第一组：CI 实测可用，按速度排序 —— */
+            /*
+              cdn.gh-proxy.org —— 云析（YunX）的默认 GitHub 镜像。
+
+              从 CYQawa/YunX 的 UpdateChecker 里查到的：
+
+                  const val MIRROR_PREFIX = "https://cdn.gh-proxy.org/"
+                  fun mirrorUrl(url, prefix = MIRROR_PREFIX) = prefix + url
+
+              跟这里的 MIRRORS 是同一种东西：URL 前缀镜像，拼上原地址就行。
+
+              CI 实测（真实公网出口，目标 = 本仓库 v1.2.15 的 APK）：
+
+                  cdn.gh-proxy.org  HTTP 200  ttfb 145ms  21709 KB/s
+                  gh-proxy.com      HTTP 200  ttfb 107ms  12226 KB/s   （原加速 1）
+                  直连               HTTP 200  ttfb  96ms 112622 KB/s  （runner 在美国）
+
+              比原加速 1 快约 78%。放第一位。
+            */
+            "https://cdn.gh-proxy.org/",        /* 云析通道，21709 KB/s */
+            TEMPLATED,                          /* 云速通道（jsdelivr），只对 raw 生效 */
+            "https://gh-proxy.com/",            /* 1.2 MB/s */
+            "https://gh.llkk.cc/",              /* 1.2 MB/s，TTFB 94ms 最快 */
+            "https://cors.isteed.cc/",          /* 1.2 MB/s */
+            "https://gh-proxy.at9.net/",        /* 1.2 MB/s */
+            "https://gh.noki.icu/",             /* 1.2 MB/s */
+            "https://ghfile.geekertao.top/",    /* 1.2 MB/s（限流，降速复核通过）*/
+            "https://ghproxy.net/",             /* 432 KB/s */
+            "https://ghfast.top/",              /* 130 KB/s，TTFB 8.9s 偏慢 */
+            /* —— 第二组：CI 的海外 IP 被拒，国内可能正常，保留待观察 —— */
+            "https://ghproxy.imciel.com/",      /* 429 限流 */
+            "https://gh.idayer.com/",           /* 429 限流 */
+            "https://gh.ddlc.top/",             /* 429 限流 */
+            "https://github.boki.moe/",         /* 403 */
+            "https://gh.h233.eu.org/",          /* 403 */
+            "https://proxy.vvvv.ee/",           /* 403 */
+            "https://ghproxy.homeboyc.cn/",     /* 403 */
+            "https://gh.zwy.one/",              /* 连接超时 */
     };
+
+    /** CI 实测可用的条数（第一组），界面上用来区分标注 */
+    static final int VERIFIED_COUNT = 10;
 
     /** 只有这些域名的下载地址才允许走加速镜像（别把无关链接也送去代理） */
     static final String[] MIRRORABLE_HOSTS = {
@@ -219,12 +409,31 @@ final class DownloadChannels {
         return DIRECT;
     }
 
-    /** 给进度条看的通道名，如「加速 1」/「直连」/「限速」 */
+    /**
+     * 通道的显示名。
+     *
+     * ═══ 第 1 条不叫「加速 1」，叫「云析通道」═══
+     *
+     * 它是云析（YunX）的默认 GitHub 镜像 cdn.gh-proxy.org，
+     * 名字直接标出来历，用户一眼知道这条是哪来的。
+     *
+     * ═══ 其后依次叫「加速1」「加速2」「加速3」… ═══
+     *
+     * 第 3 条（gh-proxy.com）就是「加速1」，往后顺延。这样两条有名字的
+     * 通道占前两位，「加速N」这批自己从 1 开始编号，读起来是连着的。
+     */
+    static String channelLabel(int index) {
+        if (index == 0) return "云析通道";
+        if (index == 1) return "云速通道";
+        return "加速" + (index - 1);
+    }
+
+    /** 给进度条看的通道名，如「云析通道」/「云速通道」/「加速1」/「直连」/「限速」 */
     static String channelName(String url) {
         if (isThrottled(url)) return "限速";
         if (url != null) {
             for (int i = 0; i < MIRRORS.length; i++) {
-                if (url.startsWith(MIRRORS[i])) return "加速 " + (i + 1);
+                if (url.startsWith(MIRRORS[i])) return channelLabel(i);
             }
         }
         return "直连";
@@ -268,20 +477,23 @@ final class DownloadChannels {
      *                    传空串表示没有记录 —— 用户网络通常稳定，命中就能
      *                    省掉一轮「先慢后换」的等待
      */
-    static List<String> candidates(String url, boolean allowMirror, String lastChannel) {
+    static List<String> candidates(String url, boolean allowMirror) {
         List<String> out = new ArrayList<>();
         if (allowMirror && isMirrorable(url)) {
-            List<String> mirrors = new ArrayList<>();
-            for (String m : MIRRORS) mirrors.add(m + url);
-            if (lastChannel != null && !lastChannel.isEmpty() && !DIRECT.equals(lastChannel)) {
-                for (int i = 0; i < mirrors.size(); i++) {
-                    if (mirrors.get(i).startsWith(lastChannel)) {
-                        out.add(mirrors.remove(i));
-                        break;
-                    }
-                }
+            /*
+              固定顺序，不再按「上次哪条通」重排。
+
+              那套记忆已经被移除：它会让历史上某一次偶然的成功永久改写
+              每一次下载的起步顺序 —— 用户看到的就是「一上来就是加速 3」，
+              而那条通道此刻未必还快。固定顺序的行为可预期：慢了就走
+              switchChannel 换道，不靠猜。
+            */
+            for (String m : MIRRORS) {
+                String u = buildUrl(m, url);
+                /* 云速对 Release 附件不适用，拼不出来就跳过 —— 放一条
+                   必然 404 的地址进去只会白白浪费一轮换道。 */
+                if (u != null) out.add(u);
             }
-            out.addAll(mirrors);
         }
         /*
           直连永远放在最后兜底。
@@ -299,7 +511,8 @@ final class DownloadChannels {
 
           海外用户绕代理确实会慢一点，但「慢一点」远好过「先卡十几秒」。
           真要优化海外，应该按实际测速动态排序，而不是让一次偶然的成功
-          永久改写全局顺序。
+          永久改写全局顺序 —— 正是因为这个结论，「记住上次通道」那套机制
+          在 1.2.15 被整个移除了。
         */
         out.add(url);
         return out;

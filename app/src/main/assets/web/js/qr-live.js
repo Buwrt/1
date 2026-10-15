@@ -26,6 +26,17 @@
   /* 两次解码之间的间隔。解码本身 10~60ms，这个节奏不卡画面也不费电。 */
   var INTERVAL = 130;
 
+  /* 当前正在进行的那次扫码的「结束」入口。
+     扫描中非 null；结束（解出 / 取消 / 失败）后立刻置回 null。
+
+     为什么必须留这个引用 —— 返回键是原生事件，DOM 自己收不到，
+     只能由 App.handleBack() 转过来调。没有它，用户在取景界面按返回键
+     前端无从下手（这层浮层既不是路由、也不是 #sheet-root 弹层），
+     返回键会一路落到「路由回退 / 再按一次退出」，
+     而浮层是 body 的直接子元素、盖在路由之上 ——
+     于是页面变了、相机却还开着，看着就像返回键没反应。 */
+  var activeFinish = null;
+
   /* ---- 环境自检：解码器 + 浏览器媒体能力 + 原生相机权限通道 ---- */
   function available() {
     try {
@@ -79,6 +90,7 @@
       function finish(text) {
         if (done) return;
         done = true;
+        activeFinish = null;
         teardown(hold);
         /* 振一下当作「扫到了」的触感反馈（不支持就安静跳过） */
         if (text && navigator.vibrate) {
@@ -111,6 +123,10 @@
       document.body.appendChild(mask);
       hold.mask = mask;
       hold.video = video;
+
+      /* 登记本次会话：外部（返回键）通过 QRLive.cancel() 收摊。
+         解出门的那一刻 finish 会把它清掉，不会留悬空引用。 */
+      activeFinish = function () { finish(null); };
 
       /* ---- ① 原生相机权限（WebView 的 getUserMedia 前置条件） ---- */
       window.Native.requestCamera().then(function (granted) {
@@ -208,6 +224,10 @@
   window.QRLive = {
     available: available,
     scanLive: scanLive,
+    /** 取景层是否正开着 —— 返回键据此决定要不要先关它 */
+    isActive: function () { return activeFinish !== null; },
+    /** 关掉取景层（等同用户点「✕ 关闭」），未打开时无事发生 */
+    cancel: function () { if (activeFinish) { activeFinish(); return true; } return false; },
     SAMPLE_EDGE: SAMPLE_EDGE,
     INTERVAL: INTERVAL
   };

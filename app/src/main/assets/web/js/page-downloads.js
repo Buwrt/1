@@ -27,6 +27,75 @@
     return;
   }
 
+  /*
+    ═══ 下载偏慢时的建议条 ═══
+
+    原生层盯着速度：30 秒窗口内平均低于 100KB/s、10 分钟里累计 3 次，
+    就调 window.DlAdvice.show() 提醒一次（参数沿用 komi-store 的取值）。
+
+    为什么要有这一层：换道是**静默**的。用户只看到进度条一直在爬，
+    不知道软件已经在后台换了好几条通道，更不知道可以自己挑一条。
+    这里把那件事说出来，并给一个直达通道面板的按钮。
+
+    只提醒一次（原生侧有 10 分钟静默），点「不再提示」后永久不再问。
+  */
+  var adviceOn = false;
+
+  window.DlAdvice = {
+    show: function () {
+      adviceOn = true;
+      try {
+        UI.toast('下载偏慢，可以去「下载通道」挑一条更快的');
+      } catch (e) { }
+      /* 人正好在下载管理页：就地插一条，不用等下次 render */
+      try {
+        var box = document.getElementById('dl-page');
+        if (box && !document.getElementById('dl-advice')) insertAdvice(box);
+      } catch (e) { }
+    },
+    banner: function () { return adviceOn ? adviceHtml() : ''; }
+  };
+
+  function adviceHtml() {
+    return '<div class="list dl-advice" id="dl-advice">' +
+      '<div class="dl-advice-in">' +
+      '<span class="dl-advice-ico">' + window.icon('alert', 16) + '</span>' +
+      '<span class="row-main">' +
+      '<span class="row-title">下载偏慢</span>' +
+      '<span class="row-desc">软件已自动换过几次通道。可以自己挑一条 —— ' +
+      '面板里能看到每条的实时速度。</span>' +
+      '</span></div>' +
+      '<div class="dl-advice-acts">' +
+      '<button class="dl-advice-btn primary" id="dl-advice-go">去挑选</button>' +
+      '<button class="dl-advice-btn" id="dl-advice-off">不再提示</button>' +
+      '</div></div>';
+  }
+
+  function insertAdvice(box) {
+    var wrap = document.createElement('div');
+    wrap.innerHTML = adviceHtml();
+    var el = wrap.firstChild;
+    /* 插在最前面：一进页面就看得到，不用滚 */
+    box.insertBefore(el, box.firstChild);
+    bindAdvice(el);
+  }
+
+  function bindAdvice(box) {
+    var go = document.getElementById('dl-advice-go');
+    var off = document.getElementById('dl-advice-off');
+    if (go && window.App && typeof window.App.openChannelPicker === 'function') {
+      go.onclick = function () { window.App.openChannelPicker(); };
+    }
+    if (off) {
+      off.onclick = function () {
+        try { NB.dismissSlowAdvice && NB.dismissSlowAdvice(); } catch (e) { }
+        adviceOn = false;
+        var el = document.getElementById('dl-advice');
+        if (el && el.parentNode) el.parentNode.removeChild(el);
+      };
+    }
+  }
+
   var STATUS_PAUSED = 4, STATUS_SUCCESSFUL = 8, STATUS_FAILED = 16;
   var timer = null;
   var lastActive = -1;   // 上一轮进行中数量：一旦归零就刷新历史（刚有任务收尾了）
@@ -108,13 +177,27 @@
     /* dlId 是 DownloadManager 的下载 id。原生层「删除」要靠它定位真实文件 ——
      * 光有文件名的话，Android 10+ 分区存储下拼出来的路径删不到东西。 */
     var dlId = r.dlId > 0 ? Number(r.dlId) : 0;
+    /*
+      确切落盘位置（content:// URI 或绝对路径）。
+
+      原生层下载完成时记下来的真实位置（见 JsBridge.queryFinalUri）。
+      打开 / 删除都优先用它 —— 不用再拿文件名去拼路径猜文件在哪，
+      也就不会「明明在却说不在」「删了同名文件」。
+      老记录没有这个字段（空串），原生层会退回原来的按名定位。
+    */
+    var uri = U.esc(r.uri || '');
+    /* 子目录（release / 议题 / file）：文件按来源分目录存放。
+     * 原生层兜底定位（uri 查不到时按名找）要靠它，不带就只去根目录找。 */
+    var sub = U.esc(r.sub || '');
     var acts = '';
     if (ok) {
-      acts += '<span class="row-act" data-open="' + name + '" data-id="' + dlId + '" title="打开">打开</span>';
+      acts += '<span class="row-act" data-open="' + name + '" data-id="' + dlId +
+        '" data-uri="' + uri + '" data-sub="' + sub + '" title="打开">打开</span>';
     } else {
       acts += '<span class="row-act" data-retry="' + name + '" title="重新下载">重试</span>';
     }
-    acts += '<span class="row-act danger" data-del="' + name + '" data-id="' + dlId + '" title="删除">' +
+    acts += '<span class="row-act danger" data-del="' + name + '" data-id="' + dlId +
+      '" data-uri="' + uri + '" data-sub="' + sub + '" title="删除">' +
       window.icon('trash', 15) + '</span>';
     /* 重试需要原始地址，放在 data 里 */
     return '<div class="list-row" data-rec>' +
@@ -135,7 +218,11 @@
   function bindHistory(host) {
     UI.$$('[data-open]', host).forEach(function (b) {
       b.onclick = function () {
-        act({ action: 'open', name: b.getAttribute('data-open') });
+        act({
+          action: 'open', name: b.getAttribute('data-open'),
+          uri: b.getAttribute('data-uri') || '',
+          sub: b.getAttribute('data-sub') || ''
+        });
       };
     });
     UI.$$('[data-del]', host).forEach(function (b) {
@@ -145,7 +232,11 @@
         var id = Number(b.getAttribute('data-id') || 0);
         UI.confirm('删除下载记录', '把「' + name + '」的文件和记录一起删掉？').then(function (yes) {
           if (!yes) return;
-          act({ action: 'delete', name: name, dlId: id });
+          act({
+            action: 'delete', name: name, dlId: id,
+            uri: b.getAttribute('data-uri') || '',
+            sub: b.getAttribute('data-sub') || ''
+          });
           setTimeout(refreshHistory, 400);
         });
       };
@@ -251,13 +342,56 @@
         ' 历史记录<span class="dl-count dl-sub"></span>' +
         '<button class="dl-clear" id="dl-clear">清空记录</button></div>' +
         '<div class="list" id="dl-history"></div>' +
-        '<div class="dl-note">下载的文件保存在手机的 Download/githup/ 目录，' +
-        '按来源分开存放：议题里下载的在「议题」子目录，Release 里下载的在「release」子目录；' +
+        /*
+          ═══ 这一块是 v1.2.14 之后加的「下载通道」入口，按用户要求**保留** ═══
+
+          用户要的是：下载管理还原 v1.2.14，但脉冲图标（通道选择）那套不动。
+          所以这里只保留入口，其余（历史记录的字段、说明文案、清空行为）
+          全部回到 v1.2.14 的样子。
+        */
+        '<div class="list" id="dl-chan">' +
+        '<div class="list-row ch-open" id="ch-open">' +
+        '<span class="ch-ico">' + window.icon('pulse', 15) + '</span>' +
+        '<span class="row-main"><span class="row-title">下载通道</span>' +
+        '<span class="row-desc" id="ch-cur">自动选择（最快的通道）</span></span>' +
+        '<span class="row-acts">' + window.icon('chevron-right', 16) + '</span>' +
+        '</div></div>' +
+        '<div class="dl-note">下载的文件都保存在手机的 Download/githup/ 目录；' +
         '公开资源走加速通道，太慢或失败会自动换通道重试。</div>' +
         '</div>';
 
+      /* 原生层判定「慢」过就把建议条插在最前面 */
+      var page = UI.$('#dl-page', host);
+      if (page && adviceOn) insertAdvice(page);
+
       var clear = UI.$('#dl-clear', host);
       if (clear) clear.onclick = clearHistory;
+
+      /* 通道入口：点这一行打开通道选择面板（右上角脉冲按钮同款）。
+         再兜底挂一次右上角脉冲按钮 —— 路由可能先 setActions 再 render，
+         也可能反过来，两头都调才稳。appendChannelAction 内部有防重复，
+         且只在 /downloads 生效，重复调用没有副作用。 */
+      var chOpen = UI.$('#ch-open', host);
+      if (chOpen && window.App && typeof window.App.openChannelPicker === 'function') {
+        chOpen.onclick = function () { window.App.openChannelPicker(); };
+      }
+      if (window.App && typeof window.App.appendChannelAction === 'function') {
+        window.App.appendChannelAction();
+      }
+      var chCur = UI.$('#ch-cur', host);
+      if (chCur) {
+        try {
+          var cur = (NB.getChannel && NB.getChannel()) || '';
+          if (cur && cur !== 'auto') {
+            var h2 = cur;
+            var i = h2.indexOf('://');
+            if (i >= 0) h2 = h2.substring(i + 3);
+            while (h2.charAt(h2.length - 1) === '/') h2 = h2.substring(0, h2.length - 1);
+            chCur.textContent = '已指定：' + (h2 === 'direct' ? '直连' : h2);
+          }
+        } catch (e) { }
+      }
+
       refreshHistory();
       lastActive = -1;
       start();

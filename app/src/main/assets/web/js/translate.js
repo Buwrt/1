@@ -207,43 +207,19 @@
     var now = Date.now();
     if (msg === _lastToast && now - _lastToastAt < 3000) return;
     _lastToast = msg; _lastToastAt = now;
+    /*
+      出错上报不用在这里做了。
+
+      msg 最终走 UI.toast，而 UI.toast 现在统一筛「出错类提示」并记进
+      错误日志（见 ui.js 的 UI.logTrouble）。这里再记一遍就是同一件事
+      留两行，还会因为措辞不同（"翻译：xxx" vs "界面提示：xxx"）绕过去重。
+    */
     if (window.UI && window.UI.toast) window.UI.toast(msg);
     else console.log('[translate] ' + msg);
-
-    logTrouble(msg);
   }
 
-  /* ============ 出错上报 ============
-   * 翻译失败几乎都以 toast 的形式告诉用户（「所有翻译引擎都不可用」
-   * 「翻译卡住了」…）。与其在十几个分支里各插一行，不如在这唯一的出口
-   * 统一筛一遍：凡是明显是「出问题」的提示，就记进错误日志。
-   *
-   * 这样做的两个好处：
-   *   1) 不会漏 —— 只要用户看到了提示，日志里就有；
-   *   2) 不用改一堆分支 —— 老代码一个不动。
-   *
-   * 限流：同一条提示只记一次（toast 本身已有 3 秒节流，
-   * 这里再按整场会话去重，避免自动重试把日志刷满）。 */
-  var _loggedTrouble = {};
-  /* 命中这些词的提示视为「出问题了」。用词要保守 ——
-   * 宁可能量少记，也别把「已改用某引擎翻译」这种正常降级记成错误。 */
-  var TROUBLE_WORDS = ['不可用', '失败', '出错', '错误', '卡住', '超时',
-                       '无法', '没能', '没成功', '异常'];
-  function logTrouble(msg) {
-    try {
-      if (!msg || typeof msg !== 'string') return;
-      var hit = false;
-      for (var i = 0; i < TROUBLE_WORDS.length; i++) {
-        if (msg.indexOf(TROUBLE_WORDS[i]) >= 0) { hit = true; break; }
-      }
-      if (!hit) return;
-      if (_loggedTrouble[msg]) return;      // 整场会话只记一次
-      _loggedTrouble[msg] = 1;
-      if (window.API && typeof window.API.logError === 'function') {
-        window.API.logError('翻译：' + msg);
-      }
-    } catch (e) { /* 上报失败不影响翻译 */ }
-  }
+  /* 出错上报：已经统一到 UI.toast 里做（见 ui.js 的 UI.logTrouble）。
+     这里保留注释说明去向，免得后来人又加一遍。 */
 
   function icon(name, size) {
     if (typeof window.icon === 'function') {
@@ -1136,14 +1112,46 @@
    * 期限取 6 小时而不是一整天 —— 它的配额是按 UTC 日重置的，
    * 半天给一次机会，跨过零点就能自动回来，不用用户手动清数据。 */
   var MM_QUOTA_KEY = 'gh_tr_mm_quota';        // 记「上次确认配额耗尽」的时间戳
-  var MM_QUOTA_TTL = 6 * 60 * 60 * 1000;      // 6 小时内不再拿它试
-  function mmQuotaExhausted() {
-    var t = 0;
+  /*
+    ══ 配额冷却改成**分级**，不再一上来就 6 小时 ══
+
+    原来固定 6 小时一刀切。它跟有道那 2 分钟的 markBad 一叠加就成了
+    「有道 + MyMemory 双双出池 → 空池认输」的半个成因：
+    MyMemory 出局 6 小时，这 6 小时里池子只剩有道一家，
+    有道随便抖一下整页就翻不出来。
+
+    分级：
+      · 头两次确认耗尽 → 只挡 30 分钟（多数是临时 429，半小时后早好了）
+      · 第三次起       → 才用 6 小时（真·日额度打满，别再来烦它）
+
+    另外补一个 clearMmQuota()：池子见底放宽软条件时要把这笔账也清掉，
+    不然引擎虽然放回池里了，下一次 planPool 又被同一笔账挡回去。
+  */
+  var MM_QUOTA_TTL = 30 * 60 * 1000;          // 头两次：30 分钟
+  var MM_QUOTA_TTL_HARD = 6 * 60 * 60 * 1000; // 第三次起：6 小时
+  var MM_QUOTA_KEY_N = 'gh_tr_mm_quota_n';    // 累计确认次数
+  function mmQuotaState() {
+    var t = 0, n = 0;
     try { t = parseInt(prefGet(MM_QUOTA_KEY, '0'), 10) || 0; } catch (e) { t = 0; }
-    return !!t && (Date.now() - t) < MM_QUOTA_TTL;
+    try { n = parseInt(prefGet(MM_QUOTA_KEY_N, '0'), 10) || 0; } catch (e) { n = 0; }
+    return { t: t, n: n };
+  }
+  function mmQuotaExhausted() {
+    var st = mmQuotaState();
+    if (!st.t) return false;
+    var ttl = st.n >= 3 ? MM_QUOTA_TTL_HARD : MM_QUOTA_TTL;
+    return (Date.now() - st.t) < ttl;
   }
   function mmQuotaHit() {
-    try { prefSet(MM_QUOTA_KEY, String(Date.now())); } catch (e) {}
+    try {
+      var n = mmQuotaState().n + 1;
+      prefSet(MM_QUOTA_KEY_N, String(n));
+      prefSet(MM_QUOTA_KEY, String(Date.now()));
+    } catch (e) {}
+  }
+  /** 池子见底时清掉配额账，给 MyMemory 一次重新做人的机会 */
+  function clearMmQuota() {
+    try { prefSet(MM_QUOTA_KEY, '0'); } catch (e) {}
   }
 
   ENGINES.mymemory = {
@@ -1643,12 +1651,68 @@
       if (reachNeeds(k) && !reachOK(k)) return;
       list.push(k);
     });
+    /*
+      ═══ 空池兜底：软条件全过一遍还是没人，就放宽软条件再来一轮 ═══
+
+      ══ 为什么会空池 ══
+
+      没填密钥时，自动池实际只有 **两家**：有道 + MyMemory。
+
+        · youdaoOpen / niutrans / baidu  要密钥 → isReady 直接 false
+        · google / deepl / ondevice      海外或需探测 → 没探过不进池
+        · custom                         要填地址 → isReady false
+
+      于是只要这两家里有一家被暂时封掉，池子就见底：
+
+        MyMemory 撞配额（挡 6 小时）  +  有道刚失败被 markBad（挡 2 分钟）
+        → list 为空 → 抛「所有引擎都不可用」
+        → 直接进 catch，报「翻译失败：所有引擎都不可用」
+
+      本地复现（复刻本函数的过滤链）：
+
+        场景1 什么都没发生        → ["youdao","mymemory"]
+        场景2 MyMemory 撞过配额   → ["youdao"]
+        场景3 配额 + 有道被标坏   → null   ← 就是这个
+
+      ══ 为什么不能简单粗暴地全部放宽 ══
+
+      上面那段注释记过一次教训：把没探测过的海外引擎**一律放进池**，
+      实测整页从 608ms 拖到 9612ms（慢 15 倍）—— 连不上的 DeepL 把批
+      全揽走了。所以这里**只放宽软条件**（badUntil / 配额），
+      「海外或需探测且没探过」这条硬条件保持不变。
+
+      效果：有道 + MyMemory 这些国内直连的口子拿回来，
+            但不会把连不上的海外引擎拉进来拖慢整页。
+    */
+    if (!list.length) {
+      ORDER.forEach(function (k) {
+        if (list.indexOf(k) >= 0 || tried.indexOf(k) >= 0) return;
+        if (!isReady(k)) return;                        // 硬条件：退役 / 缺密钥 / 缺地址
+        if (reachNeeds(k) && !reachOK(k)) return;       // 硬条件：没探过的海外引擎不拉进来
+        /* 走到这里说明是被 isBadNow / 配额这类软条件挡掉的，放回池里 */
+        list.push(k);
+      });
+      if (list.length) {
+        /* 顺手把软条件的账清掉：不然这批虽然进了池，
+         * 同一次翻译里别的判断（降级链路的 candidates）还会再挡它们一次。 */
+        list.forEach(function (k) { clearBad(k); });
+        if (k_mmQuotaRelaxed()) clearMmQuota();
+        try {
+          if (window.API && window.API.logNote) {
+            window.API.logNote('翻译池见底，已放宽软条件重试：' + list.join('/'));
+          }
+        } catch (e) {}
+      }
+    }
     if (!list.length) return null;
     /* 只有免密钥引擎能上、且没有记忆中的最优引擎时才去探测一次：
      * 有道 aidemo 和 MyMemory 都免密钥，直接用即可，探测纯属浪费首个译文的时间。 */
     poolWheel = buildWheel(list);
     return { list: list, primary: list[0], wheel: poolWheel };
   }
+
+  /** 放宽软条件时，MyMemory 是不是正被配额挡着（是的话一并清掉） */
+  function k_mmQuotaRelaxed() { return mmQuotaExhausted(); }
 
   /* ================= 引擎选择 / 探测 ================= */
   function currentEngine() {
@@ -2683,7 +2747,21 @@
           if (!silent) toast('引擎暂时不可用，重新探测中…');
           probing = null;
           probeCoolUntil = 0;
-          return translatePage(silent, []);
+          /*
+            ⚠️ 那一次「重新探测」如果自己也走进 catch 分支（池子还是空的），
+            _retriedAll 就永远停在 true —— 之后**每一页**翻译都会直接跳过
+            这道兜底、秒报「所有翻译引擎都不可用」，而实际只是第一次抖了一下。
+
+            所以这里用 .then 把标记收回来：不管那次是成功还是失败，
+            标记都不留下。（catch 分支里也清一次，双保险。）
+          */
+          return translatePage(silent, []).then(function (r) {
+            translatePage._retriedAll = false;
+            return r;
+          }, function (e) {
+            translatePage._retriedAll = false;
+            return Promise.reject(e);
+          });
         }
         translatePage._retriedAll = false;
         if (!silent) toast('所有翻译引擎都不可用，已保持原文（可长按图标换引擎或稍后再试）');
@@ -2706,8 +2784,46 @@
       if (mySeq !== state.seq) return Promise.resolve();
       clearTimeout(watchdog);
       state.busy = false; setBusy(false);
-      if (!silent) toast('翻译失败：' + (e && e.message ? e.message : e));
-      else if (typeof console !== 'undefined') console.log('[translate] 翻译失败', e && e.message);
+      /* 跛着腿也别站着不动：上面 _retriedAll 那次可能自己又进了 catch，
+       * 标记得收回来，否则下一页翻译直接跳过兜底。 */
+      translatePage._retriedAll = false;
+      /*
+        ═══ 「所有引擎都不可用」先别急着认输 ═══
+
+        这条错误是 planPool 返回 null 抛出来的 —— 意思是**一个能进池的
+        引擎都没有**。多数时候不是引擎真挂了，而是软条件把它们全挡在门外
+        （有道被 markBad、MyMemory 被配额挡）。
+
+        清一次软条件的账、重置探测冷却，再给一轮机会。只有这一轮还是空的
+        才真认输。用一次性标记防死循环。
+      */
+      var msg = String((e && e.message) || e);
+      if (/所有引擎都不可用/.test(msg) && !translatePage._poolRetried) {
+        translatePage._poolRetried = true;
+        badUntil = {};
+        probeFailUntil = {};
+        probeCoolUntil = 0;
+        probing = null;
+        clearMmQuota();
+        resetPool();
+        if (!silent) toast('引擎暂时不可用，重新探测中…');
+        return translatePage(silent, []).then(function (r) {
+          translatePage._poolRetried = false;
+          return r;
+        }, function (e2) {
+          translatePage._poolRetried = false;
+          return Promise.reject(e2);
+        });
+      }
+      translatePage._poolRetried = false;
+      if (!silent) {
+        /* 真·一个引擎都配不出来时，提示要指一条明路：
+         * 「所有引擎都不可用」没告诉用户能做什么，改成提示去填密钥。 */
+        var tip = /所有引擎都不可用/.test(msg)
+          ? '没有可用的翻译引擎，可在「设置 → 翻译引擎」里填一个平台的密钥'
+          : msg;
+        toast('翻译失败：' + tip);
+      } else if (typeof console !== 'undefined') console.log('[translate] 翻译失败', msg);
       // 异常退出同样排队重试（理由同上：抖一下不该让页面停在英文）
       if (prefGet(KEY_AUTO, false)) retryLoop(mySeq, 1);
       return Promise.resolve();

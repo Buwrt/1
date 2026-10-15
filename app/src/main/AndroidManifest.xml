@@ -162,19 +162,6 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
-        <!-- 「关注的项目更新」检查：给作者仓库点过 Star 后，发新版时在通知栏提醒。
-             用广播接收器而不是前台服务 —— 前台服务必须挂常驻通知，
-             平时会在通知栏占一行；这里只在真有更新时才发一条通知。 -->
-        <receiver
-            android:name=".RepoWatchReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.hubmobile.watch.CHECK" />
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-            </intent-filter>
-        </receiver>
-
         <!-- 开机 / 覆盖安装后把动态码通知恢复出来 -->
         <receiver
             android:name=".BootReceiver"
@@ -185,6 +172,22 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <!--
+          GitHub 通知的后台轮询。
+
+          为什么需要它：微信 / QQ / 钉钉有自己的服务器，会主动把消息推到
+          手机上；而 GitHub 不会把通知推给第三方 App，只能 App 自己去问。
+          App 退后台后 WebView 冻结、JS 停摆，没人问 —— 于是通知栏一条
+          都没有。这里补上那个"问"的人。
+
+          exported=false：只由本应用（以及系统的 AlarmManager）触发，
+          外部应用拉不起来。
+        -->
+        <receiver
+            android:name=".NotifWatchReceiver"
+            android:exported="false"
+            android:enabled="true" />
     </application>
 
 </manifest>

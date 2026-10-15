@@ -55,7 +55,19 @@ public class DownloadProvider extends ContentProvider {
     static final String AUTHORITY_SUFFIX = ".downloads";
 
     static Uri uriFor(String pkg, String fileName) {
-        return Uri.parse("content://" + pkg + AUTHORITY_SUFFIX + "/" + Uri.encode(fileName));
+        return uriFor(pkg, fileName, "");
+    }
+
+    /**
+     * @param sub Download/githup/ 下的子目录（如 "release"）；空串 = 根目录。
+     *
+     * 它作为 query 参数带在 URI 上，这样既不影响 path 段（path 不能含 "/"，
+     * 否则会被当成路径穿越拦掉），又能把子目录信息传给 openFile()。
+     */
+    static Uri uriFor(String pkg, String fileName, String sub) {
+        String base = "content://" + pkg + AUTHORITY_SUFFIX + "/" + Uri.encode(fileName);
+        if (sub == null || sub.isEmpty()) return Uri.parse(base);
+        return Uri.parse(base + "?sub=" + Uri.encode(sub));
     }
 
     /**
@@ -65,8 +77,16 @@ public class DownloadProvider extends ContentProvider {
      * 优先用 {@link #resolve(Context, String)}。
      */
     static File fileFor(String fileName) {
-        return new File(new File(android.os.Environment.getExternalStoragePublicDirectory(
-                android.os.Environment.DIRECTORY_DOWNLOADS), JsBridge.DOWNLOAD_SUBDIR), fileName);
+        return fileFor(fileName, "");
+    }
+
+    /** 带子目录的名义路径，如 Download/githup/release/xxx.apk */
+    static File fileFor(String fileName, String subDir) {
+        File root = new File(android.os.Environment.getExternalStoragePublicDirectory(
+                android.os.Environment.DIRECTORY_DOWNLOADS), JsBridge.DOWNLOAD_SUBDIR);
+        String sub = (subDir == null) ? "" : subDir;
+        File dir = sub.isEmpty() ? root : new File(root, sub);
+        return new File(dir, fileName);
     }
 
     /**
@@ -80,14 +100,35 @@ public class DownloadProvider extends ContentProvider {
      *         调用方要么再判一次 exists()，要么直接用返回的地址去读并处理异常。
      */
     static File resolve(Context ctx, String fileName) {
+        return resolve(ctx, fileName, "");
+    }
+
+    /**
+     * 找名字叫 fileName 的已下载文件，返回真实可读的位置。
+     *
+     * @param subDir Download/githup/ 下的子目录（如 "release"、"议题"）；空串 = 根目录
+     *
+     * ⚠️ 为什么要这个参数：文件实际按来源分目录存放
+     * （Download/githup/release/xxx.apk）。以前只按名字拼
+     * `Download/githup/xxx.apk`，子目录里的文件**永远定位不到** ——
+     * 用户点「打开」就弹「文件不在了（可能已被删除）」，可文件明明就在那儿。
+     */
+    static File resolve(Context ctx, String fileName, String subDir) {
         if (fileName == null || fileName.isEmpty()) return null;
         if (fileName.contains("/") || fileName.contains("\\") || fileName.contains("..")) return null;
+        String sub = (subDir == null) ? "" : subDir;
+        if (sub.contains("/") || sub.contains("\\") || sub.contains("..")) sub = "";
 
         File fromDm = fromDownloadManager(ctx, fileName);
         if (fromDm != null) return fromDm;
 
-        File legacy = fileFor(fileName);
-        return legacy.exists() ? legacy : null;
+        File[] cands = sub.isEmpty()
+                ? new File[]{fileFor(fileName, "")}
+                : new File[]{fileFor(fileName, sub), fileFor(fileName, "")};
+        for (File f : cands) {
+            if (f != null && f.exists()) return f;
+        }
+        return null;
     }
 
     /**
@@ -103,9 +144,17 @@ public class DownloadProvider extends ContentProvider {
         try {
             DownloadManager dm = (DownloadManager) ctx.getSystemService(Context.DOWNLOAD_SERVICE);
             if (dm == null) return null;
-            c = dm.query(new DownloadManager.Query().setFilterByStatus(
-                    DownloadManager.STATUS_SUCCESSFUL | DownloadManager.STATUS_RUNNING
-                            | DownloadManager.STATUS_PAUSED | DownloadManager.STATUS_PENDING));
+            /*
+              ⚠️ 不能写 setFilterByStatus(A | B | C | D)。
+
+              AOSP 里这个方法是**等值比较**（WHERE status = ?），
+              而 STATUS_* 不是位标志，是普通枚举 1/2/4/8。位或出来是 15，
+              SQL 变成 `WHERE status = 15` —— 真实状态只会是 1/2/4/8/16 之一，
+              **永远命中 0 条**。
+
+              所以这条路以前一直是死的。不设过滤即可（总量很小）。
+            */
+            c = dm.query(new DownloadManager.Query());
             if (c == null) return null;
 
             int iLocal = c.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI);
@@ -176,6 +225,8 @@ public class DownloadProvider extends ContentProvider {
         if (name == null || name.isEmpty() || name.contains("/") || name.contains("\\")) {
             throw new FileNotFoundException("bad name");
         }
+        String sub = uri.getQueryParameter("sub");
+        if (sub == null) sub = "";
         if (name.contains("..")) throw new FileNotFoundException("bad name");
 
         /* 第一优先：问 DownloadManager 要这个文件的读句柄。
@@ -183,8 +234,17 @@ public class DownloadProvider extends ContentProvider {
         ParcelFileDescriptor pfd = openViaDownloadManager(name);
         if (pfd != null) return pfd;
 
-        /* 兜底：公共下载目录下的名义路径（Android 9 及以下，或外部传文件名进来） */
-        File f = resolve(getContext(), name);
+        /*
+          兜底：公共下载目录下的名义路径（Android 9 及以下，或外部传文件名进来）。
+
+          sub 要带上：文件按来源分目录存放（Download/githup/release/…），
+          只按名字去根目录找会 FileNotFoundException —— 用户看到的就是
+          「已阻止安装：校验失败：FileNotFoundException」，可文件完好无损。
+        */
+        File f = resolve(getContext(), name, sub);
+        if ((f == null || !f.exists() || !f.isFile()) && !sub.isEmpty()) {
+            f = resolve(getContext(), name, "");      // 再退回根目录试一次
+        }
         if (f == null || !f.exists() || !f.isFile()) {
             throw new FileNotFoundException("找不到已下载的文件：" + name);
         }
