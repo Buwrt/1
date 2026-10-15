@@ -171,13 +171,36 @@
       }
     }).catch(function (e) {
       if (epoch !== window.Router.viewEpoch) return;
-      // 首页都打不开 = 这个仓库挂着 Wiki 开关却没有内容，这是最常见的情况
       var box = UI.$('#wbody', host);
-      if (box) {
-        box.innerHTML = name === DEFAULT_PAGE
-          ? UI.empty('book', '这个仓库还没有 Wiki 内容', '开启了 Wiki，但没有可读取的页面。')
-          : UI.errorBox(e);
+      if (!box) return;
+
+      /* 首页都取不到 = 这个仓库没有人写过 Wiki。
+       *
+       * 这里必须把话说准：has_wiki=true 是 GitHub 给所有公开仓库的默认值，
+       * 它只代表「Wiki 功能开着」，不代表「有内容」—— 绝大多数仓库都是
+       * 「开着但一页没有」。所以这不是读取失败，是确实没东西。
+       * 早先那句「没有可读取的页面」会被当成加载出错，用户以为功能坏了。 */
+      if (name === DEFAULT_PAGE) {
+        box.innerHTML = UI.empty('book', '这个仓库还没有 Wiki', 'Wiki 是可选的，大多数仓库都不会写。') +
+          '<div style="padding:0 14px 14px">' +
+          '<button class="btn" id="wweb">' + window.icon('link-external', 14) + ' 在网页版打开</button>' +
+          '<div style="font-size:12px;color:var(--fg-muted);margin-top:8px;line-height:1.6">' +
+          '想在手机上给它补第一页：用浏览器打开 Wiki 页，切到桌面版网站再编辑。</div></div>';
+        var wb = UI.$('#wweb', box);
+        if (wb) wb.onclick = function () {
+          var url = 'https://github.com/' + full + '/wiki';
+          window.NativeBridge && NativeBridge.openExternal ? NativeBridge.openExternal(url) : window.open(url, '_blank');
+        };
+        return;
       }
+
+      /* 具体某一页取不到：Wiki 存在、这一页没有（改名或删了）。
+         给一条回首页的路，否则用户只能靠返回键退出去。 */
+      box.innerHTML = UI.empty('file', '找不到「' + U.esc(name) + '」这一页', '这一页可能改名或被删掉了。') +
+        '<div style="padding:0 14px 14px"><button class="btn" id="wback">' +
+        window.icon('book', 14) + ' 回到 Wiki 首页</button></div>';
+      var bb = UI.$('#wback', box);
+      if (bb) bb.onclick = function () { window.Router.go('/' + full + '/wiki'); };
     });
   }
 
