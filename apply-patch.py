@@ -54,6 +54,7 @@ def main():
     for name, dst in (
         ("AppLibrary.java", J),
         ("page-library.js", W),
+        ("page-stats.js", W),
     ):
         s = os.path.join(patch, name)
         if not os.path.isfile(s):
@@ -67,7 +68,8 @@ def main():
         os.path.join(src, "app/src/main/assets/web/index.html"),
         '<script src="js/page-downloads.js"></script>\n',
         '<script src="js/page-downloads.js"></script>\n'
-        '<script src="js/page-library.js"></script>\n',
+        '<script src="js/page-library.js"></script>\n'
+        '<script src="js/page-stats.js"></script>\n',
         "index.html 加 script")
 
     # 角标元素必须挂在「我的」这个 tab 内部 —— .badge 是 absolute 定位，
@@ -404,6 +406,31 @@ def main():
           }
         } else {""",
         "page-detail.js 产物点击读 data-repo")
+
+    print("== 12. 数据概览页：路由与入口 ==")
+
+    # 12a. RESERVED：不加的话 /stats 会被当成用户名，去查 stats 这个 GitHub 账号
+    replace_once(
+        os.path.join(W, "app.js"),
+        "'about', 'profile', 'totp', 'library'];",
+        "'about', 'profile', 'totp', 'library', 'stats'];",
+        "app.js RESERVED 加 stats")
+
+    # 12b. 路由分支
+    replace_once(
+        os.path.join(W, "app.js"),
+        "      case 'library': return { name: 'library', ctx: { query: query } };\n",
+        "      case 'library': return { name: 'library', ctx: { query: query } };\n"
+        "      case 'stats': return { name: 'stats', ctx: { query: query } };\n",
+        "app.js 路由加 stats")
+
+    # 12c. 「我的」页入口
+    replace_once(
+        os.path.join(W, "page-user.js"),
+        "          setRow('graph', 'API 配额', '/settings?tab=quota') +\n",
+        "          setRow('graph', '数据概览', '/stats') +\n"
+        "          setRow('graph', 'API 配额', '/settings?tab=quota') +\n",
+        "page-user.js 加数据概览入口")
 
     print("补丁应用完成")
 
