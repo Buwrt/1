@@ -558,6 +558,42 @@ public class AppLibrary extends SQLiteOpenHelper {
         for (String s : vendor) VENDOR_STORES.add(s);
     }
 
+    /**
+     * 可更新的数量。纯本地查表，不发请求 —— 这个数字要能在「我的」页
+     * 秒回地显示出来，不能让人等着转圈。
+     */
+    synchronized int updateCount() {
+        try {
+            Cursor c = null;
+            try {
+                c = getReadableDatabase().rawQuery(
+                        "SELECT COUNT(*) FROM " + T
+                                + " WHERE has_update=1 AND ignore_update=0 AND pending=0", null);
+                return (c != null && c.moveToFirst()) ? c.getInt(0) : 0;
+            } finally {
+                if (c != null) try { c.close(); } catch (Throwable ignored) { }
+            }
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
+    /** 台账里最早一次 checked_at，前端据此决定要不要再查一轮。 */
+    synchronized long oldestCheckedAt() {
+        try {
+            Cursor c = null;
+            try {
+                c = getReadableDatabase().rawQuery(
+                        "SELECT MIN(checked_at) FROM " + T + " WHERE ignore_update=0", null);
+                return (c != null && c.moveToFirst()) ? c.getLong(0) : 0L;
+            } finally {
+                if (c != null) try { c.close(); } catch (Throwable ignored) { }
+            }
+        } catch (Throwable t) {
+            return 0L;
+        }
+    }
+
     /* ============================================================
      * 与系统对账
      * ============================================================ */
