@@ -86,9 +86,49 @@
    * 一个 Release 常常挂好几个 APK（arm64 / armv7 × foss / premium），
    * 光按体积挑最大的是错的。优先级：钉住的变体 > 设备 ABI > universal > 体积。
    */
+  /* ── 变体指纹 ──
+     一个仓库发多个包名（foss / premium、A / B、arm64 / armv7）是常态。
+     光按体积挑最大的，就会「点 A 的更新，下载并装上 B」——
+     用户看到的就是「我装的是 A，怎么绑成 B 了」。
+
+     所以从「这一行实际装的那个 asset 名」里提取身份特征，
+     挑更新时要求候选**必须带有全部这些特征**。 */
+  var GENERIC = { apk: 1, signed: 1, unsigned: 1, release: 1, debug: 1, app: 1, android: 1 };
+  var ARCH = { arm64: 1, v8a: 1, aarch64: 1, arm: 1, v7a: 1, armeabi: 1, arm32: 1,
+    x86: 1, x86_64: 1, universal: 1, noarch: 1, all: 1 };
+
+  function isVersionToken(t) {
+    return /^v?\d+(\.\d+)*$/.test(t) || /^\d+[a-z]$/.test(t) || /^(beta|alpha|rc)\d*$/.test(t);
+  }
+
+  /** 把 asset 名拆成身份 token：去掉版本号、扩展名和通用词。 */
+  function tokensOf(name) {
+    return String(name || '').toLowerCase()
+      .replace(/\.apk$/i, '')
+      .split(/[^a-z0-9]+/i)
+      .filter(function (t) {
+        return t && t.length > 1 && !GENERIC[t] && !isVersionToken(t);
+      });
+  }
+
+  /** 必需特征：全部命中才算「同一个应用」。arch 单独留一份，用于放宽。 */
+  function identityOf(name) {
+    var ts = tokensOf(name);
+    return { core: ts.filter(function (t) { return !ARCH[t]; }), arch: ts.filter(function (t) { return ARCH[t]; }) };
+  }
+
+  function hasAll(name, need) {
+    var ts = tokensOf(name);
+    var set = Object.create(null);
+    ts.forEach(function (t) { set[t] = 1; });
+    for (var i = 0; i < need.length; i++) if (!set[need[i]]) return false;
+    return true;
+  }
+
   function pickAsset(rel, it) {
-    var list = apkOnly((rel && rel.assets) || []);
-    if (!list.length) return null;
+    var all = apkOnly((rel && rel.assets) || []);
+    if (!all.length) return null;
+    var list = all;
 
     var regex = it && it.asset_regex;
     if (regex) {
@@ -101,6 +141,23 @@
 
     var pin = it && it.pinned_variant;
     var keys = abiKeys();
+
+    /* 身份优先：这一行装的是谁，就只能更新成谁。 */
+    var mine = it && (it.asset || it.latest_asset);
+    if (mine && !pin) {
+      var id = identityOf(mine);
+      var need = id.core.concat(id.arch);
+      var strict = list.filter(function (a) { return hasAll(a.name, need); });
+      if (!strict.length && id.arch.length) {
+        // 新版可能不再分包（只留 universal）：放宽架构，但身份词一个不能少
+        strict = list.filter(function (a) { return hasAll(a.name, id.core); });
+      }
+      if (!strict.length && all.length === 1) strict = all;   // 只有一份，没得挑
+      if (strict.length) list = strict;
+      /* ⚠️ 一个都没匹配上就**不让挑** —— 宁可提示「这一版没有匹配的包」，
+         也不能把 B 装到 A 的头上。返回 null 由调用方给出明确提示。 */
+      else if (id.core.length) return null;
+    }
 
     function score(a) {
       var n = (a.name || '').toLowerCase();
@@ -293,7 +350,16 @@
     UI.loading(true);
     fetchRelease(it).then(function (r) {
       UI.loading(false);
-      if (!r) { UI.toast('这一版没有可安装的 APK'); return; }
+      if (!r) {
+        /* 区分两种「没有」：
+           仓库压根没 APK，和「新版里没有跟这一行匹配的那个包」——
+           后者常见于一个仓库发多个包名，用户点 A 的更新却找不到 A。
+           含糊说一句「没有 APK」会让人以为软件坏了。 */
+        UI.toast((it && it.asset)
+          ? '新版里没有跟「' + it.asset + '」匹配的安装包，可长按 ⋯ 重新选择'
+          : '这一版没有可安装的 APK');
+        return;
+      }
       try {
         NB.libSetLatest(it.pkg, JSON.stringify({
           tag: r.rel.tag_name || '',
@@ -390,6 +456,7 @@
       { key: 'ignore', label: it.ignoreUpdate ? '恢复更新提醒' : '忽略此应用的更新', icon: 'bell-slash' },
       { key: 'skip', label: '跳过当前这一版', icon: 'skip' },
       '-',
+      { key: 'rebind', label: '重新选择装的哪个包', icon: 'package' },
       { key: 'variant', label: it.pinned_variant ? '改钉的变体（' + it.pinned_variant + '）' : '钉住一个变体', icon: 'package' },
       { key: 'advanced', label: '高级过滤（asset 正则）', icon: 'filter' },
       '-',
@@ -404,6 +471,7 @@
       if (k === 'pre') { NB.libSetFlag(it.pkg, 'pre', it.preRelease ? '0' : '1'); return render(); }
       if (k === 'ignore') { NB.libSetFlag(it.pkg, 'ignore', it.ignoreUpdate ? '0' : '1'); return render(); }
       if (k === 'skip') { NB.libSetFlag(it.pkg, 'skipped', it.latest_tag || ''); return render(); }
+      if (k === 'rebind') return rebind(it);
       if (k === 'variant') return pickVariant(it);
       if (k === 'advanced') return advancedFilter(it);
       if (k === 'repo') { window.Router.go('/' + it.owner + '/' + it.repo); return; }
@@ -415,6 +483,59 @@
       }
       if (k === 'uninstall') return doUninstall(it);
     });
+  }
+
+  /**
+   * 重新选择「这一行装的是哪个包」。
+   *
+   * 一个仓库发多个包名时，自动挑可能挑错（尤其装的时候还没记账、
+   * 后来才补的）。给个明确入口让用户自己指定，选中后写进 installed_asset，
+   * 之后的更新就只认这一种 —— 「装 A 绑 B」这类错绑也能一键纠正。
+   */
+  function rebind(it) {
+    UI.loading(true);
+    fetchRelease(it, { force: true }).then(function (r) {
+      UI.loading(false);
+      if (!r) { UI.toast('取不到这个仓库的 Release'); return; }
+      var list = apkOnly(r.rel.assets || []);
+      if (!list.length) { UI.toast('这一版没有 APK 附件'); return; }
+      var now = it.asset || '';
+      UI.menu('这个应用装的是哪个包？', list.map(function (a) {
+        var label = a.name + (a.name === now ? '（当前）' : '');
+        return { key: a.browser_download_url, label: label, value: (a.size / 1048576).toFixed(1) + ' MB' };
+      })).then(function (url) {
+        if (!url) return;
+        var picked = null;
+        list.forEach(function (a) { if (a.browser_download_url === url) picked = a; });
+        if (!picked) return;
+        NB.libSetLatest(it.pkg, JSON.stringify({
+          tag: r.rel.tag_name || '',
+          vName: r.rel.name || r.rel.tag_name || '',
+          vCode: codeOf(r.rel.tag_name),
+          asset: picked.name,
+          url: picked.browser_download_url,
+          size: picked.size || 0,
+          notes: (r.rel.body || '').slice(0, 400)
+        }));
+        // 关键：把「装的是哪个包」也改掉，否则下次还会按旧身份去挑
+        try { NB.libSetVariant(it.pkg, ''); } catch (e) { }
+        libRebindAsset(it.pkg, picked.name);
+        UI.toast('已绑定为 ' + picked.name);
+        render();
+      });
+    }, function () { UI.loading(false); });
+  }
+
+  /** 写回 installed_asset。没有专门接口时退回用 add 重建这一行。 */
+  function libRebindAsset(pkg, assetName) {
+    try {
+      if (NB.libSetInstalledAsset) { NB.libSetInstalledAsset(pkg, assetName); return; }
+    } catch (e) { }
+    try {
+      var cur = null;
+      CTX.items.forEach(function (x) { if (x.pkg === pkg) cur = x; });
+      if (cur) NB.libAdd(pkg, cur.owner, cur.repo, cur.app_name, cur.latest_tag, assetName, cur.latest_url);
+    } catch (e) { }
   }
 
   /** 变体选择：列出当前 release 的 APK，让用户钉一个。 */
