@@ -114,6 +114,76 @@
         }
     }
 
+    /** 钉住变体（arm64 / foss 等），传 null 或空串表示不钉。 */
+    @JavascriptInterface
+    public boolean libSetVariant(String pkg, String variant) {
+        try {
+            return lib().setVariant(pkg, variant);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** 高级过滤：asset 正则 + 是否退到更旧的 release。 */
+    @JavascriptInterface
+    public boolean libSetAdvanced(String pkg, String regex, boolean fallbackOlder) {
+        try {
+            return lib().setAdvanced(pkg, regex, fallbackOlder);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** 对一批 asset 名试跑正则，返回匹配到的那些（存之前先核对）。 */
+    @JavascriptInterface
+    public String libPreviewMatch(String assetNamesJson, String regex) {
+        try {
+            return AppLibrary.previewMatch(new JSONArray(assetNamesJson), regex).toString();
+        } catch (Throwable t) {
+            return "[]";
+        }
+    }
+
+    /** 下载完成、等待安装：记下文件路径，这一行就停在这。 */
+    @JavascriptInterface
+    public boolean libMarkPending(String pkg, String tag, String assetName, String filePath) {
+        try {
+            return lib().markPending(pkg, tag, assetName, filePath);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** 用存过的匹配下载失败一次 —— 下次别再信它，重新查 release。 */
+    @JavascriptInterface
+    public boolean libNotePendingFailure(String pkg) {
+        try {
+            return lib().notePendingFailure(pkg);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** 丢弃停放的安装（删文件 + 清状态）。 */
+    @JavascriptInterface
+    public boolean libDiscardPending(String pkg) {
+        try {
+            return lib().discardPending(pkg);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** 停放的安装包还在不在。 */
+    @JavascriptInterface
+    public boolean libPendingFileExists(String pkg) {
+        try {
+            return lib().pendingFileExists(pkg);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     /** 拉起应用。返回 false 说明没装 / 没有可启动的入口。 */
     @JavascriptInterface
     public boolean libOpen(String pkg) {
