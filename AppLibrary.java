@@ -192,45 +192,121 @@ public class AppLibrary extends SQLiteOpenHelper {
      *    「装的是 2.0.11、最新是 2.0.12」被显示成「已装 2.0.12、已是最新」——
      *    两头都错。现在已装那一半**只从系统读**，传进来的只落 latest_*。
      */
+    /**
+     * 建立绑定。
+     *
+     * ⚠️ 两套版本号，别混着比 —— 这是最容易踩的坑：
+     *
+     *   - **Release tag**：GitHub 上发版时打的标签，如 V15 / 2.0.12
+     *   - **versionName**：APK 里面写的版本号，如 1.1.1 / 2.0.11
+     *
+     *   它们是两个独立体系，**经常对不上**。开发者完全可能打 tag "V15"
+     *   但 APK 里 versionName 还是 "1.1.1"。拿二者直接比就是苹果比橘子：
+     *   用户明明装的就是 V15，系统却拿 versionName 1.1.1 去跟 tag V15 比，
+     *   得出「有更新：1.1.1 → V15」—— 让用户去装一个他已经装着的版本。
+     *
+     * 所以比较**只在 tag 体系内进行**：
+     *   - installed_tag = 我们记录的「装的是哪个 release」
+     *   - latest_tag    = 仓库最新的 release
+     *   两者同体系，可比。
+     *
+     * versionName（installed_vname）只用来**显示**给用户看，不参与比较。
+     *
+     * @param trustTag true 表示「确定装的就是 tag 这一版」（自动关联时成立，
+     *                 是我们自己下载安装的）；false 表示不知道装的是哪版
+     *                 （手动填 owner/repo 时成立，装的可能是任意旧版）
+     */
     synchronized boolean add(String pkg, String owner, String repo, String appName,
-                             String tag, String assetName, String assetUrl) {
+                             String tag, String assetName, String assetUrl,
+                             boolean trustTag) {
         if (pkg == null || pkg.isEmpty() || owner == null || repo == null) return false;
         SQLiteDatabase db = getWritableDatabase();
         try {
             DeviceInfo di = probe(pkg);
-            // 已装版本就是系统说的那个；versionName 通常和 Release tag 同格式
-            // （2.0.11 / v2.0.11），拿不到就留空，绝不拿 latest 顶替。
-            /* installed_vname 是后续一切比较的基准，必须写进去。
-               它只在「关联时这个包已经装着」才拿得到 —— 从 githup 里下载
-               安装的场景此刻还没装，先留空，等 sync() 对账时补。 */
-            String instName = di.present && di.versionName != null ? di.versionName : "";
+            String vname = di.present && di.versionName != null ? di.versionName : "";
             long instCode = di.present ? di.versionCode : 0L;
 
-            // 传进来的这一份是最新 Release，直接算有没有更新
-            long latestCode = codeOfTag(tag);
-            long instTagCode = codeOfTag(instName);
-            boolean newer = latestCode > 0 && latestCode > instTagCode;
+            /* 装的是哪一版：
+               自动关联 → 就是这次下载的 tag，可信；
+               手动关联 → 不知道，留空，比较时退回用 versionName 兜底。 */
+            String instTag = trustTag && tag != null ? tag : "";
 
-            db.execSQL("INSERT OR REPLACE INTO " + T + " (pkg,owner,repo,app_name,"
-                            + "installed_tag,installed_vname,installed_vcode,"
-                            + "latest_tag,latest_asset,latest_url,"
-                            + "fingerprint,has_update,"
-                            + "installed_at,updated_at,checked_at) "
-                            + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    new Object[]{
-                            pkg, owner, repo, appName == null ? pkg : appName,
-                            instName, instName, instCode,
-                            tag == null ? "" : tag, assetName, assetUrl,
-                            di.present ? di.fingerprint : null,
-                            newer ? 1 : 0,
-                            System.currentTimeMillis(), System.currentTimeMillis(),
-                            System.currentTimeMillis()
-                    });
+            boolean newer = false;
+            if (trustTag && tag != null && !tag.isEmpty()) {
+                // 装的就是这版，当然不算「有更新」
+                newer = false;
+            } else {
+                long lc = codeOfTag(tag), cc = codeOfTag(vname);
+                newer = (lc > 0 && cc > 0) ? lc > cc
+                        : (lc > 0 && !tag.equals(vname));
+            }
+
+            /* ⚠️ 不能用 INSERT OR REPLACE：它会把整行换成默认+新值，
+               用户钉的变体、asset 正则、忽略更新、跳过此版、预发布开关
+               **全被冲掉**。自动更新走的正是这条路（pkg 已存在），
+               用户钉的变体就没了。
+               所以分两种：已存在就只更新「来源与版本」那几列。 */
+            boolean exists = false;
+            Cursor ex = null;
+            try {
+                ex = db.query(T, new String[]{"pkg"}, "pkg=?", new String[]{pkg},
+                        null, null, null);
+                exists = ex.moveToFirst();
+            } finally {
+                if (ex != null) try { ex.close(); } catch (Throwable ignored) { }
+            }
+
+            if (exists) {
+                db.execSQL("UPDATE " + T + " SET owner=?, repo=?, app_name=?,"
+                                + " installed_tag=?, installed_vname=?, installed_vcode=?,"
+                                + " latest_tag=?, latest_asset=?, latest_url=?,"
+                                + " fingerprint=?, has_update=?, checked_at=? WHERE pkg=?",
+                        new Object[]{
+                                owner, repo, appName == null ? pkg : appName,
+                                instTag, vname, instCode,
+                                tag == null ? "" : tag, assetName, assetUrl,
+                                di.present ? di.fingerprint : null,
+                                newer ? 1 : 0, System.currentTimeMillis(), pkg
+                        });
+            } else {
+                db.execSQL("INSERT INTO " + T + " (pkg,owner,repo,app_name,"
+                                + "installed_tag,installed_vname,installed_vcode,"
+                                + "latest_tag,latest_asset,latest_url,"
+                                + "fingerprint,has_update,"
+                                + "installed_at,updated_at,checked_at) "
+                                + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        new Object[]{
+                                pkg, owner, repo, appName == null ? pkg : appName,
+                                instTag, vname, instCode,
+                                tag == null ? "" : tag, assetName, assetUrl,
+                                di.present ? di.fingerprint : null,
+                                newer ? 1 : 0,
+                                System.currentTimeMillis(), System.currentTimeMillis(),
+                                System.currentTimeMillis()
+                        });
+            }
             return true;
         } catch (Throwable t) {
             LogBook.error(ctx, "应用库写入失败", String.valueOf(t.getMessage()));
             return false;
         }
+    }
+
+    /** 手动关联：不知道装的是哪一版，trustTag=false。 */
+    synchronized boolean add(String pkg, String owner, String repo, String appName,
+                             String tag, String assetName, String assetUrl) {
+        return add(pkg, owner, repo, appName, tag, assetName, assetUrl, false);
+    }
+
+    /**
+     * 「已装是哪个 release」—— 一切比较的基准。
+     *
+     * installed_tag 可信就用它（tag 体系内比，同体系可比）；
+     * 没有才退回 versionName（跨体系，可能误报，但总比不报强）。
+     */
+    private static String installedBase(String instTag, String vname) {
+        if (instTag != null && !instTag.isEmpty()) return instTag;
+        return vname == null ? "" : vname;
     }
 
     /**
@@ -296,15 +372,15 @@ public class AppLibrary extends SQLiteOpenHelper {
                    会让「最新 2.0.12 vs 已装 2.0.12」永远相等 —— 一查就把
                    has_update 改成 0，角标随之消失。现在 vname 优先，
                    vname 没了才退回 tag。 */
-                c = db.query(T, new String[]{"installed_vcode", "installed_vname",
-                                "installed_tag", "skipped_tag", "ignore_update"},
+                c = db.query(T, new String[]{"installed_vcode", "installed_tag",
+                                "installed_vname", "skipped_tag", "ignore_update"},
                         "pkg=?", new String[]{pkg}, null, null, null);
                 if (c.moveToFirst()) {
                     curCode = c.getLong(0);
-                    String vname = c.getString(1);
-                    String itag = c.getString(2);
-                    curTag = (vname != null && !vname.isEmpty()) ? vname
-                            : (itag == null ? "" : itag);
+                    String itag = c.getString(1);
+                    String vname = c.getString(2);
+                    // 基准：installed_tag 优先（同体系可比），没有才用 versionName
+                    curTag = installedBase(itag, vname);
                     skipped = c.getString(3);
                     ignore = c.getInt(4);
                 }
@@ -593,7 +669,9 @@ public class AppLibrary extends SQLiteOpenHelper {
             if (appName == null || appName.isEmpty()) appName = pi.packageName;
 
             AppLibrary lib = get(ctx);
-            lib.add(pi.packageName, meta[0], meta[1], appName, meta[2], meta[3], url);
+            /* trustTag=true：这个 APK 是我们自己下载安装的，装的就是 meta[2]
+               这一版，确定无疑 —— 这正是后来比较的基准。 */
+            lib.add(pi.packageName, meta[0], meta[1], appName, meta[2], meta[3], url, true);
             lib.markPending(pi.packageName, meta[2], meta[3], apk.getAbsolutePath());
             sTrack.remove(url);
         } catch (Throwable t) {
@@ -742,7 +820,7 @@ public class AppLibrary extends SQLiteOpenHelper {
         Cursor c = null;
         try {
             c = getReadableDatabase().query(T,
-                    new String[]{"latest_tag", "installed_vname", "installed_tag",
+                    new String[]{"latest_tag", "installed_tag", "installed_vname",
                             "ignore_update", "pending", "skipped_tag"},
                     null, null, null, null, null);
             while (c.moveToNext()) {
@@ -753,9 +831,9 @@ public class AppLibrary extends SQLiteOpenHelper {
                    pending 同样是「等用户处理」的事，就该继续提示。 */
                 if (c.getInt(3) == 1) continue;
                 String latest = c.getString(0);
-                String vname = c.getString(1);
-                String itag = c.getString(2);
-                String cur = (vname != null && !vname.isEmpty()) ? vname : itag;
+                String itag = c.getString(1);
+                String vname = c.getString(2);
+                String cur = installedBase(itag, vname);
                 String skipped = c.getString(5);
                 if (latest == null || latest.isEmpty()) continue;
                 if (skipped != null && skipped.equals(latest)) continue;
@@ -860,27 +938,50 @@ public class AppLibrary extends SQLiteOpenHelper {
                    （比较基准取了被污染的 installed_tag），这里按系统真值纠回来，
                    用户不用手动移除重加。 */
                 try {
-                    String lt = null, sk = null; int ig = 0;
+                    String lt = null, sk = null, base = null; int ig = 0;
                     Cursor q = null;
                     try {
-                        q = db.query(T, new String[]{"latest_tag", "skipped_tag", "ignore_update"},
+                        q = db.query(T, new String[]{"latest_tag", "installed_tag",
+                                        "skipped_tag", "ignore_update"},
                                 "pkg=?", new String[]{p}, null, null, null);
-                        if (q.moveToFirst()) { lt = q.getString(0); sk = q.getString(1); ig = q.getInt(2); }
+                        if (q.moveToFirst()) {
+                            lt = q.getString(0);
+                            base = q.getString(1);
+                            sk = q.getString(2);
+                            ig = q.getInt(3);
+                        }
                     } finally { if (q != null) try { q.close(); } catch (Throwable ignored) { } }
+                    /* 基准优先 installed_tag；没有才用刚从系统读到的 versionName。
+                       这样 APK 里 versionName 跟 release tag 对不上时（很常见），
+                       也不会把「已装的这版」误判成「有更新」。 */
+                    String cur = installedBase(base, di.versionName);
                     boolean newer = false;
                     if (lt != null && !lt.isEmpty() && ig == 0 && !(sk != null && sk.equals(lt))) {
-                        long lc = codeOfTag(lt), cc = codeOfTag(di.versionName);
+                        long lc = codeOfTag(lt), cc = codeOfTag(cur);
                         newer = (lc > 0 && cc > 0) ? lc > cc
-                                : (cc == 0 && !lt.equals(di.versionName));
+                                : (cc == 0 && !lt.equals(cur));
                     }
                     db.execSQL("UPDATE " + T + " SET has_update=? WHERE pkg=?",
                             new Object[]{newer ? 1 : 0, p});
                 } catch (Throwable ignored) { }
 
                 if (curCode != di.versionCode || fpChanged) {
-                    db.execSQL("UPDATE " + T + " SET installed_vname=?, installed_vcode=?,"
-                                    + " fingerprint=?, pending=0 WHERE pkg=?",
-                            new Object[]{di.versionName, di.versionCode, di.fingerprint, p});
+                    /* 版本变了。但要看是**谁**装的：
+                         pending=1 → 是我们自己下载安装的那次生效了，
+                                     installed_tag 已被 trackFromApk 设成这一版，
+                                     保留它，别清。
+                         pending=0 → 用户在别处升/降过级，installed_tag 记的
+                                     「我们装的哪一版」已经不准，清掉，
+                                     让比较退回用 versionName 兜底。 */
+                    if (pending == 1) {
+                        db.execSQL("UPDATE " + T + " SET installed_vname=?, installed_vcode=?,"
+                                        + " fingerprint=?, pending=0 WHERE pkg=?",
+                                new Object[]{di.versionName, di.versionCode, di.fingerprint, p});
+                    } else {
+                        db.execSQL("UPDATE " + T + " SET installed_vname=?, installed_vcode=?,"
+                                        + " fingerprint=?, installed_tag='', pending=0 WHERE pkg=?",
+                                new Object[]{di.versionName, di.versionCode, di.fingerprint, p});
+                    }
                     changed++;
                 } else if (pending == 1) {
                     /* 版本没变却还标着 pending —— 说明上次那次安装没成
