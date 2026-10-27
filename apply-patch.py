@@ -395,6 +395,97 @@ def main():
         } else {""",
         "page-detail.js Actions 产物")
 
+    print("== 10. 下载历史：本地文件删了，记录跟着走 ==")
+
+    # 10a. 安全网加下限：记录少的时候「全没了」就是真没了
+    replace_once(
+        os.path.join(J, "JsBridge.java"),
+        """        /* 安全网 3：全军覆没 = 查询本身不可信，一条都不删 */
+        if (total > 0 && dead == total) {
+            android.util.Log.w("githup",
+                    "历史核对：全部 " + total + " 条都判为文件不存在，疑查询失效，跳过剔除");
+            return false;
+        }""",
+        """        /* 安全网 3：全军覆没 = 查询本身不可信，一条都不删。
+
+           ⚠️ 但必须有下限 —— 以前写成 total > 0 就生效，于是历史里
+           **只有 1 条**时，用户把那个文件删掉，total=1 且 dead=1，
+           直接被当成「查询失效」跳过剔除 —— 记录永远留着，用户看到的
+           就是「本地明明删了，App 里还有」。
+
+           少量记录全没了就是真没了，保护只在样本够多时才有意义。 */
+        final int SAFETY_MIN = 3;
+        if (total >= SAFETY_MIN && dead == total) {
+            android.util.Log.w("githup",
+                    "历史核对：全部 " + total + " 条都判为文件不存在，疑查询失效，跳过剔除");
+            return false;
+        }""",
+        "JsBridge 安全网加下限")
+
+    # 10b. 手动核对入口（跳过节流，且忽略安全网）
+    replace_once(
+        os.path.join(J, "JsBridge.java"),
+        """    /** 历史核对节流：页面 800ms 轮询一次，不必每次都查 uri */
+    private static final long URI_CHECK_GAP_MS = 5_000L;""",
+        """    /**
+     * 手动核对：跳过节流，也忽略「全军覆没」那条安全网。
+     *
+     * 用户主动点的那一次，意图是明确的 —— 「我删了文件，把记录也清掉」。
+     * 这时候再拿安全网拦着，用户只会觉得点了没反应。
+     * 自动核对才需要保守，手动核对应该照做。
+     */
+    private int pruneMissingNow() {
+        synchronized (dlHistory) {
+            loadHistoryLocked();
+            int removed = 0;
+            for (int i = dlHistory.length() - 1; i >= 0; i--) {
+                JSONObject o = dlHistory.optJSONObject(i);
+                if (o == null) continue;
+                if (!o.optBoolean("ok", false)) continue;   // 失败记录本来就没文件
+                String uri = o.optString("uri", "");
+                if (uri.isEmpty()) continue;                // 没位置信息，不判断
+                if (!fileReallyGone(o, uri)) continue;
+                dlHistory.remove(i);
+                removed++;
+            }
+            if (removed > 0) saveHistoryLocked();
+            return removed;
+        }
+    }
+
+    /** 历史核对节流：页面 800ms 轮询一次，不必每次都查 uri */
+    private static final long URI_CHECK_GAP_MS = 5_000L;""",
+        "JsBridge 手动核对方法")
+
+    # 10c. 前端：「清空记录」旁边加「核对本地文件」
+    replace_once(
+        os.path.join(W, "page-downloads.js"),
+        """        '<button class="dl-clear" id="dl-clear">清空记录</button></div>' +""",
+        """        '<button class="dl-clear" id="dl-verify">核对本地文件</button>' +
+        '<button class="dl-clear" id="dl-clear">清空记录</button></div>' +""",
+        "page-downloads 加核对按钮")
+
+    replace_once(
+        os.path.join(W, "page-downloads.js"),
+        """      var clear = UI.$('#dl-clear', host);
+      if (clear) clear.onclick = clearHistory;""",
+        """      var clear = UI.$('#dl-clear', host);
+      if (clear) clear.onclick = clearHistory;
+
+      /* 核对本地文件：用户在文件管理器里删了文件，这里还留着记录 ——
+         点一下把「本地确实没了」的那几条清掉。
+         自动核对有 5 秒节流、还有一条防误删的安全网，手动点这一次
+         两个都跳过去，意图明确就该照做。 */
+      var verify = UI.$('#dl-verify', host);
+      if (verify) verify.onclick = function () {
+        var n = 0;
+        try { n = NB.pruneDownloadHistory() || 0; } catch (e) { n = 0; }
+        if (n > 0) UI.toast('已清掉 ' + n + ' 条（本地文件已不存在）');
+        else UI.toast('都在，没有失效的记录');
+        setTimeout(refreshHistory, 300);
+      };""",
+        "page-downloads 核对按钮逻辑")
+
     print("补丁应用完成")
 
 
