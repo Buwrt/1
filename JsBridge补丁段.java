@@ -128,7 +128,8 @@
         try {
             AppLibrary.noteTrack(url, owner, repo, tag, assetName);
         } catch (Throwable ignored) { }
-        enqueueDownload(url, filename, headersJson, true, null, category);
+        /* 走 7 参那个重载：参数位置写全，别让重载解析去猜。 */
+        enqueueDownload(url, filename, headersJson, null, true, null, category);
     }
 
     /**
