@@ -296,6 +296,24 @@
         }
     }
 
+    /**
+     * 立刻核对一遍下载历史：本地文件已经不在的，记录也清掉。
+     *
+     * 用在「用户在文件管理器里删了文件，App 里还留着记录」这个场景。
+     * 平时 downloadHistory() 会自己核对，但有 5 秒节流，而且有一条
+     * 安全网会拦 —— 所以给个手动入口，让用户可以当场核一次。
+     *
+     * @return 清掉了几条
+     */
+    @JavascriptInterface
+    public int pruneDownloadHistory() {
+        try {
+            return pruneMissingNow();
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
     /** 有多少个应用可更新。纯本地查表，秒回。 */
     @JavascriptInterface
     public int libUpdateCount() {
