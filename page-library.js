@@ -271,11 +271,12 @@
   function doUpdate(it) {
     function go(url, name, tag, asset) {
       if (!url) { UI.toast('这一版没找到可安装的 APK'); return; }
-      // 真的要下了才置待安装 —— 失败的话别把行卡在「待安装」
-      try {
-        if (NB.libMarkPending) NB.libMarkPending(it.pkg, tag || '', asset || name, '');
-        else if (NB.libSetPending) NB.libSetPending(it.pkg, true);
-      } catch (e) { }
+      /* ⚠️ 这里**不要**置 pending。
+         下载是异步的，用户完全可能在系统安装器上点取消 —— 那一装没成，
+         版本没变，行却永远卡在「待安装」，角标也随之消失，看起来像
+         应用库把这条弄丢了。
+         真正的 pending 时机是「下完、拉起安装器之前」，由原生
+         trackFromApk() 去做（那一刻文件确实在，路径是真的）。 */
       if (startInstall(url, name, it)) {
         UI.toast('开始下载 ' + name + '，完成后会拉起安装器');
       } else {
