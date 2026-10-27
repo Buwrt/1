@@ -81,11 +81,17 @@ jobs:
         id: b
         continue-on-error: true
         run: |
-          set -o pipefail
           cd src
           chmod +x ./gradlew
+          # 不能 set -o pipefail 配默认 bash -e：gradle 一失败整条管道非零，
+          # 脚本当场退出，下面那句 echo 就写不进 GITHUB_OUTPUT，
+          # Assert 拿到空值只能报一个说不清的错。
+          set +e
           ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log
-          echo "exit=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          code=${PIPESTATUS[0]}
+          set -e
+          echo "exit=$code" >> "$GITHUB_OUTPUT"
+          echo "gradle exit=$code"
 
       # 硬断言：APK 不在或太小就直接变红。
       # 官方那条流水线踩过 —— continue-on-error 下 gradle 失败仍是绿色对勾，
@@ -194,3 +200,51 @@ jobs:
           path: src/build.log
           if-no-files-found: warn
           retention-days: 30
+
+      # artifact 落在 Azure Blob 上，有些网络环境取不到；
+      # 构建失败时尤其需要日志，所以再往仓库里放一份。
+      - name: 提交构建日志到仓库
+        if: always()
+        run: |
+          set -e
+          python3 - <<'PYEOF'
+          import base64, json, os, urllib.parse, urllib.request
+
+          TOKEN = os.environ["GH_TOKEN"]
+          OWNER, REPO, BRANCH = "Buwrt", "1", "main"
+          API = "https://api.github.com"
+
+          try:
+              raw = open("src/build.log", "rb").read()
+          except Exception as e:
+              print("no build.log:", e)
+              raise SystemExit(0)
+          # 只留最后 400 行：gradle 的报错在末尾，前面是依赖下载噪音
+          lines = raw.split(b"\n")[-400:]
+          data = b"\n".join(lines)
+
+          path = "ci/build.log"
+          body = {"message": "ci: 构建日志", "branch": BRANCH,
+                  "content": base64.b64encode(data).decode()}
+          try:
+              r = urllib.request.Request(
+                  f"{API}/repos/{OWNER}/{REPO}/contents/{urllib.parse.quote(path)}?ref={BRANCH}",
+                  headers={"Authorization": "Bearer " + TOKEN,
+                           "Accept": "application/vnd.github+json", "User-Agent": "ci"})
+              with urllib.request.urlopen(r, timeout=60) as z:
+                  sha = json.loads(z.read().decode()).get("sha")
+              if sha:
+                  body["sha"] = sha
+          except Exception:
+              pass
+          req = urllib.request.Request(
+              f"{API}/repos/{OWNER}/{REPO}/contents/{urllib.parse.quote(path)}",
+              data=json.dumps(body).encode(), method="PUT",
+              headers={"Authorization": "Bearer " + TOKEN,
+                       "Accept": "application/vnd.github+json",
+                       "Content-Type": "application/json", "User-Agent": "ci"})
+          with urllib.request.urlopen(req, timeout=240) as z:
+              print("uploaded build.log", len(data))
+          PYEOF
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
