@@ -486,6 +486,63 @@ def main():
       };""",
         "page-downloads 核对按钮逻辑")
 
+    print("== 11. 加速通道 / ZIP 解压 也入账 ==")
+
+    # 11a. installFinished：加速通道（点了 Star 走这条）下完直接装，
+    #      原本根本没经过入账 —— 只有没点 Star 的限速通道才会关联。
+    replace_once(
+        os.path.join(J, "JsBridge.java"),
+        """            if (inst && isZip) {
+                pool.execute(() -> extractAndInstall(uri, name));
+            } else {
+                openInstaller(uri);
+            }""",
+        """            if (inst && isZip) {
+                pool.execute(() -> extractAndInstall(uri, name, t.originUrl));
+            } else if (inst && name.toLowerCase().endsWith(".apk")) {
+                /* 入账：加速通道下完给的是 content://，不是 File，
+                   所以先落进 ApkProvider 目录（顺便就能读包名），
+                   装的时候也用同一个地址。
+                   入账失败不能影响安装 —— 落 null 就照原样装。 */
+                File staged = null;
+                try {
+                    staged = AppLibrary.stageApk(activity, t.originUrl, uri, name);
+                } catch (Throwable ignored) { }
+                if (staged != null) {
+                    openInstaller(ApkProvider.uriFor(
+                            activity.getPackageName() + ApkProvider.AUTHORITY_SUFFIX,
+                            staged.getName()));
+                } else {
+                    openInstaller(uri);
+                }
+            } else {
+                openInstaller(uri);
+            }""",
+        "JsBridge installFinished 入账")
+
+    # 11b. extractAndInstall：ZIP 解压出 APK 后也带上来源
+    replace_once(
+        os.path.join(J, "JsBridge.java"),
+        "    private void extractAndInstall(Uri zipUri, String zipName) {",
+        "    private void extractAndInstall(Uri zipUri, String zipName, String originUrl) {",
+        "JsBridge extractAndInstall 加 originUrl")
+
+    replace_once(
+        os.path.join(J, "JsBridge.java"),
+        """        Uri uri = ApkProvider.uriFor(
+                activity.getPackageName() + ApkProvider.AUTHORITY_SUFFIX, best.getName());
+        openInstaller(uri);
+    }""",
+        """        /* 解压出来的 APK 也是「从 githup 装的」，同样入账 */
+        try {
+            AppLibrary.trackFromApk(activity, originUrl, best);
+        } catch (Throwable ignored) { }
+        Uri uri = ApkProvider.uriFor(
+                activity.getPackageName() + ApkProvider.AUTHORITY_SUFFIX, best.getName());
+        openInstaller(uri);
+    }""",
+        "JsBridge extractAndInstall 入账")
+
     print("补丁应用完成")
 
 
