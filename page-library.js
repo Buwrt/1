@@ -227,17 +227,59 @@
    *
    * 另外每一步都别默默做：下载是异步的，不给反馈用户就以为按钮坏了。
    */
+  /**
+   * 下载并安装更新。
+   *
+   * ⚠️ 踩过的坑：installApk 在 **window.Native** 上，不在 window.API 上。
+   *    api.js 里 Native（第 15 行起）和 API（第 1084 行起）是两个对象，
+   *    window.API 只有 get / post / put / del 那些请求方法。写成
+   *    window.API.installApk(...) 拿到的是 undefined，一调用就抛 TypeError，
+   *    而且没有任何 toast —— 表现就是「点了更新，什么都没发生」。
+   *
+   * 另外两点：
+   *   - Release 附件用 browser_download_url，是公开直链，**别带认证头**
+   *     （带 Bearer 反而容易在 302 跳对象存储时出问题）。只给一个 Accept。
+   *   - 下载交给原生 DownloadManager，进度在「下载管理」页看；这里只负责
+   *     发起来，并且**必须给一句反馈**，否则用户以为按钮坏了。
+   */
+  function startInstall(url, name) {
+    if (!url) return false;
+    var headers = JSON.stringify({ Accept: 'application/vnd.android.package-archive' });
+    try {
+      var b = window.NativeBridge;
+      if (b && typeof b.installApk === 'function') {
+        b.installApk(url, name, headers, 'release');
+        return true;
+      }
+    } catch (e) { /* 落到下面 */ }
+    try {
+      if (window.Native && typeof window.Native.installApk === 'function') {
+        window.Native.installApk(url, name, { Accept: 'application/vnd.android.package-archive' }, 'release');
+        return true;
+      }
+    } catch (e) { /* 落到下面 */ }
+    return false;
+  }
+
   function doUpdate(it) {
-    function go(url, name) {
+    function go(url, name, tag, asset) {
       if (!url) { UI.toast('这一版没找到可安装的 APK'); return; }
       // 真的要下了才置待安装 —— 失败的话别把行卡在「待安装」
-      try { NB.libSetPending(it.pkg, true); } catch (e) { }
-      window.API.installApk(url, name);
-      UI.toast('开始下载 ' + name);
+      try {
+        if (NB.libMarkPending) NB.libMarkPending(it.pkg, tag || '', asset || name, '');
+        else if (NB.libSetPending) NB.libSetPending(it.pkg, true);
+      } catch (e) { }
+      if (startInstall(url, name)) {
+        UI.toast('开始下载 ' + name + '，完成后会拉起安装器');
+      } else {
+        // 一个出口都不能少：原生能力不在时也要有地方可去，不能点了没反应
+        try { NB.openExternal && NB.openExternal(url); } catch (e) { }
+        UI.toast('无法直接安装，已在浏览器中打开下载链接');
+      }
     }
 
     if (it.latest_url) {
-      go(it.latest_url, it.latest_asset || (it.pkg + '.apk'));
+      go(it.latest_url, it.latest_asset || (it.pkg + '.apk'), it.latest_tag, it.latest_asset);
       return;
     }
     UI.loading(true);
@@ -255,7 +297,7 @@
           notes: (r.rel.body || '').slice(0, 400)
         }));
       } catch (e) { }
-      go(r.asset.browser_download_url, r.asset.name);
+      go(r.asset.browser_download_url, r.asset.name, r.rel.tag_name, r.asset.name);
     }, function () {
       UI.loading(false);
       UI.toast('取不到 Release，检查网络或登录状态');
@@ -263,12 +305,15 @@
   }
 
   /** 待安装的那一行：文件还在就直接装，没了就重新下载。 */
+  /**
+   * 待安装那一行点「安装」：文件还在就重新拉起安装器，没了就重新下载。
+   * 原生没有「装任意本地文件」的通用入口，所以两条路都走重新下载 ——
+   * 至少按钮永远有反应，不会是个死按钮。
+   */
   function doInstallPending(it) {
-    if (NB.libPendingFileExists && NB.libPendingFileExists(it.pkg)) {
-      NB.openApk && NB.openApk(it.pending_file);
-      return;
-    }
-    UI.toast('安装包已丢失，重新下载');
+    var exists = false;
+    try { exists = !!(NB.libPendingFileExists && NB.libPendingFileExists(it.pkg)); } catch (e) { }
+    UI.toast(exists ? '重新拉起安装器' : '安装包已丢失，重新下载');
     doUpdate(it);
   }
 
