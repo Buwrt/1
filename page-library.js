@@ -259,6 +259,31 @@
       // 返回值说明「真的弹出了系统卸载框」还是「只打开了应用信息页兜底」。
       // 不能统一说「请在系统弹窗中确认」—— 兜底时根本没有弹窗在等你。
       UI.toast(ok ? '请在系统弹窗中确认卸载' : '已打开应用信息页，请在其中卸载');
+      reconcileAfterUninstall(it.pkg);
+    });
+  }
+
+  /**
+   * 卸载完之后把这一行清掉。
+   *
+   * 为什么必须延时轮询：卸载是在**系统界面**里完成的，用户什么时候
+   * 点「确定」我们根本不知道，也没有回调能拿（系统卸载框不告诉我们结果）。
+   * 而过一次 libSync() 是带防误删护栏的 —— 扫描结果一残缺就一个都不删。
+   *
+   * 所以这里走「显式确认」路径：隔一会儿单点查一次这个包名还在不在，
+   * 不在就删行并重画。查几次，覆盖用户读提示、点确认的那段时间。
+   */
+  function reconcileAfterUninstall(pkg) {
+    var tries = [2500, 7000, 15000, 30000];
+    tries.forEach(function (ms) {
+      setTimeout(function () {
+        try {
+          NB.libRemoveIfGone(pkg);
+          NB.libSync();
+        } catch (e) { }
+        // 页面可能已经切走了，render 会自己找 #view；找不到就静默
+        if (document.getElementById('view')) render();
+      }, ms);
     });
   }
 
@@ -465,6 +490,12 @@
 
   function rowHtml(it, inGroup) {
     var name = it.app_name || it.pkg;
+    // 同一个仓库常发多个包名（foss / premium、arm64 / armv7），界面上
+    // 名字和 owner/repo 完全一样，只有包名能区分。组卡内一律显示包名。
+    var sub = inGroup
+      ? it.pkg
+      : (((CTX.dupNames && CTX.dupNames[name] > 1) || !(it.owner && it.repo))
+        ? it.pkg : (it.owner + '/' + it.repo));
     var st = statusOf(it);
     var main;
     if (it.pending) main = '<button class="btn sm primary" data-act="install">安装</button>';
@@ -476,8 +507,7 @@
       '<span>' + window.icon('package', 22) + '</span>' +
       '<div style="min-width:0;flex:1">' +
       '<div style="font-weight:600">' + U.esc(name) + '</div>' +
-      (inGroup ? '' : '<div class="muted tiny" style="overflow:hidden;text-overflow:ellipsis">'
-        + U.esc((it.owner && it.repo) ? (it.owner + '/' + it.repo) : it.pkg) + '</div>') +
+      '<div class="muted tiny" style="overflow:hidden;text-overflow:ellipsis">' + U.esc(sub) + '</div>' +
       '</div>' +
       '<button class="icon-btn" data-act="menu">' + window.icon('kebab-horizontal', 20) + '</button>' +
       '</div>' +
@@ -546,6 +576,11 @@
       var all = !q ? items : items.filter(function (it) {
         return String((it.app_name || '') + ' ' + (it.owner || '') + '/' + (it.repo || '')).toLowerCase().indexOf(q) >= 0;
       });
+
+      // 重名统计：同名应用靠包名区分，副标题据此切换
+      var nc = Object.create(null);
+      items.forEach(function (it) { var n = it.app_name || it.pkg; nc[n] = (nc[n] || 0) + 1; });
+      CTX.dupNames = nc;
 
       var pend = sortList(all.filter(function (it) { return it.pending; }));
       var upd = sortList(all.filter(function (it) { return it.hasUpdate && !it.pending; }));
