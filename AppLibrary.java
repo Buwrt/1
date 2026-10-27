@@ -35,7 +35,7 @@ import java.util.List;
 public class AppLibrary extends SQLiteOpenHelper {
 
     private static final String DB_NAME = "app_library.db";
-    private static final int DB_VER = 1;
+    private static final int DB_VER = 2;
     private static final String T = "apps";
 
     /** 少于这个数就认为「这次扫描不可信」，绝不据此删台账（见 sync()） */
@@ -80,14 +80,40 @@ public class AppLibrary extends SQLiteOpenHelper {
                 + "pre_release INTEGER DEFAULT 0,"  // 0/1 收预发布
                 + "skipped_tag TEXT,"               // 跳过的那一版
                 + "asset_regex TEXT,"               // asset 名正则过滤
+                + "pending_file TEXT,"            // 已下载待安装的文件路径
+                + "pending_tag TEXT,"             // 待安装的那一版
+                + "pending_asset TEXT,"
+                + "pending_failed INTEGER DEFAULT 0," // 用存过的匹配下载失败过几次
+                + "pinned_variant TEXT,"          // 钉住的变体（如 arm64）
+                + "fallback_older INTEGER DEFAULT 0," // 最新版没匹配上就退到更旧的 release
                 + "installed_at INTEGER DEFAULT 0,"
                 + "updated_at INTEGER DEFAULT 0,"
                 + "checked_at INTEGER DEFAULT 0)");
     }
 
+    /**
+     * 加列用 ALTER TABLE 逐条补，不重建表 —— 台账是用户一条条攒起来的，
+     * 重建等于清空。每条都吞掉「列已存在」的异常，重复升级也不会炸。
+     */
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldV, int newV) {
-        // 第一版，暂无迁移
+        if (oldV < 2) {
+            String[] adds = {
+                    "ALTER TABLE " + T + " ADD COLUMN pending_file TEXT",
+                    "ALTER TABLE " + T + " ADD COLUMN pending_tag TEXT",
+                    "ALTER TABLE " + T + " ADD COLUMN pending_asset TEXT",
+                    "ALTER TABLE " + T + " ADD COLUMN pending_failed INTEGER DEFAULT 0",
+                    "ALTER TABLE " + T + " ADD COLUMN pinned_variant TEXT",
+                    "ALTER TABLE " + T + " ADD COLUMN fallback_older INTEGER DEFAULT 0",
+            };
+            for (String sql : adds) {
+                try {
+                    db.execSQL(sql);
+                } catch (Throwable ignored) {
+                    // 列已存在
+                }
+            }
+        }
     }
 
     /* ============================================================
@@ -131,7 +157,8 @@ public class AppLibrary extends SQLiteOpenHelper {
         String[] cols = new String[]{
                 "pkg", "owner", "repo", "app_name", "installed_tag", "installed_vname",
                 "installed_asset", "installed_url", "fingerprint", "latest_tag",
-                "latest_vname", "latest_asset", "latest_url", "notes", "skipped_tag", "asset_regex"
+                "latest_vname", "latest_asset", "latest_url", "notes", "skipped_tag",
+                "asset_regex", "pending_file", "pending_tag", "pending_asset", "pinned_variant"
         };
         for (String col : cols) {
             int i = c.getColumnIndex(col);
@@ -144,6 +171,8 @@ public class AppLibrary extends SQLiteOpenHelper {
         o.put("pending", c.getInt(c.getColumnIndex("pending")) == 1);
         o.put("ignoreUpdate", c.getInt(c.getColumnIndex("ignore_update")) == 1);
         o.put("preRelease", c.getInt(c.getColumnIndex("pre_release")) == 1);
+        o.put("fallbackOlder", c.getInt(c.getColumnIndex("fallback_older")) == 1);
+        o.put("pendingFailed", c.getInt(c.getColumnIndex("pending_failed")));
         o.put("checkedAt", c.getLong(c.getColumnIndex("checked_at")));
         return o;
     }
@@ -346,6 +375,189 @@ public class AppLibrary extends SQLiteOpenHelper {
     }
 
     /* ============================================================
+     * 单项设置（对应 komi 的「每应用一套偏好」）
+     * ============================================================ */
+
+    /** 钉住变体：以后更新只认带这个串的 asset（如 arm64 / foss）。 */
+    synchronized boolean setVariant(String pkg, String variant) {
+        try {
+            getWritableDatabase().execSQL("UPDATE " + T + " SET pinned_variant=?, pending_failed=0 WHERE pkg=?",
+                    new Object[]{variant, pkg});
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** 高级过滤：asset 名正则 + 最新版没匹配上是否退到更旧的 release。 */
+    synchronized boolean setAdvanced(String pkg, String regex, boolean fallbackOlder) {
+        try {
+            getWritableDatabase().execSQL("UPDATE " + T + " SET asset_regex=?, fallback_older=? WHERE pkg=?",
+                    new Object[]{regex, fallbackOlder ? 1 : 0, pkg});
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /**
+     * 预览某个正则能匹配到哪些 asset。
+     * 纯本地字符串匹配，不发请求 —— 前端拿到 release 列表后自己筛即可，
+     * 这里只是把「存之前的核对」放在同一处，免得存进一条永远匹配不上的正则。
+     */
+    static JSONArray previewMatch(JSONArray assetNames, String regex) {
+        JSONArray out = new JSONArray();
+        if (assetNames == null) return out;
+        try {
+            java.util.regex.Pattern p = regex == null || regex.isEmpty()
+                    ? null : java.util.regex.Pattern.compile(regex, java.util.regex.Pattern.CASE_INSENSITIVE);
+            for (int i = 0; i < assetNames.length(); i++) {
+                String n = assetNames.optString(i, "");
+                if (!n.toLowerCase().endsWith(".apk")) continue;
+                if (p == null || p.matcher(n).find()) out.put(n);
+            }
+        } catch (Throwable t) {
+            try {
+                // 正则写错了就把全部 APK 列出来，让用户自己看，而不是静默返回空
+                for (int i = 0; i < assetNames.length(); i++) out.put(assetNames.optString(i, ""));
+            } catch (Throwable ignored) { }
+        }
+        return out;
+    }
+
+    /* ============================================================
+     * 待安装（parked install）
+     * ============================================================ */
+
+    /**
+     * 下载完成、还没装上：这一行「停」在这，记住文件路径。
+     * 装没装成不由这里判断 —— 下次 sync() 去问系统，别在回调里猜。
+     */
+    synchronized boolean markPending(String pkg, String tag, String assetName, String filePath) {
+        try {
+            getWritableDatabase().execSQL("UPDATE " + T + " SET pending=1, pending_tag=?,"
+                            + " pending_asset=?, pending_file=? WHERE pkg=?",
+                    new Object[]{tag, assetName, filePath, pkg});
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** 存过的匹配下载失败一次：下次别再信它，重新去查 release。 */
+    synchronized boolean notePendingFailure(String pkg) {
+        try {
+            getWritableDatabase().execSQL("UPDATE " + T + " SET pending_failed=pending_failed+1 WHERE pkg=?",
+                    new Object[]{pkg});
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /**
+     * 丢弃一次停放的安装：删文件、清状态。
+     * 返回是否真的清掉了（文件已经没了也算清掉，不该让 UI 卡在这一步）。
+     */
+    synchronized boolean discardPending(String pkg) {
+        try {
+            SQLiteDatabase db = getWritableDatabase();
+            String path = null;
+            Cursor c = null;
+            try {
+                c = db.query(T, new String[]{"pending_file"}, "pkg=?", new String[]{pkg}, null, null, null);
+                if (c.moveToFirst()) path = c.getString(0);
+            } finally {
+                if (c != null) try { c.close(); } catch (Throwable ignored) { }
+            }
+            if (path != null && path.length() > 0) {
+                try {
+                    File f = new File(path);
+                    if (f.exists()) f.delete();
+                } catch (Throwable ignored) { }
+            }
+            db.execSQL("UPDATE " + T + " SET pending=0, pending_tag=NULL, pending_asset=NULL,"
+                    + " pending_file=NULL WHERE pkg=?", new Object[]{pkg});
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** 文件还在不在（前端据此决定显示「安装」还是「重新下载」）。 */
+    synchronized boolean pendingFileExists(String pkg) {
+        try {
+            Cursor c = null;
+            String path = null;
+            try {
+                c = getReadableDatabase().query(T, new String[]{"pending_file"},
+                        "pkg=?", new String[]{pkg}, null, null, null);
+                if (c.moveToFirst()) path = c.getString(0);
+            } finally {
+                if (c != null) try { c.close(); } catch (Throwable ignored) { }
+            }
+            return path != null && path.length() > 0 && new File(path).exists();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /* ============================================================
+     * 安装来源分类（komi 的 InstallerCategory，简化成本地实现）
+     * ============================================================ */
+
+    /** 按安装来源给设备应用排序：用户最可能想管的第三方侧载排最前。 */
+    static int installerPriority(String installerPkg, boolean isUpdatedSystemApp, String pkg) {
+        if (isUpdatedSystemApp) return 4;                       // SYSTEM_UPDATE
+        if (installerPkg == null || installerPkg.isEmpty()) return 1;  // SIDELOADED
+        if ("com.android.vending".equals(installerPkg)) return 2;      // PLAY_STORE
+        if (SIDE_STORES.contains(installerPkg)) return 0;              // SIDE_STORE
+        if (VENDOR_STORES.contains(installerPkg)) return 3;            // VENDOR_STORE
+        if (pkg != null) {
+            for (String pre : VENDOR_PREFIX) if (pkg.startsWith(pre)) return 3;
+            for (String pre : SYSTEM_PREFIX) if (pkg.startsWith(pre)) return 4;
+        }
+        return 1;
+    }
+
+    static String installerLabel(int priority) {
+        switch (priority) {
+            case 0: return "侧载商店";
+            case 1: return "侧载";
+            case 2: return "Play";
+            case 3: return "厂商商店";
+            default: return "系统";
+        }
+    }
+
+    private static final java.util.Set<String> SIDE_STORES = new java.util.HashSet<>();
+    private static final java.util.Set<String> VENDOR_STORES = new java.util.HashSet<>();
+    private static final String[] VENDOR_PREFIX = {
+            "com.samsung.", "com.sec.", "com.huawei.", "com.hihonor.", "com.honor.",
+            "com.xiaomi.", "com.miui.", "com.mi.", "com.heytap.", "com.oppo.",
+            "com.coloros.", "com.oneplus.", "com.bbk.", "com.vivo.", "com.iqoo.",
+            "com.amazon.", "com.motorola.", "com.lge.", "com.sonymobile."
+    };
+    private static final String[] SYSTEM_PREFIX = {
+            "com.google.android.gms", "com.google.android.gsf", "com.android.", "android."
+    };
+
+    static {
+        String[] side = {
+                "org.fdroid.fdroid", "org.fdroid.basic", "dev.imranr.obtainium",
+                "dev.imranr.obtainium.fdroid", "com.aurora.store", "com.looker.droidify",
+                "com.machiav3lli.fdroid", "nya.kitsunyan.foxydroid", "com.hubmobile.app"
+        };
+        for (String s : side) SIDE_STORES.add(s);
+        String[] vendor = {
+                "com.sec.android.app.samsungapps", "com.huawei.appmarket", "com.xiaomi.market",
+                "com.heytap.market", "com.oppo.market", "com.bbk.appstore",
+                "com.hihonor.appmarket", "com.amazon.venezia"
+        };
+        for (String s : vendor) VENDOR_STORES.add(s);
+    }
+
+    /* ============================================================
      * 与系统对账
      * ============================================================ */
 
@@ -454,6 +666,17 @@ public class AppLibrary extends SQLiteOpenHelper {
                 o.put("vName", pi.versionName);
                 o.put("vCode", pi.versionCode);
                 o.put("system", isSystem);
+                // 安装来源：用户最可能想管的是自己侧载的那些，排在最前
+                String ip = null;
+                if (Build.VERSION.SDK_INT >= 30) {
+                    try { ip = pm.getInstallSourceInfo(pkg).getInstallingPackageName(); } catch (Throwable ignored) { }
+                }
+                if (ip == null) {
+                    try { ip = pm.getInstallerPackageName(pkg); } catch (Throwable ignored) { }
+                }
+                int pri = installerPriority(ip, isSystem, pkg);
+                o.put("priority", pri);
+                o.put("sourceLabel", installerLabel(pri));
                 out.put(o);
             }
         } catch (Throwable t) {
