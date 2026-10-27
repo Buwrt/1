@@ -242,11 +242,18 @@
    *   - 下载交给原生 DownloadManager，进度在「下载管理」页看；这里只负责
    *     发起来，并且**必须给一句反馈**，否则用户以为按钮坏了。
    */
-  function startInstall(url, name) {
+  function startInstall(url, name, it) {
     if (!url) return false;
     var headers = JSON.stringify({ Accept: 'application/vnd.android.package-archive' });
     try {
       var b = window.NativeBridge;
+      // 优先走 tracked：带上 owner/repo/tag，装完自动落在台账里。
+      // 应用库本来就知道来源，没理由让原生再猜一次。
+      if (b && typeof b.installApkTracked === 'function' && it && it.owner && it.repo) {
+        b.installApkTracked(url, name, headers, it.owner, it.repo,
+          it.latest_tag || '', it.latest_asset || name, 'release');
+        return true;
+      }
       if (b && typeof b.installApk === 'function') {
         b.installApk(url, name, headers, 'release');
         return true;
@@ -269,7 +276,7 @@
         if (NB.libMarkPending) NB.libMarkPending(it.pkg, tag || '', asset || name, '');
         else if (NB.libSetPending) NB.libSetPending(it.pkg, true);
       } catch (e) { }
-      if (startInstall(url, name)) {
+      if (startInstall(url, name, it)) {
         UI.toast('开始下载 ' + name + '，完成后会拉起安装器');
       } else {
         // 一个出口都不能少：原生能力不在时也要有地方可去，不能点了没反应
