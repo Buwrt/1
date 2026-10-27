@@ -131,6 +131,30 @@
         enqueueDownload(url, filename, headersJson, true, null, category);
     }
 
+    /**
+     * 用**已经下载好**的那个包直接拉起系统安装器，不再下一遍。
+     *
+     * 场景：用户在系统安装器上点了取消，回到应用库 —— 文件还在本地
+     * （ApkProvider 目录里），再下一遍纯属浪费流量和时间。
+     *
+     * @return true 表示确实拉起了安装器；false 表示文件没了，调用方该重新下载。
+     */
+    @JavascriptInterface
+    public boolean libInstallPending(String pkg) {
+        if (pkg == null || pkg.isEmpty()) return false;
+        try {
+            String fileName = lib().pendingFile(pkg);
+            if (fileName == null || fileName.isEmpty()) return false;
+            Uri uri = ApkProvider.uriFor(
+                    activity.getPackageName() + ApkProvider.AUTHORITY_SUFFIX, fileName);
+            final Uri u = uri;
+            activity.runOnUiThread(() -> openInstaller(u));
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     /** 钉住变体（arm64 / foss 等），传 null 或空串表示不钉。 */
     @JavascriptInterface
     public boolean libSetVariant(String pkg, String variant) {
