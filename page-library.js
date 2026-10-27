@@ -46,6 +46,20 @@
     return (+m[1]) * 1000000 + (+m[2]) * 1000 + (+m[3]);
   }
 
+  /**
+   * 从一堆附件里挑出该装的那个。
+   *
+   * 一个 Release 常常挂好几个 APK（arm64 / armv7 × foss / premium），
+   * 光按体积挑最大的是错的 —— 会挑到错架构，或者挑到付费版。
+   * 顺序：设备 ABI 优先 > universal > 体积最大的兜底。
+   */
+  var ABI = '';
+  function abi() {
+    if (ABI) return ABI;
+    try { ABI = (NB && NB.libAbi && NB.libAbi()) || ''; } catch (e) { ABI = ''; }
+    return ABI;
+  }
+
   function pickAsset(rel, regex) {
     var list = (rel && rel.assets) || [];
     var out = list.filter(function (a) {
@@ -56,8 +70,25 @@
       if (regex) { try { return new RegExp(regex, 'i').test(a.name); } catch (e) { return true; } }
       return true;
     });
-    // 同名的多个变体（arm64 / universal）取体积最大的那个，通常是通用包
-    out.sort(function (a, b) { return (b.size || 0) - (a.size || 0); });
+    if (!out.length) return null;
+    // arm64-v8a -> arm64 / v8a 两种写法都要认
+    var a0 = abi().toLowerCase();
+    var keys = [];
+    if (a0.indexOf('arm64') >= 0 || a0.indexOf('v8a') >= 0) keys = ['arm64', 'v8a', 'aarch64'];
+    else if (a0.indexOf('arm') >= 0 || a0.indexOf('v7a') >= 0) keys = ['armeabi-v7a', 'v7a', 'arm32'];
+    else if (a0.indexOf('x86_64') >= 0) keys = ['x86_64'];
+    else if (a0.indexOf('x86') >= 0) keys = ['x86'];
+
+    function score(a) {
+      var n = (a.name || '').toLowerCase();
+      for (var i = 0; i < keys.length; i++) if (n.indexOf(keys[i]) >= 0) return 100 - i;
+      if (n.indexOf('universal') >= 0 || n.indexOf('noarch') >= 0) return 50;
+      return 0;
+    }
+    out.sort(function (a, b) {
+      var d = score(b) - score(a);
+      return d !== 0 ? d : (b.size || 0) - (a.size || 0);
+    });
     return out[0] || null;
   }
 
@@ -256,15 +287,18 @@
   function rowHtml(it) {
     var name = it.app_name || it.pkg;
     var sub = (it.owner && it.repo) ? (it.owner + '/' + it.repo) : it.pkg;
+    // 已装版本只看系统读到的 versionName。installed_tag 只是「我们认为装的是
+    // 哪一版」的备注，拿它来显示就会把最新版错报成已装版本。
+    var cur = it.installed_vname || it.installed_tag || '';
     var status, tone = 'muted';
     if (it.pending) { status = '已下载，等待安装'; tone = 'accent'; }
     else if (it.hasUpdate) {
-      status = '有更新：' + (it.installed_tag || '?') + ' → ' + (it.latest_tag || '?');
+      status = '有更新：' + (cur || '?') + ' → ' + (it.latest_tag || '?');
       tone = 'accent';
     } else if (!it.present) { status = '手机上已不存在'; tone = 'err'; }
     else if (it.sysFingerprint && it.fingerprint && it.sysFingerprint !== it.fingerprint) {
       status = '签名变了，注意来源'; tone = 'err';
-    } else { status = '已是最新' + (it.installed_tag ? '（' + it.installed_tag + '）' : ''); }
+    } else { status = '已是最新' + (cur ? '（' + cur + '）' : ''); }
 
     var tags = '';
     if (it.ignoreUpdate) tags += ' <span class="chip">忽略更新</span>';
