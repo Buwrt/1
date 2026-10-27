@@ -128,6 +128,18 @@ def main():
     else:
         print("  SKIP 已有 QUERY_ALL_PACKAGES")
 
+    print("== 7. AndroidManifest.xml：卸载权限 ==")
+    s = read(mf)
+    if "REQUEST_DELETE_PACKAGES" not in s:
+        i = s.index("<uses-permission")
+        s = (s[:i]
+             + '<uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />\n    '
+             + s[i:])
+        write(mf, s)
+        print("  OK  AndroidManifest 加 REQUEST_DELETE_PACKAGES")
+    else:
+        print("  SKIP 已有 REQUEST_DELETE_PACKAGES")
+
     print("补丁应用完成")
 
 if __name__ == "__main__":
