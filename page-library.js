@@ -254,8 +254,11 @@
       '卸载', true
     ).then(function (yes) {
       if (!yes) return;
-      try { NB.libUninstall(it.pkg); } catch (e) { }
-      UI.toast('请在系统弹窗中确认卸载');
+      var ok = false;
+      try { ok = NB.libUninstall(it.pkg); } catch (e) { ok = false; }
+      // 返回值说明「真的弹出了系统卸载框」还是「只打开了应用信息页兜底」。
+      // 不能统一说「请在系统弹窗中确认」—— 兜底时根本没有弹窗在等你。
+      UI.toast(ok ? '请在系统弹窗中确认卸载' : '已打开应用信息页，请在其中卸载');
     });
   }
 
