@@ -319,9 +319,12 @@
    * 至少按钮永远有反应，不会是个死按钮。
    */
   function doInstallPending(it) {
-    var exists = false;
-    try { exists = !!(NB.libPendingFileExists && NB.libPendingFileExists(it.pkg)); } catch (e) { }
-    UI.toast(exists ? '重新拉起安装器' : '安装包已丢失，重新下载');
+    /* 已经下载好的包还在本地：直接用它拉起安装器，不再下一遍。
+       典型场景是「在系统安装器上点了取消」—— 文件没丢，重下纯属浪费。 */
+    var ok = false;
+    try { ok = !!(NB.libInstallPending && NB.libInstallPending(it.pkg)); } catch (e) { ok = false; }
+    if (ok) { UI.toast('正在拉起安装器'); return; }
+    UI.toast('安装包已丢失，重新下载');
     doUpdate(it);
   }
 
