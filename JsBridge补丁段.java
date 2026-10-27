@@ -212,13 +212,45 @@
         }
     }
 
-    /** 拉起系统卸载界面。卸载结果由下次 libSync() 对账时落到台账。 */
+    /**
+     * 拉起系统卸载界面。
+     *
+     * ⚠️ targetSdk >= 28 起，用 ACTION_DELETE 必须在 manifest 里声明
+     *    REQUEST_DELETE_PACKAGES。缺了它系统**静默忽略**这条 Intent ——
+     *    不抛异常、不弹窗、什么都不发生，从 App 这头看 startActivity 明明
+     *    成功了。komi 的 manifest 里有这条，所以它能弹出来。
+     *
+     * 所以这里做两件事：
+     *   1. 用 resolveActivity 先确认真有 Activity 接得住；
+     *   2. 接不住就退到系统「应用信息」页（在那儿也能卸载），并且
+     *      **如实返回**是否真的弹出了卸载框 —— 不能给前端一个假的成功。
+     *
+     * @JavascriptInterface 跑在 JavaBridge 线程，startActivity 必须回主线程，
+     * 和项目里 share() / openInApp() 一致。
+     */
     @JavascriptInterface
-    public void libUninstall(String pkg) {
+    public boolean libUninstall(String pkg) {
+        if (pkg == null || pkg.isEmpty()) return false;
         try {
-            Intent i = new Intent(Intent.ACTION_DELETE, Uri.parse("package:" + pkg));
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            activity.startActivity(i);
-        } catch (Throwable ignored) {
+            Intent del = new Intent(Intent.ACTION_DELETE, Uri.parse("package:" + pkg));
+            del.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            boolean ok = del.resolveActivity(activity.getPackageManager()) != null;
+            activity.runOnUiThread(() -> {
+                try {
+                    if (ok) {
+                        activity.startActivity(del);
+                    } else {
+                        // 没有能接 ACTION_DELETE 的：退到应用信息页
+                        Intent info = new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                Uri.parse("package:" + pkg));
+                        info.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        activity.startActivity(info);
+                    }
+                } catch (Throwable ignored) {
+                }
+            });
+            return ok;
+        } catch (Throwable t) {
+            return false;
         }
     }
