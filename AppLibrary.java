@@ -653,7 +653,12 @@ public class AppLibrary extends SQLiteOpenHelper {
                             "ignore_update", "pending", "skipped_tag"},
                     null, null, null, null, null);
             while (c.moveToNext()) {
-                if (c.getInt(3) == 1 || c.getInt(4) == 1) continue;   // 忽略更新 / 待安装
+                /* 只排除「忽略更新」。
+                   ⚠️ 别把 pending（已下载待安装）也排除掉 —— 那正是
+                   「点了更新、在系统安装器上取消」之后的状态，排除它，
+                   用户一取消角标就消失，看起来像应用库把这条弄丢了。
+                   pending 同样是「等用户处理」的事，就该继续提示。 */
+                if (c.getInt(3) == 1) continue;
                 String latest = c.getString(0);
                 String vname = c.getString(1);
                 String itag = c.getString(2);
@@ -785,7 +790,26 @@ public class AppLibrary extends SQLiteOpenHelper {
                             new Object[]{di.versionName, di.versionCode, di.fingerprint, p});
                     changed++;
                 } else if (pending == 1) {
-                    db.execSQL("UPDATE " + T + " SET pending=0 WHERE pkg=?", new Object[]{p});
+                    /* 版本没变却还标着 pending —— 说明上次那次安装没成
+                       （用户在系统安装器上点了取消，或装失败了）。
+                       清掉标记回到「有更新」，别让这一行永远卡在待安装。
+                       文件也一并看一眼：留着占空间，丢了更不该再显示可装。 */
+                    try {
+                        Cursor pf = null;
+                        String path = null;
+                        try {
+                            pf = db.query(T, new String[]{"pending_file"}, "pkg=?",
+                                    new String[]{p}, null, null, null);
+                            if (pf.moveToFirst()) path = pf.getString(0);
+                        } finally { if (pf != null) try { pf.close(); } catch (Throwable ignored) { } }
+                        if (path != null && path.length() > 0) {
+                            File f = new File(path);
+                            if (f.exists()) { try { f.delete(); } catch (Throwable ignored) { } }
+                        }
+                    } catch (Throwable ignored) { }
+                    db.execSQL("UPDATE " + T + " SET pending=0, pending_tag=NULL,"
+                                    + " pending_asset=NULL, pending_file=NULL WHERE pkg=?",
+                            new Object[]{p});
                     resolved++;
                 }
             }
