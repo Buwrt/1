@@ -199,6 +199,9 @@ public class AppLibrary extends SQLiteOpenHelper {
             DeviceInfo di = probe(pkg);
             // 已装版本就是系统说的那个；versionName 通常和 Release tag 同格式
             // （2.0.11 / v2.0.11），拿不到就留空，绝不拿 latest 顶替。
+            /* installed_vname 是后续一切比较的基准，必须写进去。
+               它只在「关联时这个包已经装着」才拿得到 —— 从 githup 里下载
+               安装的场景此刻还没装，先留空，等 sync() 对账时补。 */
             String instName = di.present && di.versionName != null ? di.versionName : "";
             long instCode = di.present ? di.versionCode : 0L;
 
@@ -287,13 +290,22 @@ public class AppLibrary extends SQLiteOpenHelper {
             String skipped = null;
             int ignore = 0;
             try {
-                c = db.query(T, new String[]{"installed_vcode", "installed_tag", "skipped_tag", "ignore_update"},
+                /* ⚠️ baseline 必须是**系统读到的版本**，不是 installed_tag。
+                   早期版本的 add() 把最新 tag 写进了 installed_tag，那批脏数据
+                   会让「最新 2.0.12 vs 已装 2.0.12」永远相等 —— 一查就把
+                   has_update 改成 0，角标随之消失。现在 vname 优先，
+                   vname 没了才退回 tag。 */
+                c = db.query(T, new String[]{"installed_vcode", "installed_vname",
+                                "installed_tag", "skipped_tag", "ignore_update"},
                         "pkg=?", new String[]{pkg}, null, null, null);
                 if (c.moveToFirst()) {
                     curCode = c.getLong(0);
-                    curTag = c.getString(1) == null ? "" : c.getString(1);
-                    skipped = c.getString(2);
-                    ignore = c.getInt(3);
+                    String vname = c.getString(1);
+                    String itag = c.getString(2);
+                    curTag = (vname != null && !vname.isEmpty()) ? vname
+                            : (itag == null ? "" : itag);
+                    skipped = c.getString(3);
+                    ignore = c.getInt(4);
                 }
             } finally {
                 if (c != null) try { c.close(); } catch (Throwable ignored) { }
@@ -504,6 +516,68 @@ public class AppLibrary extends SQLiteOpenHelper {
     }
 
     /* ============================================================
+     * 「在 githup 里下载安装的应用」自动入账
+     * ============================================================ */
+
+    /**
+     * 下载时先记一笔「这个 URL 装的是什么」。
+     * url 作 key —— 装完才知道包名，中间只能靠 URL 对上号。
+     */
+    private static final java.util.Map<String, String[]> sTrack =
+            new java.util.concurrent.ConcurrentHashMap<String, String[]>();
+
+    static void noteTrack(String url, String owner, String repo, String tag, String asset) {
+        if (url == null || url.isEmpty() || owner == null || repo == null) return;
+        sTrack.put(url, new String[]{
+                owner, repo,
+                tag == null ? "" : tag,
+                asset == null ? "" : asset
+        });
+        // 别让这张表无限长：下载多了一直堆着没意义
+        if (sTrack.size() > 64) {
+            String first = sTrack.keySet().iterator().next();
+            if (first != null) sTrack.remove(first);
+        }
+    }
+
+    /**
+     * APK 下完、还没交给安装器的时候调：读出包名，把这一笔落成台账的一行。
+     *
+     * 时机很关键 —— 必须**在拉起安装器之前**，因为这时候文件一定在，
+     * 而且能读到确定无疑的包名。等用户装完再回头找文件，早被清掉了。
+     *
+     * 落库时置 pending：此刻还没装上，行先停在这，等下次 sync() 去
+     * 问系统「到底装上没有」，不在这里猜。
+     */
+    static void trackFromApk(Context ctx, String url, File apk) {
+        if (ctx == null || url == null || apk == null || !apk.exists()) return;
+        String[] meta = sTrack.get(url);
+        if (meta == null) return;
+        try {
+            PackageManager pm = ctx.getPackageManager();
+            PackageInfo pi = pm.getPackageArchiveInfo(
+                    apk.getAbsolutePath(), PackageManager.GET_META_DATA);
+            if (pi == null || pi.packageName == null || pi.packageName.isEmpty()) return;
+
+            String appName = null;
+            try {
+                if (pi.applicationInfo != null) {
+                    CharSequence lb = pi.applicationInfo.loadLabel(pm);
+                    if (lb != null) appName = lb.toString();
+                }
+            } catch (Throwable ignored) { }
+            if (appName == null || appName.isEmpty()) appName = pi.packageName;
+
+            AppLibrary lib = get(ctx);
+            lib.add(pi.packageName, meta[0], meta[1], appName, meta[2], meta[3], url);
+            lib.markPending(pi.packageName, meta[2], meta[3], apk.getAbsolutePath());
+            sTrack.remove(url);
+        } catch (Throwable t) {
+            // 入账失败不能影响安装本身，静默即可
+        }
+    }
+
+    /* ============================================================
      * 安装来源分类（komi 的 InstallerCategory，简化成本地实现）
      * ============================================================ */
 
@@ -562,20 +636,40 @@ public class AppLibrary extends SQLiteOpenHelper {
      * 可更新的数量。纯本地查表，不发请求 —— 这个数字要能在「我的」页
      * 秒回地显示出来，不能让人等着转圈。
      */
+    /**
+     * 可更新的数量。纯本地查表，不发请求 —— 这个数字要在「我的」页一进来
+     * 就显示，不能让人等着转圈。
+     *
+     * ⚠️ 不直接读 has_update 那个标志位：它是 setLatest() 算完写进去的，
+     *    一旦比较基准取错（见 setLatest 的注释）就会被写成 0 并把角标带走。
+     *    这里拿最新 tag 跟**系统读到的版本**当场比一遍，标志位脏了也对。
+     */
     synchronized int updateCount() {
+        int n = 0;
+        Cursor c = null;
         try {
-            Cursor c = null;
-            try {
-                c = getReadableDatabase().rawQuery(
-                        "SELECT COUNT(*) FROM " + T
-                                + " WHERE has_update=1 AND ignore_update=0 AND pending=0", null);
-                return (c != null && c.moveToFirst()) ? c.getInt(0) : 0;
-            } finally {
-                if (c != null) try { c.close(); } catch (Throwable ignored) { }
+            c = getReadableDatabase().query(T,
+                    new String[]{"latest_tag", "installed_vname", "installed_tag",
+                            "ignore_update", "pending", "skipped_tag"},
+                    null, null, null, null, null);
+            while (c.moveToNext()) {
+                if (c.getInt(3) == 1 || c.getInt(4) == 1) continue;   // 忽略更新 / 待安装
+                String latest = c.getString(0);
+                String vname = c.getString(1);
+                String itag = c.getString(2);
+                String cur = (vname != null && !vname.isEmpty()) ? vname : itag;
+                String skipped = c.getString(5);
+                if (latest == null || latest.isEmpty()) continue;
+                if (skipped != null && skipped.equals(latest)) continue;
+                long lc = codeOfTag(latest), cc = codeOfTag(cur);
+                if (lc > 0 && cc > 0 ? lc > cc : !latest.equals(cur)) n++;
             }
         } catch (Throwable t) {
             return 0;
+        } finally {
+            if (c != null) try { c.close(); } catch (Throwable ignored) { }
         }
+        return n;
     }
 
     /** 台账里最早一次 checked_at，前端据此决定要不要再查一轮。 */
@@ -664,6 +758,27 @@ public class AppLibrary extends SQLiteOpenHelper {
                     if (r != null) try { r.close(); } catch (Throwable ignored) { }
                 }
                 boolean fpChanged = curFp != null && di.fingerprint != null && !curFp.equals(di.fingerprint);
+                /* 顺手把 has_update 重算一遍：早期版本写进去的标志位可能是错的
+                   （比较基准取了被污染的 installed_tag），这里按系统真值纠回来，
+                   用户不用手动移除重加。 */
+                try {
+                    String lt = null, sk = null; int ig = 0;
+                    Cursor q = null;
+                    try {
+                        q = db.query(T, new String[]{"latest_tag", "skipped_tag", "ignore_update"},
+                                "pkg=?", new String[]{p}, null, null, null);
+                        if (q.moveToFirst()) { lt = q.getString(0); sk = q.getString(1); ig = q.getInt(2); }
+                    } finally { if (q != null) try { q.close(); } catch (Throwable ignored) { } }
+                    boolean newer = false;
+                    if (lt != null && !lt.isEmpty() && ig == 0 && !(sk != null && sk.equals(lt))) {
+                        long lc = codeOfTag(lt), cc = codeOfTag(di.versionName);
+                        newer = (lc > 0 && cc > 0) ? lc > cc
+                                : (cc == 0 && !lt.equals(di.versionName));
+                    }
+                    db.execSQL("UPDATE " + T + " SET has_update=? WHERE pkg=?",
+                            new Object[]{newer ? 1 : 0, p});
+                } catch (Throwable ignored) { }
+
                 if (curCode != di.versionCode || fpChanged) {
                     db.execSQL("UPDATE " + T + " SET installed_vname=?, installed_vcode=?,"
                                     + " fingerprint=?, pending=0 WHERE pkg=?",
