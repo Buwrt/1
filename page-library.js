@@ -9,16 +9,24 @@
  *   前端（本文件）：发 GitHub 请求、比对新旧、画界面 —— 网络层完全
  *     复用 api.js，令牌注入和加速通道一处没动。
  *
- * 页面的三块：待安装 / 有更新 / 已是最新。
+ * 三段分组：待安装 / 有更新 / 已是最新。同一仓库下的多个应用合并成
+ * 一张组卡（owner/repo 抬头 + 若干行），避免同一个仓库重复出现好几张。
+ *
+ * 每行：图标、名称、owner、状态行、非默认设置的标签、进度条、
+ * 尾部操作（一个主操作 + 一个「更多」菜单）。
  * ============================================================ */
 (function () {
   'use strict';
   var U = window.Util, UI = window.UI, P = (window.Pages = window.Pages || {});
   var NB = window.NativeBridge;
 
-  var CTX = { items: [], query: '' };
+  var CTX = {
+    items: [],
+    query: '',
+    sort: window.Store ? window.Store.get('lib_sort', 'updates') : 'updates',
+    expanded: { pending: true, updates: true, idle: true }
+  };
 
-  /* 有没有原生能力：浏览器里打开时退化成一句说明，不报错。 */
   function has() {
     return !!(NB && typeof NB.libList === 'function');
   }
@@ -26,8 +34,7 @@
   function load() {
     if (!has()) return Promise.resolve([]);
     try {
-      var s = NB.libList() || '[]';
-      return Promise.resolve(JSON.parse(s));
+      return Promise.resolve(JSON.parse(NB.libList() || '[]'));
     } catch (e) {
       return Promise.resolve([]);
     }
@@ -36,9 +43,9 @@
   /* ---------- 版本 ---------- */
 
   /**
-   * tag -> 可比较的数字。跟 version.lock 里那套换算保持一致
-   * （x.y.z -> x*1000000 + y*1000 + z），解析不出来就返回 0，
-   * 由原生侧退化成「tag 字符串不相等即算更新」。
+   * 版本号归一成可比较的数字：x.y.z -> x*1000000 + y*1000 + z。
+   * 解析不出来返回 0 —— 0 表示「认不出来」，不是「很小」，
+   * 调用方必须特殊处理，否则会把「认不出来」误判成「有更新」。
    */
   function codeOf(tag) {
     var m = /^v?(\d+)\.(\d+)\.(\d+)/.exec(String(tag || ''));
@@ -46,13 +53,8 @@
     return (+m[1]) * 1000000 + (+m[2]) * 1000 + (+m[3]);
   }
 
-  /**
-   * 从一堆附件里挑出该装的那个。
-   *
-   * 一个 Release 常常挂好几个 APK（arm64 / armv7 × foss / premium），
-   * 光按体积挑最大的是错的 —— 会挑到错架构，或者挑到付费版。
-   * 顺序：设备 ABI 优先 > universal > 体积最大的兜底。
-   */
+  /* ---------- 挑 asset ---------- */
+
   var ABI = '';
   function abi() {
     if (ABI) return ABI;
@@ -60,62 +62,129 @@
     return ABI;
   }
 
-  function pickAsset(rel, regex) {
-    var list = (rel && rel.assets) || [];
-    var out = list.filter(function (a) {
+  function abiKeys() {
+    var a = abi().toLowerCase();
+    if (a.indexOf('arm64') >= 0 || a.indexOf('v8a') >= 0) return ['arm64', 'v8a', 'aarch64'];
+    if (a.indexOf('arm') >= 0 || a.indexOf('v7a') >= 0) return ['armeabi-v7a', 'v7a', 'arm32'];
+    if (a.indexOf('x86_64') >= 0) return ['x86_64'];
+    if (a.indexOf('x86') >= 0) return ['x86'];
+    return [];
+  }
+
+  function apkOnly(list) {
+    return list.filter(function (a) {
       var n = (a.name || '').toLowerCase();
       if (!/\.apk$/i.test(n)) return false;
       // 校验文件、签名块不是安装包
-      if (/\.(sha256|sha1|md5|sig|asc|pem|json)$/i.test(n)) return false;
-      if (regex) { try { return new RegExp(regex, 'i').test(a.name); } catch (e) { return true; } }
-      return true;
+      return !/\.(sha256|sha1|md5|sig|asc|pem|json)$/i.test(n);
     });
-    if (!out.length) return null;
-    // arm64-v8a -> arm64 / v8a 两种写法都要认
-    var a0 = abi().toLowerCase();
-    var keys = [];
-    if (a0.indexOf('arm64') >= 0 || a0.indexOf('v8a') >= 0) keys = ['arm64', 'v8a', 'aarch64'];
-    else if (a0.indexOf('arm') >= 0 || a0.indexOf('v7a') >= 0) keys = ['armeabi-v7a', 'v7a', 'arm32'];
-    else if (a0.indexOf('x86_64') >= 0) keys = ['x86_64'];
-    else if (a0.indexOf('x86') >= 0) keys = ['x86'];
+  }
+
+  /**
+   * 从一堆附件里挑出该装的那个。
+   *
+   * 一个 Release 常常挂好几个 APK（arm64 / armv7 × foss / premium），
+   * 光按体积挑最大的是错的。优先级：钉住的变体 > 设备 ABI > universal > 体积。
+   */
+  function pickAsset(rel, it) {
+    var list = apkOnly((rel && rel.assets) || []);
+    if (!list.length) return null;
+
+    var regex = it && it.asset_regex;
+    if (regex) {
+      try {
+        var re = new RegExp(regex, 'i');
+        var filtered = list.filter(function (a) { return re.test(a.name); });
+        if (filtered.length) list = filtered;
+      } catch (e) { /* 正则写错就当没设 */ }
+    }
+
+    var pin = it && it.pinned_variant;
+    var keys = abiKeys();
 
     function score(a) {
       var n = (a.name || '').toLowerCase();
+      if (pin) return n.indexOf(pin.toLowerCase()) >= 0 ? 200 : -1;
       for (var i = 0; i < keys.length; i++) if (n.indexOf(keys[i]) >= 0) return 100 - i;
       if (n.indexOf('universal') >= 0 || n.indexOf('noarch') >= 0) return 50;
       return 0;
     }
-    out.sort(function (a, b) {
+
+    list = list.slice().sort(function (a, b) {
       var d = score(b) - score(a);
       return d !== 0 ? d : (b.size || 0) - (a.size || 0);
     });
-    return out[0] || null;
+    return list[0] || null;
+  }
+
+  /** 变体选项：把当前 release 里的 APK 列出来给用户钉。 */
+  function variantOptions(rel) {
+    var seen = Object.create(null);
+    return apkOnly((rel && rel.assets) || []).map(function (a) {
+      var n = a.name.replace(/\.apk$/i, '');
+      // 去掉版本号尾巴，剩下的就是变体标识
+      var m = n.replace(/[-_](v?\d+(\.\d+){0,3})$/i, '');
+      var key = m || n;
+      if (seen[key]) return null;
+      seen[key] = 1;
+      return { key: key, name: a.name, size: a.size || 0 };
+    }).filter(Boolean);
   }
 
   /* ---------- 更新检查 ---------- */
 
   /**
-   * 查一个应用的最新 Release。
+   * 取某个 release（默认最新正式版；收预发布时取列表第一个）。
    *
-   * ⚠️ 这里是前端发请求，不是原生 —— 令牌注入、加速通道、限流兜底
-   * 全部走 api.js 既有实现，不重复造一遍网络层。
+   * ⚠️ 请求由前端发，走 api.js：令牌注入、加速通道、限流兜底全部复用，
+   * 不重复造一遍网络层。cache:0 —— 检查更新必须真发一次，不能吃缓存。
    */
-  function checkOne(it) {
-    if (!it.owner || !it.repo) return Promise.resolve(false);
-    var path = '/repos/' + it.owner + '/' + it.repo + '/releases/latest';
-    // cache:0 —— 检查更新必须真发一次请求，不能吃到列表页留下的缓存
-    return window.API.get(path, null, { cache: 0 }).then(function (res) {
+  function fetchRelease(it, opts) {
+    opts = opts || {};
+    var path = '/repos/' + it.owner + '/' + it.repo + '/releases';
+    if (it.preRelease) {
+      return window.API.get(path, { per_page: 5 }, { cache: 0 }).then(function (res) {
+        var list = (res && res.data) || [];
+        for (var i = 0; i < list.length; i++) {
+          var a = pickAsset(list[i], it);
+          if (a) return { rel: list[i], asset: a };
+        }
+        return null;
+      });
+    }
+    return window.API.get(path + '/latest', null, { cache: 0 }).then(function (res) {
       var rel = res && res.data;
-      var a = pickAsset(rel, it.asset_regex);
-      if (!rel || !rel.tag_name) return false;
+      var a = pickAsset(rel, it);
+      return a ? { rel: rel, asset: a } : null;
+    });
+  }
+
+  /**
+   * 查一个应用的更新。
+   *
+   * 「存储匹配优先」：更新和重新下载都从上一次存在行里的 release + asset
+   * 出发，只有没存过、或用存过的匹配下载失败过，才真的去请求 GitHub。
+   * 这是能管几十个应用还不被限流的关键。
+   */
+  function checkOne(it, force) {
+    if (!it || !it.owner || !it.repo) return Promise.resolve(false);
+    var stored = it.latest_tag && it.latest_asset && it.latest_url;
+    if (stored && !force && !(it.pendingFailed > 0)) {
+      return Promise.resolve(true);   // 存过的直接用，不发请求
+    }
+    return fetchRelease(it).then(function (r) {
+      if (!r) {
+        NB.libNotePendingFailure && NB.libNotePendingFailure(it.pkg);
+        return false;
+      }
       NB.libSetLatest(it.pkg, JSON.stringify({
-        tag: rel.tag_name || '',
-        vName: rel.name || rel.tag_name || '',
-        vCode: codeOf(rel.tag_name),
-        asset: a ? a.name : '',
-        url: a ? a.browser_download_url : '',
-        size: a ? (a.size || 0) : 0,
-        notes: (rel.body || '').slice(0, 400)
+        tag: r.rel.tag_name || '',
+        vName: r.rel.name || r.rel.tag_name || '',
+        vCode: codeOf(r.rel.tag_name),
+        asset: r.asset.name,
+        url: r.asset.browser_download_url,
+        size: r.asset.size || 0,
+        notes: (r.rel.body || '').slice(0, 400)
       }));
       return true;
     }, function () {
@@ -124,69 +193,154 @@
   }
 
   function checkAll() {
+    var targets = CTX.items.filter(function (it) { return !it.ignoreUpdate && !it.pending; });
+    if (!targets.length) { UI.toast('没有需要检查的应用'); return Promise.resolve(); }
     UI.loading(true);
-    var targets = CTX.items.filter(function (it) { return !it.ignoreUpdate; });
-    var i = 0;
+    var i = 0, done = 0;
+    UI.toast('正在检查 ' + targets.length + ' 个应用');
     function next() {
       if (i >= targets.length) {
         UI.loading(false);
+        UI.toast('检查完成，' + done + ' 个有更新');
         return render();
       }
-      return checkOne(targets[i++]).then(next, next);
+      return checkOne(targets[i++]).then(function (ok) {
+        if (ok) done++;
+        return next();
+      }, next);
     }
-    UI.toast('正在检查 ' + targets.length + ' 个应用');
     return next();
   }
 
   /* ---------- 操作 ---------- */
 
   function doUpdate(it) {
-    if (!it.latest_url) { UI.toast('这一版没找到可安装的 APK'); return; }
-    var name = (it.latest_asset || (it.pkg + '.apk'));
-    // 先记一笔「待安装」：装没装成由下次进页面时的对账（libSync）来定论，
-    // 这里不猜结果。
-    NB.libSetPending(it.pkg, true);
+    if (!it.latest_url) {
+      UI.toast('这一版没找到可安装的 APK');
+      return;
+    }
+    var name = it.latest_asset || (it.pkg + '.apk');
+    try { NB.libSetPending(it.pkg, true); } catch (e) { }
     window.API.installApk(it.latest_url, name);
   }
 
+  /** 待安装的那一行：文件还在就直接装，没了就重新下载。 */
+  function doInstallPending(it) {
+    if (NB.libPendingFileExists && NB.libPendingFileExists(it.pkg)) {
+      NB.openApk && NB.openApk(it.pending_file);
+      return;
+    }
+    UI.toast('安装包已丢失，重新下载');
+    doUpdate(it);
+  }
+
   function doOpen(it) {
-    var ok = NB.libOpen(it.pkg);
+    var ok = false;
+    try { ok = NB.libOpen(it.pkg); } catch (e) { }
     if (!ok) UI.toast('打不开（可能已经卸载了）');
   }
 
+  /**
+   * 卸载。
+   *
+   * 先弹确认（照抄 komi 的 PendingUninstallSheet），确认后拉起系统卸载界面。
+   * 卸载结果不由这里判定 —— 下次进页面时 libSync() 去问系统，
+   * 回调里猜「卸成功了没」必然出错（用户可能在系统弹窗上点取消）。
+   */
   function doUninstall(it) {
-    UI.confirm('卸载 ' + (it.app_name || it.pkg), '会从手机上移除这个应用，台账里的记录也会一并删掉。', '卸载', true)
-      .then(function (yes) {
-        if (!yes) return;
-        NB.libUninstall(it.pkg);
-        NB.libRemove(it.pkg);
-        render();
-      });
+    UI.confirm(
+      '卸载 ' + (it.app_name || it.pkg) + '？',
+      '这会从你的设备上移除 ' + (it.app_name || it.pkg) + '。此操作无法撤消。',
+      '卸载', true
+    ).then(function (yes) {
+      if (!yes) return;
+      try { NB.libUninstall(it.pkg); } catch (e) { }
+      UI.toast('请在系统弹窗中确认卸载');
+    });
   }
 
-  function doMenu(it) {
+  /* ---------- 单项设置 ---------- */
+
+  function openSettings(it) {
     UI.menu(it.app_name || it.pkg, [
-      { key: 'open', label: '打开', icon: 'play' },
+      { key: 'check', label: '检查更新', icon: 'sync' },
+      { key: 'pre', label: it.preRelease ? '不收预发布版' : '接收预发布版', icon: 'tag' },
+      { key: 'ignore', label: it.ignoreUpdate ? '恢复更新提醒' : '忽略此应用的更新', icon: 'bell-slash' },
+      { key: 'skip', label: '跳过当前这一版', icon: 'skip' },
+      '-',
+      { key: 'variant', label: it.pinned_variant ? '改钉的变体（' + it.pinned_variant + '）' : '钉住一个变体', icon: 'package' },
+      { key: 'advanced', label: '高级过滤（asset 正则）', icon: 'filter' },
+      '-',
       { key: 'repo', label: '打开仓库', icon: 'repo' },
       { key: 'copy', label: '复制包名', icon: 'copy' },
       '-',
-      { key: 'ignore', label: it.ignoreUpdate ? '恢复更新提醒' : '忽略这个应用的更新', icon: 'bell-slash' },
-      { key: 'skip', label: '跳过当前这一版', icon: 'skip' },
-      { key: 'recheck', label: '重新检查更新', icon: 'sync' },
-      '-',
-      { key: 'remove', label: '从应用库移除', icon: 'trash' }
+      { key: 'unlink', label: '从应用库移除', icon: 'x' },
+      { key: 'uninstall', label: '卸载', icon: 'trash' }
     ]).then(function (k) {
       if (!k) return;
-      if (k === 'open') return doOpen(it);
-      if (k === 'repo') { window.Router.go('/' + it.owner + '/' + it.repo); return; }
-      if (k === 'copy') { NB.copy(it.pkg); UI.toast('已复制包名'); return; }
+      if (k === 'check') { UI.loading(true); return checkOne(it, true).then(function () { UI.loading(false); render(); }); }
+      if (k === 'pre') { NB.libSetFlag(it.pkg, 'pre', it.preRelease ? '0' : '1'); return render(); }
       if (k === 'ignore') { NB.libSetFlag(it.pkg, 'ignore', it.ignoreUpdate ? '0' : '1'); return render(); }
       if (k === 'skip') { NB.libSetFlag(it.pkg, 'skipped', it.latest_tag || ''); return render(); }
-      if (k === 'recheck') { UI.loading(true); return checkOne(it).then(function () { UI.loading(false); render(); }); }
-      if (k === 'remove') {
+      if (k === 'variant') return pickVariant(it);
+      if (k === 'advanced') return advancedFilter(it);
+      if (k === 'repo') { window.Router.go('/' + it.owner + '/' + it.repo); return; }
+      if (k === 'copy') { NB.copy(it.pkg); UI.toast('已复制包名'); return; }
+      if (k === 'unlink') {
         UI.confirm('移出应用库', '只是不再跟踪更新，不会卸载手机上的应用。', '移除', true)
           .then(function (yes) { if (yes) { NB.libRemove(it.pkg); render(); } });
+        return;
       }
+      if (k === 'uninstall') return doUninstall(it);
+    });
+  }
+
+  /** 变体选择：列出当前 release 的 APK，让用户钉一个。 */
+  function pickVariant(it) {
+    UI.loading(true);
+    fetchRelease(it, { force: true }).then(function (r) {
+      UI.loading(false);
+      if (!r) { UI.toast('取不到这个仓库的 Release'); return; }
+      var opts = variantOptions(r.rel);
+      if (!opts.length) { UI.toast('这一版没有 APK 附件'); return; }
+      var items = opts.map(function (o) {
+        return { key: o.key, label: o.name, value: (o.size / 1048576).toFixed(1) + ' MB' };
+      });
+      items.push({ key: '__none__', label: '不钉（自动挑）' });
+      UI.menu('钉住哪个变体？', items).then(function (k) {
+        if (!k) return;
+        NB.libSetVariant(it.pkg, k === '__none__' ? '' : k);
+        UI.toast(k === '__none__' ? '已取消钉住' : '已钉住 ' + k);
+        render();
+      });
+    }, function () { UI.loading(false); });
+  }
+
+  /** 高级过滤：正则 + 是否退到更旧的 release。 */
+  function advancedFilter(it) {
+    UI.prompt('asset 名正则', {
+      desc: '只有名字匹配这个正则的 APK 才会被挑中。留空表示不限制。',
+      value: it.asset_regex || '',
+      placeholder: '例如 foss|universal',
+      ok: '下一步'
+    }).then(function (v) {
+      if (v === null) return;
+      UI.loading(true);
+      fetchRelease(it, { force: true }).then(function (r) {
+        UI.loading(false);
+        if (!r) { UI.toast('取不到 Release'); return; }
+        var names = apkOnly(r.rel.assets || []).map(function (a) { return a.name; });
+        var matched = [];
+        try { matched = JSON.parse(NB.libPreviewMatch(JSON.stringify(names), v) || '[]'); } catch (e) { }
+        var msg = v
+          ? '匹配到 ' + matched.length + ' 个：\n' + (matched.slice(0, 6).join('\n') || '（一个都没匹配上）')
+          : '未设置过滤，将自动挑合适的那个。';
+        UI.confirm('过滤结果', msg, '保存').then(function (yes) {
+          if (!yes) return;
+          NB.libSetAdvanced(it.pkg, v, false);
+          render();
+        });
+      }, function () { UI.loading(false); });
     });
   }
 
@@ -198,45 +352,36 @@
     try { apps = JSON.parse(NB.libScan() || '[]'); } catch (e) { apps = []; }
     UI.loading(false);
 
-    // 系统应用排在后面：用户想管的是自己装的那些
-    apps.sort(function (a, b) { return (a.system ? 1 : 0) - (b.system ? 1 : 0); });
     if (!apps.length) {
       UI.toast('没扫到本机应用（可能缺少「查询全部应用」权限）');
       return;
     }
+    // 按安装来源排序：侧载商店 → 侧载 → Play → 厂商 → 系统
+    apps.sort(function (a, b) {
+      var d = (a.priority || 1) - (b.priority || 1);
+      return d !== 0 ? d : String(a.name || '').localeCompare(String(b.name || ''));
+    });
 
     var shown = apps;
-    function body() {
-      return '<div class="field"><input class="input" id="lk-q" placeholder="搜索应用名或包名"></div>' +
-        '<div id="lk-list">' + rows(shown.slice(0, 120)) + '</div>';
-    }
     function rows(list) {
       if (!list.length) return UI.empty('search', '没有匹配的应用');
-      return list.map(function (a) {
+      return list.slice(0, 150).map(function (a) {
         return '<button class="opt" data-pkg="' + U.esc(a.pkg) + '" data-name="' + U.esc(a.name) + '">' +
-          '<span class="opt-ico">' + window.icon(a.system ? 'shield' : 'package', 18) + '</span>' +
+          '<span class="opt-ico">' + window.icon(a.priority === 0 ? 'package' : (a.system ? 'shield' : 'circle'), 18) + '</span>' +
           '<span>' + U.esc(a.name) + '<br><span class="muted tiny">' + U.esc(a.pkg) + '</span></span>' +
-          (a.system ? '<span class="muted tiny" style="margin-left:auto">系统</span>' : '') +
+          (a.sourceLabel ? '<span class="muted tiny" style="margin-left:auto">' + U.esc(a.sourceLabel) + '</span>' : '') +
           '</button>';
       }).join('');
     }
 
     UI.sheet({
       title: '选择要跟踪的应用',
-      body: body(),
       full: true,
-      onMount: function (b) {
+      body: '<div class="field"><input class="input" id="lk-q" placeholder="搜索应用名或包名"></div>' +
+        '<div id="lk-list">' + rows(shown) + '</div>',
+      onMount: function () {
         var root = document.getElementById('sheet-root');
         var q = root.querySelector('#lk-q');
-        q.oninput = function () {
-          var k = q.value.trim().toLowerCase();
-          shown = !k ? apps : apps.filter(function (a) {
-            return (a.name || '').toLowerCase().indexOf(k) >= 0 || (a.pkg || '').toLowerCase().indexOf(k) >= 0;
-          });
-          root.querySelector('#lk-list').innerHTML = rows(shown.slice(0, 120));
-          bind();
-        };
-        bind();
         function bind() {
           UI.$$('#lk-list .opt', root).forEach(function (btn) {
             btn.onclick = function () {
@@ -247,11 +392,20 @@
             };
           });
         }
+        q.oninput = function () {
+          var k = q.value.trim().toLowerCase();
+          shown = !k ? apps : apps.filter(function (a) {
+            return String(a.name || '').toLowerCase().indexOf(k) >= 0
+              || String(a.pkg || '').toLowerCase().indexOf(k) >= 0;
+          });
+          root.querySelector('#lk-list').innerHTML = rows(shown);
+          bind();
+        };
+        bind();
       }
     });
   }
 
-  /** 选定应用后问它来自哪个仓库，再挑一个 asset 落库。 */
   function askRepo(pkg, name) {
     UI.prompt('这个应用来自哪个仓库？', {
       desc: '填 owner/repo，例如 Buwrt/githup。',
@@ -264,116 +418,158 @@
       var owner = m[1], repo = m[2].replace(/\.git$/, '');
       UI.loading(true);
       window.API.get('/repos/' + owner + '/' + repo + '/releases/latest', null, { cache: 0 })
-      .then(function (res) {
-        UI.loading(false);
-        var rel = res && res.data;
-        var a = pickAsset(rel, null);
-        if (!a) { UI.toast('这个仓库最新一版里没有 APK 附件'); return; }
-        UI.confirm('关联 ' + name, rel.tag_name + ' · ' + a.name, '加入应用库').then(function (yes) {
-          if (!yes) return;
-          NB.libAdd(pkg, owner, repo, name, rel.tag_name, a.name, a.browser_download_url);
-          UI.toast('已加入应用库');
-          render();
+        .then(function (res) {
+          UI.loading(false);
+          var rel = res && res.data;
+          var a = pickAsset(rel, null);
+          if (!a) { UI.toast('这个仓库最新一版里没有 APK 附件'); return; }
+          UI.confirm('关联 ' + name, (rel.tag_name || '') + ' · ' + a.name, '加入应用库').then(function (yes) {
+            if (!yes) return;
+            NB.libAdd(pkg, owner, repo, name, rel.tag_name, a.name, a.browser_download_url);
+            UI.toast('已加入应用库');
+            render();
+          });
+        }, function () {
+          UI.loading(false);
+          UI.toast('取不到这个仓库的 Release');
         });
-      }, function () {
-        UI.loading(false);
-        UI.toast('取不到这个仓库的 Release');
-      });
     });
   }
 
   /* ---------- 渲染 ---------- */
 
-  function rowHtml(it) {
-    var name = it.app_name || it.pkg;
-    var sub = (it.owner && it.repo) ? (it.owner + '/' + it.repo) : it.pkg;
-    // 已装版本只看系统读到的 versionName。installed_tag 只是「我们认为装的是
-    // 哪一版」的备注，拿它来显示就会把最新版错报成已装版本。
+  /** 状态行 + 色调。已装版本只认系统读到的 versionName。 */
+  function statusOf(it) {
     var cur = it.installed_vname || it.installed_tag || '';
-    var status, tone = 'muted';
-    if (it.pending) { status = '已下载，等待安装'; tone = 'accent'; }
-    else if (it.hasUpdate) {
-      status = '有更新：' + (cur || '?') + ' → ' + (it.latest_tag || '?');
-      tone = 'accent';
-    } else if (!it.present) { status = '手机上已不存在'; tone = 'err'; }
-    else if (it.sysFingerprint && it.fingerprint && it.sysFingerprint !== it.fingerprint) {
-      status = '签名变了，注意来源'; tone = 'err';
-    } else { status = '已是最新' + (cur ? '（' + cur + '）' : ''); }
+    if (it.pending) return { text: '已下载，等待安装', tone: 'accent' };
+    if (it.hasUpdate) return { text: '有更新：' + (cur || '?') + ' → ' + (it.latest_tag || '?'), tone: 'accent' };
+    if (!it.present) return { text: '手机上已不存在', tone: 'err' };
+    if (it.sysFingerprint && it.fingerprint && it.sysFingerprint !== it.fingerprint) {
+      return { text: '签名变了，注意来源', tone: 'err' };
+    }
+    return { text: '已是最新' + (cur ? '（' + cur + '）' : ''), tone: '' };
+  }
 
-    var tags = '';
-    if (it.ignoreUpdate) tags += ' <span class="chip">忽略更新</span>';
-    if (it.preRelease) tags += ' <span class="chip">含预发布</span>';
-    if (it.skipped_tag) tags += ' <span class="chip">跳过 ' + U.esc(it.skipped_tag) + '</span>';
+  function tagsOf(it) {
+    var t = '';
+    if (it.ignoreUpdate) t += ' <span class="chip">忽略更新</span>';
+    if (it.preRelease) t += ' <span class="chip">含预发布</span>';
+    if (it.skipped_tag) t += ' <span class="chip">跳过 ' + U.esc(it.skipped_tag) + '</span>';
+    if (it.pinned_variant) t += ' <span class="chip">钉 ' + U.esc(it.pinned_variant) + '</span>';
+    if (it.asset_regex) t += ' <span class="chip">有过滤</span>';
+    return t;
+  }
 
-    var act = it.hasUpdate
-      ? '<button class="btn sm primary" data-act="update">更新</button>'
-      : '<button class="btn sm" data-act="open">打开</button>';
+  function rowHtml(it, inGroup) {
+    var name = it.app_name || it.pkg;
+    var st = statusOf(it);
+    var main;
+    if (it.pending) main = '<button class="btn sm primary" data-act="install">安装</button>';
+    else if (it.hasUpdate) main = '<button class="btn sm primary" data-act="update">更新</button>';
+    else main = '<button class="btn sm" data-act="open">打开</button>';
 
-    return '<div class="card" data-pkg="' + U.esc(it.pkg) + '">' +
+    return '<div class="lib-row' + (inGroup ? ' in-group' : '') + '" data-pkg="' + U.esc(it.pkg) + '">' +
       '<div style="display:flex;align-items:center;gap:10px">' +
       '<span>' + window.icon('package', 22) + '</span>' +
       '<div style="min-width:0;flex:1">' +
       '<div style="font-weight:600">' + U.esc(name) + '</div>' +
-      '<div class="muted tiny" style="overflow:hidden;text-overflow:ellipsis">' + U.esc(sub) + '</div>' +
+      (inGroup ? '' : '<div class="muted tiny" style="overflow:hidden;text-overflow:ellipsis">'
+        + U.esc((it.owner && it.repo) ? (it.owner + '/' + it.repo) : it.pkg) + '</div>') +
       '</div>' +
       '<button class="icon-btn" data-act="menu">' + window.icon('kebab-horizontal', 20) + '</button>' +
       '</div>' +
-      '<div class="' + (tone === 'accent' ? '' : 'muted') + ' tiny" style="margin:8px 0">' + U.esc(status) + tags + '</div>' +
-      '<div style="display:flex;gap:8px;justify-content:flex-end">' + act +
+      '<div class="' + (st.tone === 'accent' ? '' : 'muted') + ' tiny" style="margin:8px 0">'
+      + U.esc(st.text) + tagsOf(it) + '</div>' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end">' + main +
       '<button class="btn sm" data-act="uninstall">卸载</button></div>' +
       '</div>';
   }
 
-  function section(title, list, emptyIcon, emptyText) {
+  /** 同一 owner/repo 的合并成一张组卡，位置取组内第一个成员的位置。 */
+  function groupByRepo(list) {
+    var out = [], seen = Object.create(null);
+    list.forEach(function (it) {
+      var key = (it.owner || '') + '/' + (it.repo || '');
+      if (seen[key] !== undefined) { out[seen[key]].members.push(it); return; }
+      seen[key] = out.length;
+      out.push({ key: key, owner: it.owner, repo: it.repo, members: [it] });
+    });
+    return out;
+  }
+
+  function groupHtml(g) {
+    if (g.members.length === 1) return rowHtml(g.members[0], false);
+    var rows = g.members.map(function (m) { return rowHtml(m, true); }).join('');
+    return '<div class="card">' +
+      '<div class="muted tiny" style="margin-bottom:6px">' + U.esc(g.owner + '/' + g.repo)
+      + ' · ' + g.members.length + ' 个应用</div>' + rows + '</div>';
+  }
+
+  function section(title, key, list) {
     if (!list.length) return '';
-    return '<div class="muted tiny" style="margin:8px 2px 2px">' + U.esc(title) + ' · ' + list.length + '</div>' +
-      list.map(rowHtml).join('');
+    var open = CTX.expanded[key] !== false;
+    var groups = groupByRepo(list);
+    var body = open ? groups.map(groupHtml).join('') : '';
+    return '<div class="muted tiny lib-sec" data-sec="' + key + '" style="margin:8px 2px 2px;display:flex;align-items:center;gap:6px">'
+      + window.icon(open ? 'chevron-down' : 'chevron-right', 14)
+      + U.esc(title) + ' · ' + list.length + '</div>' + body;
+  }
+
+  function sortList(list) {
+    var s = CTX.sort;
+    return list.slice().sort(function (a, b) {
+      if (s === 'name') return String(a.app_name || a.pkg).localeCompare(String(b.app_name || b.pkg));
+      if (s === 'recent') return (b.checkedAt || 0) - (a.checkedAt || 0);
+      // updates：有更新 > 待安装 > 已是最新
+      var pa = a.hasUpdate ? 0 : (a.pending ? 1 : 2);
+      var pb = b.hasUpdate ? 0 : (b.pending ? 1 : 2);
+      return pa !== pb ? pa - pb : String(a.app_name || a.pkg).localeCompare(String(b.app_name || b.pkg));
+    });
   }
 
   function render() {
     var host = document.getElementById('view');
     if (!has()) {
       host.innerHTML = UI.empty('package', '当前环境没有应用库能力');
-      return;
+      return Promise.resolve();
     }
-    return load().then(function (items) {
-      // 进页面先对一次账：卸掉的、装上的、版本变了的，都由原生核一遍
-      try { NB.libSync(); } catch (e) { }
-      return load();
-    }).then(function (items) {
-      CTX.items = items;
 
+    // 进页面先对一次账：卸掉的、装上的、版本变了的，都由原生核一遍
+    try { NB.libSync(); } catch (e) { }
+
+    return load().then(function (items) {
+      CTX.items = items;
       var q = (CTX.query || '').trim().toLowerCase();
       var all = !q ? items : items.filter(function (it) {
-        return ((it.app_name || '') + ' ' + (it.owner || '') + '/' + (it.repo || '')).toLowerCase().indexOf(q) >= 0;
+        return String((it.app_name || '') + ' ' + (it.owner || '') + '/' + (it.repo || '')).toLowerCase().indexOf(q) >= 0;
       });
 
-      var pend = all.filter(function (it) { return it.pending; });
-      var upd = all.filter(function (it) { return it.hasUpdate && !it.pending; });
-      var idle = all.filter(function (it) { return !it.hasUpdate && !it.pending; });
+      var pend = sortList(all.filter(function (it) { return it.pending; }));
+      var upd = sortList(all.filter(function (it) { return it.hasUpdate && !it.pending; }));
+      var idle = sortList(all.filter(function (it) { return !it.hasUpdate && !it.pending; }));
 
       var html = '<div style="padding:12px;display:flex;flex-direction:column;gap:10px">' +
         '<div class="field"><input class="input" id="lib-q" placeholder="搜索应用" value="' + U.esc(CTX.query) + '"></div>';
 
       if (!items.length) {
-        html += UI.empty('package', '应用库还是空的', '点右上角加入本机已装的应用，开始跟踪它的更新');
+        html += UI.empty('package', '应用库还是空的', '点右上角 ➕ 加入本机已装的应用，开始跟踪它的更新');
       } else {
-        html += section('待安装', pend, 'download', '') +
-          section('有更新', upd, 'sync', '') +
-          section('已是最新', idle, 'check', '');
+        html += section('待安装', 'pending', pend)
+          + section('有更新', 'updates', upd)
+          + section('已是最新', 'idle', idle);
       }
       html += '</div>';
-
       host.innerHTML = html;
 
-      // 顶栏：检查全部 / 添加 / 菜单
       window.App.setActions([
         { icon: 'sync', onClick: checkAll },
         { icon: 'plus', onClick: linkFlow },
         {
           icon: 'kebab-horizontal', onClick: function () {
             UI.menu('应用库', [
+              { key: 'sort', label: '排序：' + ({ updates: '有更新优先', recent: '最近检查', name: '名称' }[CTX.sort]), icon: 'filter' },
               { key: 'sync', label: '与本机对账', icon: 'sync' },
+              '-',
               { key: 'export', label: '导出清单（复制）', icon: 'copy' },
               { key: 'import', label: '从剪贴板导入', icon: 'download' }
             ]).then(function (k) {
@@ -386,6 +582,18 @@
                 UI.toast(NB.libImport(s));
                 return render();
               }
+              if (k === 'sort') {
+                UI.menu('排序方式', [
+                  { key: 'updates', label: '有更新优先', icon: 'circle' },
+                  { key: 'recent', label: '最近检查', icon: 'circle' },
+                  { key: 'name', label: '名称', icon: 'circle' }
+                ]).then(function (s2) {
+                  if (!s2) return;
+                  CTX.sort = s2;
+                  if (window.Store) window.Store.set('lib_sort', s2);
+                  render();
+                });
+              }
             });
           }
         }
@@ -394,18 +602,27 @@
       var qEl = host.querySelector('#lib-q');
       if (qEl) qEl.oninput = function () { CTX.query = qEl.value; render(); };
 
-      UI.$$('.card[data-pkg]', host).forEach(function (card) {
-        var pkg = card.getAttribute('data-pkg');
+      UI.$$('.lib-sec', host).forEach(function (sec) {
+        sec.onclick = function () {
+          var k = sec.getAttribute('data-sec');
+          CTX.expanded[k] = CTX.expanded[k] === false;
+          render();
+        };
+      });
+
+      UI.$$('.lib-row', host).forEach(function (row) {
+        var pkg = row.getAttribute('data-pkg');
         var it = null;
         for (var i = 0; i < items.length; i++) if (items[i].pkg === pkg) { it = items[i]; break; }
         if (!it) return;
-        UI.$$('[data-act]', card).forEach(function (b) {
+        UI.$$('[data-act]', row).forEach(function (b) {
           b.onclick = function () {
             var a = b.getAttribute('data-act');
             if (a === 'update') doUpdate(it);
+            else if (a === 'install') doInstallPending(it);
             else if (a === 'open') doOpen(it);
             else if (a === 'uninstall') doUninstall(it);
-            else if (a === 'menu') doMenu(it);
+            else if (a === 'menu') openSettings(it);
           };
         });
       });
