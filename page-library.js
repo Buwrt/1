@@ -214,14 +214,52 @@
 
   /* ---------- 操作 ---------- */
 
+  /**
+   * 点「更新」。
+   *
+   * ⚠️ 之前这里是：latest_url 为空就弹一句「没找到 APK」然后 return。
+   *    但**老数据行根本没有 latest_url** —— 第一版的 add() 只写了
+   *    installed_* 列，latest_* 三列（tag / asset / url）是空的。
+   *    于是卡片明明写着「有更新 2.0.11 → 2.0.12」，点下去却一点动静都没有。
+   *
+   * 所以改成：没有 URL 就**现场补查一次**，查到再下载；查不到才报错。
+   * 顺手把查到的落库，下次点就不用再查了。
+   *
+   * 另外每一步都别默默做：下载是异步的，不给反馈用户就以为按钮坏了。
+   */
   function doUpdate(it) {
-    if (!it.latest_url) {
-      UI.toast('这一版没找到可安装的 APK');
+    function go(url, name) {
+      if (!url) { UI.toast('这一版没找到可安装的 APK'); return; }
+      // 真的要下了才置待安装 —— 失败的话别把行卡在「待安装」
+      try { NB.libSetPending(it.pkg, true); } catch (e) { }
+      window.API.installApk(url, name);
+      UI.toast('开始下载 ' + name);
+    }
+
+    if (it.latest_url) {
+      go(it.latest_url, it.latest_asset || (it.pkg + '.apk'));
       return;
     }
-    var name = it.latest_asset || (it.pkg + '.apk');
-    try { NB.libSetPending(it.pkg, true); } catch (e) { }
-    window.API.installApk(it.latest_url, name);
+    UI.loading(true);
+    fetchRelease(it).then(function (r) {
+      UI.loading(false);
+      if (!r) { UI.toast('这一版没有可安装的 APK'); return; }
+      try {
+        NB.libSetLatest(it.pkg, JSON.stringify({
+          tag: r.rel.tag_name || '',
+          vName: r.rel.name || r.rel.tag_name || '',
+          vCode: codeOf(r.rel.tag_name),
+          asset: r.asset.name,
+          url: r.asset.browser_download_url,
+          size: r.asset.size || 0,
+          notes: (r.rel.body || '').slice(0, 400)
+        }));
+      } catch (e) { }
+      go(r.asset.browser_download_url, r.asset.name);
+    }, function () {
+      UI.loading(false);
+      UI.toast('取不到 Release，检查网络或登录状态');
+    });
   }
 
   /** 待安装的那一行：文件还在就直接装，没了就重新下载。 */
