@@ -25,8 +25,8 @@ Daemon will be stopped at the end of the build
 > Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
 > Task :app:checkReleaseDuplicateClasses
 > Task :app:generateReleaseBuildConfig
-> Task :app:javaPreCompileRelease
 > Task :app:checkReleaseAarMetadata
+> Task :app:javaPreCompileRelease
 > Task :app:generateReleaseResValues
 > Task :app:mapReleaseSourceSetPaths
 > Task :app:generateReleaseResources
@@ -47,13 +47,13 @@ Daemon will be stopped at the end of the build
 > Task :app:mergeReleaseAssets
 > Task :app:processApplicationManifestReleaseForBundle
 > Task :app:collectReleaseDependencies
+> Task :app:compressReleaseAssets
+> Task :app:bundleReleaseResources
 > Task :app:sdkReleaseDependencyData
 > Task :app:validateSigningRelease
 > Task :app:writeReleaseAppMetadata
-> Task :app:compressReleaseAssets
 > Task :app:writeReleaseSigningConfigVersions
 > Task :app:processReleaseManifestForPackage
-> Task :app:bundleReleaseResources
 > Task :app:processReleaseResources
 
 > Task :app:compileReleaseJavaWithJavac
@@ -287,5 +287,5 @@ Caused by: org.gradle.api.internal.tasks.compile.CompilationFailedException: Com
 	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
 
 
-BUILD FAILED in 36s
+BUILD FAILED in 43s
 30 actionable tasks: 29 executed, 1 from cache
