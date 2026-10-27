@@ -85,12 +85,50 @@ def main():
         "      case 'library': return { name: 'library', ctx: { query: query } };\n",
         "app.js 路由分支")
 
-    print("== 4. page-user.js：我的页入口 ==")
+    print("== 4. page-user.js：我的页入口（带可更新角标）==")
+    # 4a. 插入 libRow 定义：放在 setRow 之前，两个函数同作用域
+    replace_once(
+        os.path.join(W, "page-user.js"),
+        "  function setRow(icon, label, path) {",
+        """  /* 应用库入口。
+     跟旁边几行的差别是右侧多一枚数字角标：有几个应用可更新就写几。
+     应用库藏在二级页里，不给提示的话更新永远不会被发现 —— 这正是
+     「明明有更新、主界面一点动静都没有」的原因。
+
+     角标先按本地台账画（秒回，不发请求），渲染完再让 LibBadge 静默
+     查一轮；查出新结果就只改这一枚角标，不整页重画。 */
+  function libRow() {
+    var n = (window.LibBadge && window.LibBadge.count) ? window.LibBadge.count() : 0;
+    // 角标元素始终渲染，没更新时只是隐藏 —— 不然静默查出新结果后
+    // 无处安放（原本没这个元素，insert 要找父节点，不如开关 display）
+    var badge = '<span class="lib-badge" style="flex:none;min-width:18px;height:18px;'
+      + 'padding:0 6px;border-radius:9px;background:var(--danger,#e5534b);color:#fff;'
+      + 'font-size:11px;line-height:18px;text-align:center;font-weight:600;'
+      + (n > 0 ? '' : 'display:none') + '">' + (n > 0 ? n : '') + '</span>';
+    setTimeout(function () {
+      if (!window.LibBadge || !window.LibBadge.refresh) return;
+      window.LibBadge.refresh(6 * 3600 * 1000).then(function (m) {
+        var el = document.querySelector('.lib-badge');
+        if (!el) return;
+        if (m > 0) { el.textContent = m; el.style.display = ''; }
+        else { el.style.display = 'none'; }
+      });
+    }, 400);
+    return '<button class="set-row" data-p="/library">'
+      + '<span class="ico">' + window.icon('package', 16) + '</span>'
+      + '<span class="k">应用库</span>' + badge
+      + window.icon('chevron-right', 16) + '</button>';
+  }
+
+  function setRow(icon, label, path) {""",
+        "page-user.js libRow 定义")
+
+    # 4b. 挂上入口
     replace_once(
         os.path.join(W, "page-user.js"),
         "          setRow('bell', '通知', '/notifications') +\n",
         "          setRow('bell', '通知', '/notifications') +\n"
-        "          setRow('package', '应用库', '/library') +\n",
+        "          libRow() +\n",
         "page-user.js 入口")
 
     print("== 5. JsBridge.java：插入 lib* 桥接方法 ==")
