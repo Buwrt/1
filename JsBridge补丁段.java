@@ -255,6 +255,26 @@
         }
     }
 
+    /** 有多少个应用可更新。纯本地查表，秒回。 */
+    @JavascriptInterface
+    public int libUpdateCount() {
+        try {
+            return lib().updateCount();
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
+    /** 台账里最早一次检查时间（毫秒）。前端据此做节流。 */
+    @JavascriptInterface
+    public long libOldestCheckedAt() {
+        try {
+            return lib().oldestCheckedAt();
+        } catch (Throwable t) {
+            return 0L;
+        }
+    }
+
     /**
      * 确认这个包真的不在了，就删掉台账里那一行。
      *
