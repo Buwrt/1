@@ -45,22 +45,22 @@ Daemon will be stopped at the end of the build
 > Task :app:generateReleaseAssets UP-TO-DATE
 > Task :app:mergeReleaseJavaResource
 > Task :app:mergeReleaseAssets
-> Task :app:processReleaseManifestForPackage
 > Task :app:processApplicationManifestReleaseForBundle
-> Task :app:compressReleaseAssets
 > Task :app:collectReleaseDependencies
-> Task :app:processReleaseResources
-> Task :app:bundleReleaseResources
+> Task :app:compressReleaseAssets
 > Task :app:sdkReleaseDependencyData
+> Task :app:validateSigningRelease
+> Task :app:writeReleaseAppMetadata
+> Task :app:processReleaseManifestForPackage
+> Task :app:bundleReleaseResources
+> Task :app:writeReleaseSigningConfigVersions
+> Task :app:processReleaseResources
 
 > Task :app:compileReleaseJavaWithJavac
 Note: Some input files use or override a deprecated API.
 Note: Recompile with -Xlint:deprecation for details.
 
 > Task :app:mergeReleaseGeneratedProguardFiles
-> Task :app:validateSigningRelease
-> Task :app:writeReleaseAppMetadata
-> Task :app:writeReleaseSigningConfigVersions
 > Task :app:minifyReleaseWithR8
 > Task :app:compileReleaseArtProfile
 > Task :app:shrinkReleaseRes
@@ -69,5 +69,5 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :app:createReleaseApkListingFileRedirect
 > Task :app:assembleRelease
 
-BUILD SUCCESSFUL in 38s
+BUILD SUCCESSFUL in 52s
 37 actionable tasks: 36 executed, 1 from cache
