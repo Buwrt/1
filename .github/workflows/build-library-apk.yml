@@ -1,7 +1,7 @@
 # 打包「应用库」版 APK
 #
-# 思路：本仓库（Buwrt/1）**只放补丁**，源码主体从公开的 Buwrt/githup
-# 现取现打 —— 省掉把整个工程搬过来的麻烦，也让补丁本身看得清清楚楚。
+# 思路：源码主体从公开的 Buwrt/githup 现取现打。
+# 应用库 / 数据概览的改动已合进 Buwrt/githup 本身，这里不再打补丁。
 #
 # 两件事必须按顺序做对，否则装上去会被自己拦下：
 #   1. gen-srcfingerprint.py 改写 api.js 的 SRC_SHA256
@@ -60,10 +60,8 @@ jobs:
           KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
 
-      - name: 应用应用库补丁
-        run: |
-          set -e
-          python3 patchrepo/apply-patch.py src patchrepo
+      # 补丁步骤已移除：应用库 / 数据概览的改动已直接合进 Buwrt/githup，
+      # 这里 clone 下来的就是改好的源码。再打一遍补丁会命中不到锚点而失败。
 
       - name: 生成源码指纹与防护链常量（顺序不能反）
         run: |
