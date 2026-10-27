@@ -156,6 +156,16 @@
         }
     }
 
+    /** 改「这一行装的是哪个包」—— 一个仓库发多个包名时用来纠正错绑。 */
+    @JavascriptInterface
+    public boolean libSetInstalledAsset(String pkg, String assetName) {
+        try {
+            return lib().setInstalledAsset(pkg, assetName);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     /** 钉住变体（arm64 / foss 等），传 null 或空串表示不钉。 */
     @JavascriptInterface
     public boolean libSetVariant(String pkg, String variant) {
