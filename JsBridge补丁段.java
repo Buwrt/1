@@ -128,6 +128,20 @@
         }
     }
 
+    /**
+     * 设备主 ABI，如 arm64-v8a。
+     * 一个仓库发多个 APK 时用它挑对架构 —— 光按体积挑会挑到错的那一个。
+     */
+    @JavascriptInterface
+    public String libAbi() {
+        try {
+            String[] abis = android.os.Build.SUPPORTED_ABIS;
+            return (abis != null && abis.length > 0) ? abis[0] : "";
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
     /** 拉起系统卸载界面。卸载结果由下次 libSync() 对账时落到台账。 */
     @JavascriptInterface
     public void libUninstall(String pkg) {
