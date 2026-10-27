@@ -136,6 +136,48 @@ jobs:
           KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
 
+      # 除了 artifact，再往仓库里放一份：artifact 存在 Azure Blob 上，
+      # 有些网络环境取不到，仓库里的这份永远能拿到。
+      - name: 提交 APK 到仓库
+        if: steps.b.outputs.exit == '0'
+        run: |
+          set -e
+          python3 - <<'PYEOF'
+          import base64, glob, hashlib, json, os, urllib.parse, urllib.request
+
+          TOKEN = os.environ["GH_TOKEN"]
+          OWNER, REPO, BRANCH = "Buwrt", "1", "main"
+          API = "https://api.github.com"
+
+          def put(path, data, msg):
+              body = {"message": msg, "branch": BRANCH,
+                      "content": base64.b64encode(data).decode()}
+              try:
+                  r = urllib.request.Request(
+                      f"{API}/repos/{OWNER}/{REPO}/contents/{urllib.parse.quote(path)}?ref={BRANCH}",
+                      headers={"Authorization": "Bearer " + TOKEN,
+                               "Accept": "application/vnd.github+json", "User-Agent": "ci"})
+                  with urllib.request.urlopen(r, timeout=60) as z:
+                      sha = json.loads(z.read().decode()).get("sha")
+                  if sha:
+                      body["sha"] = sha
+              except Exception:
+                  pass
+              req = urllib.request.Request(
+                  f"{API}/repos/{OWNER}/{REPO}/contents/{urllib.parse.quote(path)}",
+                  data=json.dumps(body).encode(), method="PUT",
+                  headers={"Authorization": "Bearer " + TOKEN,
+                           "Accept": "application/vnd.github+json",
+                           "Content-Type": "application/json", "User-Agent": "ci"})
+              with urllib.request.urlopen(req, timeout=240) as z:
+                  print("uploaded", path, len(data), "bytes")
+
+          for p in sorted(glob.glob("out/*")):
+              put(p, open(p, "rb").read(), "ci: 应用库版 APK " + os.path.basename(p))
+          PYEOF
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
