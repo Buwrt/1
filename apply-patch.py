@@ -274,31 +274,40 @@ def main():
         }""",
         "JsBridge 安装前入账")
 
-    print("== 9. page-detail.js：下载即关联 ==")
+    print("== 9. page-detail.js：下载即关联（来源钉在按钮上）==")
 
-    # 9a. 模块级变量 + 两个 helper，插在 IIFE 内、FULL 常量之后
+    # 9a. helper
     replace_once(
         os.path.join(W, "page-detail.js"),
         """  var FULL = 'application/vnd.github.full+json';""",
         """  var FULL = 'application/vnd.github.full+json';
 
   /* ── 下载即关联 ──
-     page-detail.js 是 IIFE，各 render 函数里的 `full` 互不可见，
-     所以记在模块级变量上：进哪个仓库页就更新成哪个，下载时读它。 */
-  var _curFull = '';
 
-  function currentRepo() {
-    var m = /^([^/\\s]+)\\/([^/\\s]+)$/.exec(String(_curFull || '').trim());
+     ⚠️ 来源**必须钉在按钮上**，不能存在模块级变量里。
+
+     早先的写法是一个全局 _curFull，进 release / run 页时赋值，下载时读它。
+     问题：它是**陈旧状态** —— 用户看完 A 仓库的发布页，再切到 B 仓库从
+     别处（文件页、仓库主页）下载一个 APK，_curFull 还停在 A，于是装了
+     B 的软件却绑成 A 的仓库。表现就是「我下的是这个，怎么绑的是那个」。
+
+     现在渲染按钮时把 owner/repo 直接写进 data-repo，点哪个按钮就用哪个
+     来源 —— 来源跟按钮同生共死，不存在过期这回事。
+
+     入账用的是**实际安装的 APK 的包名**（原生 getPackageArchiveInfo 读的），
+     不是文件名猜的。所以「装 a 就绑 a」是硬的。 */
+  function parseRepo(s) {
+    var m = /^([^/\\s]+)\\/([^/\\s]+)$/.exec(String(s || '').trim());
     return m ? { owner: m[1], repo: m[2] } : null;
   }
 
   /**
-   * 装一个已知来源的包：URL 上挂 owner/repo/tag，装完自动落进应用库。
-   * 原生没这个能力时逐级退回，保证「点了一定有事发生」。
+   * @param repoStr 显式来源 "owner/repo"，优先用它；
+   *                没有才退回（老路径）。传 null 即「来源不明，不关联」。
    */
-  function installTracked(url, name, tag, asset) {
+  function installTracked(url, name, tag, asset, repoStr) {
     var b = window.NativeBridge;
-    var r = currentRepo();
+    var r = parseRepo(repoStr);
     var headers = { Accept: 'application/vnd.android.package-archive' };
     try {
       if (b && typeof b.installApkTracked === 'function' && r) {
@@ -319,35 +328,15 @@ def main():
   }""",
         "page-detail.js 注入 helper")
 
-    # 9b. Release 详情页：进页面时记下 owner/repo
+    # 9b. Release 附件：把 full 写进每个按钮
     replace_once(
         os.path.join(W, "page-detail.js"),
-        """  P.release = {
-    title: '发布详情',
-    render: function (ctx, host) {
-      var full = ctx.owner + '/' + ctx.repo;""",
-        """  P.release = {
-    title: '发布详情',
-    render: function (ctx, host) {
-      var full = ctx.owner + '/' + ctx.repo;
-      _curFull = full;""",
-        "page-detail.js release 记 owner/repo")
+        """              return '<button class="list-row" data-dl="' + U.esc(a.browser_download_url) + '" data-n="' + U.esc(a.name) + '">' +""",
+        """              /* data-repo：来源钉死在这一行上，点它就只会绑这个仓库 */
+              return '<button class="list-row" data-dl="' + U.esc(a.browser_download_url) + '" data-n="' + U.esc(a.name) + '" data-repo="' + U.esc(full) + '">' +""",
+        "page-detail.js 附件带 data-repo")
 
-    # 9c. Actions 运行详情页：同样记下
-    replace_once(
-        os.path.join(W, "page-detail.js"),
-        """  P.run = {
-    title: '运行详情',
-    render: function (ctx, host) {
-      var full = ctx.owner + '/' + ctx.repo;""",
-        """  P.run = {
-    title: '运行详情',
-    render: function (ctx, host) {
-      var full = ctx.owner + '/' + ctx.repo;
-      _curFull = full;""",
-        "page-detail.js run 记 owner/repo")
-
-    # 9d. Release 附件：.apk 走安装并关联，其余照旧只下载
+    # 9c. 点击时从按钮读来源（直接改原始那段 onclick）
     replace_once(
         os.path.join(W, "page-detail.js"),
         """        UI.$$('[data-dl]', host).forEach(function (b) {
@@ -363,9 +352,12 @@ def main():
           b.onclick = function () {
             var url = b.getAttribute('data-dl'), name = b.getAttribute('data-n');
             /* APK 附件：装，并把来源记下来自动进应用库。
+               来源从这一行自己带的 data-repo 读 —— 不是全局变量，
+               所以不存在「看完 A 仓库再下 B 的软件却绑成 A」这种串味。
                其它类型（zip / tar.gz / 校验文件）照旧只下载。 */
             if (/\\.apk$/i.test(name || '')) {
-              if (installTracked(url, name, rel.tag_name, name)) {
+              if (installTracked(url, name, rel.tag_name, name,
+                    b.getAttribute('data-repo'))) {
                 UI.toast('开始下载 ' + name + '，装完自动加入应用库');
                 return;
               }
@@ -376,9 +368,26 @@ def main():
             if (ok) UI.toast('开始下载 ' + name);
           };
         });""",
-        "page-detail.js Release 附件")
+        "page-detail.js 附件点击读 data-repo")
 
-    # 9e. Actions 构建产物：解压安装时也带上来源
+    # 9d. Actions 产物：bindArtifacts 接收 full，按钮带 data-repo
+    replace_once(
+        os.path.join(W, "page-detail.js"),
+        "        bindArtifacts(host);",
+        "        bindArtifacts(host, full);",
+        "page-detail.js bindArtifacts 传 full")
+
+    replace_once(
+        os.path.join(W, "page-detail.js"),
+        """  /** 绑定构建产物的下载事件 */
+  function bindArtifacts(host) {
+    UI.$$('[data-art]', host).forEach(function (b) {""",
+        """  /** 绑定构建产物的下载事件。repoFull 是本页的 owner/repo，挂到按钮上 */
+  function bindArtifacts(host, repoFull) {
+    UI.$$('[data-art]', host).forEach(function (b) {
+      if (repoFull && !b.getAttribute('data-repo')) b.setAttribute('data-repo', repoFull);""",
+        "page-detail.js bindArtifacts 签名")
+
     replace_once(
         os.path.join(W, "page-detail.js"),
         """        if (mode === 'install') {
@@ -386,14 +395,17 @@ def main():
           UI.toast('开始下载，完成后会自动解压安装');
         } else {""",
         """        if (mode === 'install') {
-          if (installTracked(url, name, '', '')) {
+          /* 来源同样从按钮自己带的 data-repo 读 */
+          if (installTracked(url, name, '', '', b.getAttribute('data-repo'))) {
             UI.toast('开始下载，完成后会自动解压安装');
           } else {
             window.Native.installApk(url, name, window.Native.authHeaders());
             UI.toast('开始下载，完成后会自动解压安装');
           }
         } else {""",
-        "page-detail.js Actions 产物")
+        "page-detail.js 产物点击读 data-repo")
+
+    print("补丁应用完成")
 
     print("== 10. 下载历史：本地文件删了，记录跟着走 ==")
 
