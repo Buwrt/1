@@ -254,3 +254,27 @@
             return false;
         }
     }
+
+    /**
+     * 确认这个包真的不在了，就删掉台账里那一行。
+     *
+     * 为什么需要单独一个方法，而不是靠 libSync()：
+     *   libSync() 带「防误删护栏」——扫描结果残缺时一个都不删（防的是
+     *   Android 11+ 包可见性把整个应用库清空，komi 的 GH#748）。
+     *   但**用户刚主动卸载**这个场景不该被护栏拦：人是自己点的卸载，
+     *   卸载完这行还在，看起来就像没删掉。
+     *
+     * 所以这一条是「显式确认」路径：只针对这一个包名单点查一次，
+     * 不在就删。护栏管自动扫描，这里管用户意图，两条路互不干扰。
+     */
+    @JavascriptInterface
+    public boolean libRemoveIfGone(String pkg) {
+        if (pkg == null || pkg.isEmpty()) return false;
+        try {
+            if (AppLibrary.probe(activity, pkg).present) return false;
+            lib().remove(pkg);
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
