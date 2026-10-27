@@ -248,7 +248,155 @@ def main():
     else:
         print("  SKIP 已有 REQUEST_DELETE_PACKAGES")
 
+    print("== 8. JsBridge.java：APK 装之前自动入账 ==")
+    # 位置必须在「拷进 ApkProvider 之后、openInstaller 之前」：
+    # 此刻文件一定在，包名也读得出来；等装完再找，文件早被清了。
+    replace_once(
+        os.path.join(J, "JsBridge.java"),
+        """            Uri uri = ApkProvider.uriFor(
+                    activity.getPackageName() + ApkProvider.AUTHORITY_SUFFIX, outName);
+            openInstaller(uri);
+        } catch (Throwable e) {
+            Toast.makeText(activity,
+                    "请在下载目录中找到该 APK 并安装", Toast.LENGTH_LONG).show();
+        }""",
+        """            /* 装之前先把这一笔落进应用库：此刻包名读得到、文件也在。
+               失败不能影响安装本身，所以整段吞异常。 */
+            try {
+                AppLibrary.trackFromApk(activity, t.originUrl, dst);
+            } catch (Throwable ignored) { }
+            Uri uri = ApkProvider.uriFor(
+                    activity.getPackageName() + ApkProvider.AUTHORITY_SUFFIX, outName);
+            openInstaller(uri);
+        } catch (Throwable e) {
+            Toast.makeText(activity,
+                    "请在下载目录中找到该 APK 并安装", Toast.LENGTH_LONG).show();
+        }""",
+        "JsBridge 安装前入账")
+
+    print("== 9. page-detail.js：下载即关联 ==")
+
+    # 9a. 模块级变量 + 两个 helper，插在 IIFE 内、FULL 常量之后
+    replace_once(
+        os.path.join(W, "page-detail.js"),
+        """  var FULL = 'application/vnd.github.full+json';""",
+        """  var FULL = 'application/vnd.github.full+json';
+
+  /* ── 下载即关联 ──
+     page-detail.js 是 IIFE，各 render 函数里的 `full` 互不可见，
+     所以记在模块级变量上：进哪个仓库页就更新成哪个，下载时读它。 */
+  var _curFull = '';
+
+  function currentRepo() {
+    var m = /^([^/\\s]+)\\/([^/\\s]+)$/.exec(String(_curFull || '').trim());
+    return m ? { owner: m[1], repo: m[2] } : null;
+  }
+
+  /**
+   * 装一个已知来源的包：URL 上挂 owner/repo/tag，装完自动落进应用库。
+   * 原生没这个能力时逐级退回，保证「点了一定有事发生」。
+   */
+  function installTracked(url, name, tag, asset) {
+    var b = window.NativeBridge;
+    var r = currentRepo();
+    var headers = { Accept: 'application/vnd.android.package-archive' };
+    try {
+      if (b && typeof b.installApkTracked === 'function' && r) {
+        b.installApkTracked(url, name, JSON.stringify(headers),
+          r.owner, r.repo, tag || '', asset || name, 'release');
+        return true;
+      }
+      if (b && typeof b.installApk === 'function') {
+        b.installApk(url, name, JSON.stringify(headers), 'release');
+        return true;
+      }
+      if (window.Native && typeof window.Native.installApk === 'function') {
+        window.Native.installApk(url, name, headers, 'release');
+        return true;
+      }
+    } catch (e) { /* 落到下面 */ }
+    return false;
+  }""",
+        "page-detail.js 注入 helper")
+
+    # 9b. Release 详情页：进页面时记下 owner/repo
+    replace_once(
+        os.path.join(W, "page-detail.js"),
+        """  P.release = {
+    title: '发布详情',
+    render: function (ctx, host) {
+      var full = ctx.owner + '/' + ctx.repo;""",
+        """  P.release = {
+    title: '发布详情',
+    render: function (ctx, host) {
+      var full = ctx.owner + '/' + ctx.repo;
+      _curFull = full;""",
+        "page-detail.js release 记 owner/repo")
+
+    # 9c. Actions 运行详情页：同样记下
+    replace_once(
+        os.path.join(W, "page-detail.js"),
+        """  P.run = {
+    title: '运行详情',
+    render: function (ctx, host) {
+      var full = ctx.owner + '/' + ctx.repo;""",
+        """  P.run = {
+    title: '运行详情',
+    render: function (ctx, host) {
+      var full = ctx.owner + '/' + ctx.repo;
+      _curFull = full;""",
+        "page-detail.js run 记 owner/repo")
+
+    # 9d. Release 附件：.apk 走安装并关联，其余照旧只下载
+    replace_once(
+        os.path.join(W, "page-detail.js"),
+        """        UI.$$('[data-dl]', host).forEach(function (b) {
+          b.onclick = function () {
+            var url = b.getAttribute('data-dl'), name = b.getAttribute('data-n');
+            // 带认证头：私有仓库的资产、以及 API 返回的下载链接都需要 Authorization
+            // Release 附件统一落 githup/release
+            var ok = window.Native.download(url, name, window.Native.authHeaders(), 'release');
+            if (ok) UI.toast('开始下载 ' + name);
+          };
+        });""",
+        """        UI.$$('[data-dl]', host).forEach(function (b) {
+          b.onclick = function () {
+            var url = b.getAttribute('data-dl'), name = b.getAttribute('data-n');
+            /* APK 附件：装，并把来源记下来自动进应用库。
+               其它类型（zip / tar.gz / 校验文件）照旧只下载。 */
+            if (/\\.apk$/i.test(name || '')) {
+              if (installTracked(url, name, rel.tag_name, name)) {
+                UI.toast('开始下载 ' + name + '，装完自动加入应用库');
+                return;
+              }
+            }
+            // 带认证头：私有仓库的资产、以及 API 返回的下载链接都需要 Authorization
+            // Release 附件统一落 githup/release
+            var ok = window.Native.download(url, name, window.Native.authHeaders(), 'release');
+            if (ok) UI.toast('开始下载 ' + name);
+          };
+        });""",
+        "page-detail.js Release 附件")
+
+    # 9e. Actions 构建产物：解压安装时也带上来源
+    replace_once(
+        os.path.join(W, "page-detail.js"),
+        """        if (mode === 'install') {
+          window.Native.installApk(url, name, window.Native.authHeaders());
+          UI.toast('开始下载，完成后会自动解压安装');
+        } else {""",
+        """        if (mode === 'install') {
+          if (installTracked(url, name, '', '')) {
+            UI.toast('开始下载，完成后会自动解压安装');
+          } else {
+            window.Native.installApk(url, name, window.Native.authHeaders());
+            UI.toast('开始下载，完成后会自动解压安装');
+          }
+        } else {""",
+        "page-detail.js Actions 产物")
+
     print("补丁应用完成")
+
 
 if __name__ == "__main__":
     main()
