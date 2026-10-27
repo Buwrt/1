@@ -560,9 +560,16 @@
 
   /* ---------- 渲染 ---------- */
 
-  /** 状态行 + 色调。已装版本只认系统读到的 versionName。 */
+  /** 状态行 + 色调。 */
   function statusOf(it) {
-    var cur = it.installed_vname || it.installed_tag || '';
+    /* 显示哪个版本？
+       installed_tag   = 我们记录的「装的是哪个 release」（跟 latest_tag 同体系）
+       installed_vname = APK 里写的 versionName（跟 tag 常常对不上）
+
+       优先显示 installed_tag —— 它跟右侧「最新 X」是同一套体系，
+       显示它才不会出现「1.1.1 → V15」这种自己跟自己打架的文案
+       （用户装的就是 V15，只因 APK 里 versionName 写着 1.1.1）。 */
+    var cur = it.installed_tag || it.installed_vname || '';
     if (it.pending) return { text: '已下载，等待安装', tone: 'accent' };
     if (it.hasUpdate) return { text: '有更新：' + (cur || '?') + ' → ' + (it.latest_tag || '?'), tone: 'accent' };
     if (!it.present) return { text: '手机上已不存在', tone: 'err' };
