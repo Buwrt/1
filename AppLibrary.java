@@ -649,7 +649,21 @@ public class AppLibrary extends SQLiteOpenHelper {
         String s = String.valueOf(raw);
         int i = s.lastIndexOf('/');
         if (i >= 0) s = s.substring(i + 1);
-        s = s.replaceAll("[\\/:*?"<>|]", "_").replaceAll("[\u0000-\u001f\u007f]", "");
+        /* 不用正则：\u0000 这类转义在 Java 里会被词法阶段先转成真实
+         * 控制字符，直接写进正则就是「非法字符」。逐字符过滤没这个坑。 */
+        StringBuilder sb = new StringBuilder();
+        for (int k = 0; k < s.length(); k++) {
+            char ch = s.charAt(k);
+            if (ch == '/' || ch == '\\' || ch == ':' || ch == '*' || ch == '?'
+                    || ch == '"' || ch == '<' || ch == '>' || ch == '|') {
+                sb.append('_');
+            } else if (ch < 0x20 || ch == 0x7f) {
+                continue;                    // 控制字符直接丢掉
+            } else {
+                sb.append(ch);
+            }
+        }
+        s = sb.toString();
         s = s.trim();
         if (s.isEmpty()) s = "download.apk";
         if (!s.toLowerCase().endsWith(".apk")) s += ".apk";
