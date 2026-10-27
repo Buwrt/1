@@ -25,8 +25,8 @@ Daemon will be stopped at the end of the build
 > Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
 > Task :app:checkReleaseDuplicateClasses
 > Task :app:generateReleaseBuildConfig
-> Task :app:javaPreCompileRelease
 > Task :app:checkReleaseAarMetadata
+> Task :app:javaPreCompileRelease
 > Task :app:generateReleaseResValues
 > Task :app:mapReleaseSourceSetPaths
 > Task :app:generateReleaseResources
@@ -38,22 +38,22 @@ Daemon will be stopped at the end of the build
 > Task :app:processReleaseMainManifest
 > Task :app:processReleaseManifest
 > Task :app:extractProguardFiles
-> Task :app:processReleaseJavaRes NO-SOURCE
 > Task :app:mergeReleaseArtProfile
+> Task :app:processReleaseJavaRes NO-SOURCE
 > Task :app:mergeReleaseShaders FROM-CACHE
 > Task :app:compileReleaseShaders NO-SOURCE
 > Task :app:generateReleaseAssets UP-TO-DATE
 > Task :app:mergeReleaseJavaResource
 > Task :app:mergeReleaseAssets
 > Task :app:processApplicationManifestReleaseForBundle
-> Task :app:collectReleaseDependencies
+> Task :app:processReleaseManifestForPackage
 > Task :app:compressReleaseAssets
-> Task :app:sdkReleaseDependencyData
+> Task :app:collectReleaseDependencies
 > Task :app:bundleReleaseResources
+> Task :app:sdkReleaseDependencyData
 > Task :app:validateSigningRelease
 > Task :app:writeReleaseAppMetadata
 > Task :app:writeReleaseSigningConfigVersions
-> Task :app:processReleaseManifestForPackage
 > Task :app:processReleaseResources
 
 > Task :app:compileReleaseJavaWithJavac
@@ -69,5 +69,5 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :app:createReleaseApkListingFileRedirect
 > Task :app:assembleRelease
 
-BUILD SUCCESSFUL in 59s
+BUILD SUCCESSFUL in 39s
 37 actionable tasks: 36 executed, 1 from cache
