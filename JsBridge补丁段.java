@@ -114,6 +114,23 @@
         }
     }
 
+    /**
+     * 下载并安装，同时记下「这个包来自哪个仓库」—— 装完自动进应用库。
+     *
+     * 这就是「在 githup 里下的应用会自动关联」的实现：下载时把
+     * owner/repo/tag/asset 记在 URL 上，装之前读出 APK 包名，两者一合
+     * 就落成台账一行。用户不用再手动填 owner/repo。
+     */
+    @JavascriptInterface
+    public void installApkTracked(String url, String filename, String headersJson,
+                                  String owner, String repo, String tag, String assetName,
+                                  String category) {
+        try {
+            AppLibrary.noteTrack(url, owner, repo, tag, assetName);
+        } catch (Throwable ignored) { }
+        enqueueDownload(url, filename, headersJson, true, null, category);
+    }
+
     /** 钉住变体（arm64 / foss 等），传 null 或空串表示不钉。 */
     @JavascriptInterface
     public boolean libSetVariant(String pkg, String variant) {
