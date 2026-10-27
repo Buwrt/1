@@ -667,6 +667,45 @@
     });
   }
 
+  /* ---------- 对外：给「我的」页用的角标 ---------- */
+
+  /**
+   * 「我的」页的「应用库」入口要能显示「N 个可更新」。
+   * 这个数必须**秒回**——它在一进页面就渲染，不能让人等着转圈。
+   * 所以只查本地台账，不发请求；真正的联网检查由后台那次静默检查去做。
+   */
+  window.LibBadge = {
+    count: function () {
+      if (!has()) return 0;
+      try { return NB.libUpdateCount() || 0; } catch (e) { return 0; }
+    },
+    /**
+     * 静默检查一次（带节流）。
+     *
+     * 节流按「台账里最早一次检查时间」算，而不是按「上次点检查的时间」——
+     * 后者会在新加应用后失效（新行 checked_at=0，却被认为刚查过）。
+     */
+    refresh: function (minGapMs) {
+      if (!has()) return Promise.resolve(0);
+      var gap = minGapMs || 6 * 3600 * 1000;
+      try {
+        if (Date.now() - (NB.libOldestCheckedAt() || 0) < gap) {
+          return Promise.resolve(NB.libUpdateCount() || 0);
+        }
+      } catch (e) { }
+      return load().then(function (items) {
+        var targets = items.filter(function (it) { return !it.ignoreUpdate && !it.pending; });
+        if (!targets.length) return 0;
+        var i = 0;
+        function next() {
+          if (i >= targets.length) return Promise.resolve(NB.libUpdateCount() || 0);
+          return checkOne(targets[i++]).then(next, next);
+        }
+        return next();
+      }, function () { return 0; });
+    }
+  };
+
   P.library = {
     title: '应用库',
     render: function (ctx, host) {
