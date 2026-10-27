@@ -257,13 +257,20 @@ public class AppLibrary extends SQLiteOpenHelper {
             }
 
             if (exists) {
+                /* installed_asset 必须记下来。
+                   一个仓库常常发多个包名（foss / premium、A / B），
+                   没记住「这一行装的是哪个 asset」，下次挑更新就只会按
+                   体积挑最大的 —— 于是点 A 的更新，下载并装上了 B。
+                   用户看到的就是「我装的是 A，怎么绑成 B 了」。 */
                 db.execSQL("UPDATE " + T + " SET owner=?, repo=?, app_name=?,"
                                 + " installed_tag=?, installed_vname=?, installed_vcode=?,"
+                                + " installed_asset=?,"
                                 + " latest_tag=?, latest_asset=?, latest_url=?,"
                                 + " fingerprint=?, has_update=?, checked_at=? WHERE pkg=?",
                         new Object[]{
                                 owner, repo, appName == null ? pkg : appName,
                                 instTag, vname, instCode,
+                                assetName == null ? "" : assetName,
                                 tag == null ? "" : tag, assetName, assetUrl,
                                 di.present ? di.fingerprint : null,
                                 newer ? 1 : 0, System.currentTimeMillis(), pkg
@@ -271,13 +278,15 @@ public class AppLibrary extends SQLiteOpenHelper {
             } else {
                 db.execSQL("INSERT INTO " + T + " (pkg,owner,repo,app_name,"
                                 + "installed_tag,installed_vname,installed_vcode,"
+                                + "installed_asset,"
                                 + "latest_tag,latest_asset,latest_url,"
                                 + "fingerprint,has_update,"
                                 + "installed_at,updated_at,checked_at) "
-                                + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                                + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         new Object[]{
                                 pkg, owner, repo, appName == null ? pkg : appName,
                                 instTag, vname, instCode,
+                                assetName == null ? "" : assetName,
                                 tag == null ? "" : tag, assetName, assetUrl,
                                 di.present ? di.fingerprint : null,
                                 newer ? 1 : 0,
@@ -467,6 +476,24 @@ public class AppLibrary extends SQLiteOpenHelper {
     /* ============================================================
      * 单项设置（对应 komi 的「每应用一套偏好」）
      * ============================================================ */
+
+    /**
+     * 改「这一行装的是哪个包」。
+     *
+     * 一个仓库发多个包名时自动挑可能挑错，或者用户换了另一个分支
+     * （foss ↔ premium）。改掉 installed_asset，之后的更新就只认这一种身份。
+     */
+    synchronized boolean setInstalledAsset(String pkg, String assetName) {
+        if (pkg == null || pkg.isEmpty()) return false;
+        try {
+            getWritableDatabase().execSQL(
+                    "UPDATE " + T + " SET installed_asset=? WHERE pkg=?",
+                    new Object[]{assetName == null ? "" : assetName, pkg});
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
 
     /** 钉住变体：以后更新只认带这个串的 asset（如 arm64 / foss）。 */
     synchronized boolean setVariant(String pkg, String variant) {
