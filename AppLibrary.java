@@ -153,23 +153,42 @@ public class AppLibrary extends SQLiteOpenHelper {
      * ============================================================ */
 
     /** 建立绑定（手动关联 / 自动关联都走这里）。 */
+    /**
+     * 建立绑定。
+     *
+     * ⚠️ 参数里的 tag / assetName / assetUrl 是**最新 Release** 的信息，
+     *    不是「已装版本」。早期版本把它写进了 installed_* 列，于是
+     *    「装的是 2.0.11、最新是 2.0.12」被显示成「已装 2.0.12、已是最新」——
+     *    两头都错。现在已装那一半**只从系统读**，传进来的只落 latest_*。
+     */
     synchronized boolean add(String pkg, String owner, String repo, String appName,
                              String tag, String assetName, String assetUrl) {
         if (pkg == null || pkg.isEmpty() || owner == null || repo == null) return false;
         SQLiteDatabase db = getWritableDatabase();
         try {
             DeviceInfo di = probe(pkg);
+            // 已装版本就是系统说的那个；versionName 通常和 Release tag 同格式
+            // （2.0.11 / v2.0.11），拿不到就留空，绝不拿 latest 顶替。
+            String instName = di.present && di.versionName != null ? di.versionName : "";
+            long instCode = di.present ? di.versionCode : 0L;
+
+            // 传进来的这一份是最新 Release，直接算有没有更新
+            long latestCode = codeOfTag(tag);
+            long instTagCode = codeOfTag(instName);
+            boolean newer = latestCode > 0 && latestCode > instTagCode;
+
             db.execSQL("INSERT OR REPLACE INTO " + T + " (pkg,owner,repo,app_name,"
-                            + "installed_tag,installed_vname,installed_vcode,installed_asset,"
-                            + "installed_url,fingerprint,installed_at,updated_at,checked_at) "
-                            + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                            + "installed_tag,installed_vname,installed_vcode,"
+                            + "latest_tag,latest_asset,latest_url,"
+                            + "fingerprint,has_update,"
+                            + "installed_at,updated_at,checked_at) "
+                            + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     new Object[]{
                             pkg, owner, repo, appName == null ? pkg : appName,
-                            tag == null ? "" : tag,
-                            di.present ? di.versionName : null,
-                            di.present ? di.versionCode : 0L,
-                            assetName, assetUrl,
+                            instName, instName, instCode,
+                            tag == null ? "" : tag, assetName, assetUrl,
                             di.present ? di.fingerprint : null,
+                            newer ? 1 : 0,
                             System.currentTimeMillis(), System.currentTimeMillis(),
                             System.currentTimeMillis()
                     });
@@ -177,6 +196,31 @@ public class AppLibrary extends SQLiteOpenHelper {
         } catch (Throwable t) {
             LogBook.error(ctx, "应用库写入失败", String.valueOf(t.getMessage()));
             return false;
+        }
+    }
+
+    /**
+     * 版本号归一成可比较的 long：x.y.z -> x*1000000 + y*1000 + z。
+     * 允许前置 v，允许只给前两位；解析不出来返回 0（调用方需按 0 处理，
+     * 不能拿 0 当「很小」，那样会把「认不出来」误判成「有更新」）。
+     *
+     * 两边必须都走这个换算：
+     *   Android 的 versionCode 是开发者自定义的整数，跟 x.y.z 毫无关系，
+     *   拿它跟 tag 换算出来的数字比等于拿苹果比橘子。所以统一比
+     *   versionName 与 tag 归一化后的值。
+     */
+    static long codeOfTag(String raw) {
+        if (raw == null) return 0;
+        String s = raw.trim();
+        if (s.length() > 0 && (s.charAt(0) == 'v' || s.charAt(0) == 'V')) s = s.substring(1);
+        String[] parts = s.split("\\.");
+        try {
+            long maj = Long.parseLong(parts[0]);
+            long min = parts.length > 1 ? Long.parseLong(parts[1]) : 0L;
+            long pat = parts.length > 2 ? Long.parseLong(parts[2]) : 0L;
+            return maj * 1000000L + min * 1000L + pat;
+        } catch (Throwable t) {
+            return 0;
         }
     }
 
@@ -225,7 +269,14 @@ public class AppLibrary extends SQLiteOpenHelper {
                 if (c != null) try { c.close(); } catch (Throwable ignored) { }
             }
 
-            boolean newer = vCode > curCode || (vCode == 0 && !tag.isEmpty() && !tag.equals(curTag));
+            // 两边统一按 x.y.z 归一后再比；vCode 只是备用（个别仓库 tag 不规范，
+            // 但 versionName 与 tag 恰好同构时用它兜底）。
+            long latestCode = codeOfTag(tag);
+            long instCode = codeOfTag(curTag);
+            boolean newer = false;
+            if (latestCode > 0 && instCode > 0) newer = latestCode > instCode;
+            else if (latestCode > 0 && instCode == 0 && !curTag.isEmpty()) newer = vCode > curCode;
+            else if (latestCode == 0 && instCode == 0) newer = !tag.equals(curTag) && !tag.isEmpty();
             if (skipped != null && skipped.equals(tag)) newer = false;
             if (ignore == 1) newer = false;
 
