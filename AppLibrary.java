@@ -1,6 +1,7 @@
 package com.hubmobile.app;
 
 import android.content.Context;
+import android.net.Uri;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
@@ -598,6 +599,61 @@ public class AppLibrary extends SQLiteOpenHelper {
         } catch (Throwable t) {
             // 入账失败不能影响安装本身，静默即可
         }
+    }
+
+    /**
+     * 把一个 content:// / file:// 的 APK 读进 ApkProvider 目录，**顺便入账**。
+     *
+     * 为什么要有这个方法（而不是只在有 File 的地方入账）：
+     *   DownloadManager 那条加速通道下完给的是 content:// 地址，不是 File，
+     *   而 getPackageArchiveInfo 只认文件路径。所以先把内容落到自己的
+     *   目录里，既能读包名，装的时候也用同一个地址 —— 一举两得。
+     *
+     * @return 落好的文件；失败返回 null（调用方照原样装就行，别因为入账失败
+     *         就把安装也断了 —— 入账是顺手的事，安装才是用户要的）
+     */
+    static File stageApk(Context ctx, String url, Uri src, String name) {
+        if (ctx == null || src == null) return null;
+        try {
+            File dir = new File(ctx.getFilesDir(), "apks");
+            dir.mkdirs();
+            String outName = safeFilePart(name == null || name.isEmpty()
+                    ? "download.apk" : name);
+            File dst = new File(dir, outName);
+            boolean ok = false;
+            java.io.InputStream in = null;
+            java.io.OutputStream out = null;
+            try {
+                in = ctx.getContentResolver().openInputStream(src);
+                if (in == null) return null;
+                out = new java.io.FileOutputStream(dst);
+                byte[] buf = new byte[64 * 1024];
+                int n;
+                while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                out.flush();
+                ok = true;
+            } finally {
+                if (in != null) try { in.close(); } catch (Throwable ignored) { }
+                if (out != null) try { out.close(); } catch (Throwable ignored) { }
+            }
+            if (!ok || !dst.exists() || dst.length() <= 0) return null;
+            trackFromApk(ctx, url, dst);
+            return dst;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** 只取文件名那一段，挡掉路径分隔符和控制字符 */
+    private static String safeFilePart(String raw) {
+        String s = String.valueOf(raw);
+        int i = s.lastIndexOf('/');
+        if (i >= 0) s = s.substring(i + 1);
+        s = s.replaceAll("[\\/:*?"<>|]", "_").replaceAll("[\u0000-\u001f\u007f]", "");
+        s = s.trim();
+        if (s.isEmpty()) s = "download.apk";
+        if (!s.toLowerCase().endsWith(".apk")) s += ".apk";
+        return s;
     }
 
     /* ============================================================
