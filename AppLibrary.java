@@ -497,6 +497,29 @@ public class AppLibrary extends SQLiteOpenHelper {
         }
     }
 
+    /**
+     * 已经下载好、还没装上的那个包的文件名（在 ApkProvider 目录里）。
+     * 文件不在了返回 null —— 调用方据此决定是「直接装」还是「重新下」。
+     */
+    synchronized String pendingFile(String pkg) {
+        try {
+            Cursor c = null;
+            String path = null;
+            try {
+                c = getReadableDatabase().query(T, new String[]{"pending_file"},
+                        "pkg=?", new String[]{pkg}, null, null, null);
+                if (c.moveToFirst()) path = c.getString(0);
+            } finally {
+                if (c != null) try { c.close(); } catch (Throwable ignored) { }
+            }
+            if (path == null || path.isEmpty()) return null;
+            File f = new File(path);
+            return f.exists() ? f.getName() : null;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
     /** 文件还在不在（前端据此决定显示「安装」还是「重新下载」）。 */
     synchronized boolean pendingFileExists(String pkg) {
         try {
