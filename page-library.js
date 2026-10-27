@@ -714,10 +714,13 @@
     var name = it.app_name || it.pkg;
     // 同一个仓库常发多个包名（foss / premium、arm64 / armv7），界面上
     // 名字和 owner/repo 完全一样，只有包名能区分。组卡内一律显示包名。
-    var sub = inGroup
-      ? it.pkg
-      : (((CTX.dupNames && CTX.dupNames[name] > 1) || !(it.owner && it.repo))
-        ? it.pkg : (it.owner + '/' + it.repo));
+    /* 副标题**始终带包名**。
+       一个仓库常发多个包名（foss / premium、arm64 / armv7，甚至两个
+       完全不同的软件挂在同一仓库下），名字可以一样、owner/repo 也一样，
+       只有包名能把它们分开。用户要确认「装的是不是这个」时看的就是这行。 */
+    var sub = (it.owner && it.repo)
+      ? (it.owner + '/' + it.repo + ' · ' + it.pkg)
+      : it.pkg;
     var st = statusOf(it);
     var main;
     if (it.pending) main = '<button class="btn sm primary" data-act="install">安装</button>';
