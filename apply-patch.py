@@ -70,6 +70,16 @@ def main():
         '<script src="js/page-library.js"></script>\n',
         "index.html 加 script")
 
+    # 角标元素必须挂在「我的」这个 tab 内部 —— .badge 是 absolute 定位，
+    # 靠父级 .tab 的 relative 定位，放到外面会飘到屏幕别处。
+    replace_once(
+        os.path.join(src, "app/src/main/assets/web/index.html"),
+        '<button class="tab" data-tab="profile"><span class="tab-ico" data-icon="person"></span>'
+        '<span class="tab-label">我的</span></button>',
+        '<button class="tab" data-tab="profile"><span class="tab-ico" data-icon="person"></span>'
+        '<span class="tab-label">我的</span><i class="badge" id="tab-lib-badge" hidden></i></button>',
+        "index.html 我的 tab 加角标元素")
+
     print("== 3. app.js：路由白名单 + 路由分支 ==")
     # 3a. RESERVED：不加的话 /library 会被当成用户名，去查 library 这个 GitHub 账号
     replace_once(
@@ -84,6 +94,66 @@ def main():
         "      case 'downloads': return { name: 'downloads', ctx: { query: query } };\n"
         "      case 'library': return { name: 'library', ctx: { query: query } };\n",
         "app.js 路由分支")
+
+    # 3c. 应用库角标：先画本地台账（秒回），再静默查一轮
+    replace_once(
+        os.path.join(W, "app.js"),
+        "      App.refreshBadge();\n      /*\n        首次启动自动播一遍新手引导。",
+        "      App.refreshBadge();\n      App.refreshLibBadge();\n      /*\n"
+        "        首次启动自动播一遍新手引导。",
+        "app.js 启动时刷新应用库角标")
+
+    replace_once(
+        os.path.join(W, "app.js"),
+        "      setInterval(function () { App.refreshBadge(); }, 120000);",
+        "      setInterval(function () { App.refreshBadge(); }, 120000);\n"
+        "      /* 应用库更新不用两分钟一查：仓库发版没那么频繁，30 分钟\n"
+        "         一次足够，也省 GitHub 配额。LibBadge 内部还有 6 小时节流，\n"
+        "         所以这里大部分调用其实只查一次本地表就返回了。 */\n"
+        "      setInterval(function () { App.refreshLibBadge(); }, 1800000);",
+        "app.js 定时刷新应用库角标")
+
+    replace_once(
+        os.path.join(W, "app.js"),
+        "    window.AppOnResume = function () {\n      App.refreshBadge();",
+        "    window.AppOnResume = function () {\n      App.refreshBadge();\n"
+        "      App.refreshLibBadge();",
+        "app.js 回前台刷新应用库角标")
+
+    # 3d. 两个方法本体，插在 refreshBadge 之后（App 对象末尾）
+    replace_once(
+        os.path.join(W, "app.js"),
+        "      }).catch(function () {});\n    }\n  };",
+        """      }).catch(function () {});
+    },
+
+    /* ═══ 应用库角标：底部「我的」标签上的红点 ═══
+       应用库藏在二级页里，光在「我的」页内给角标还不够 —— 得先点进
+       「我的」才看得见，跟「藏在应用库页里」是同一个毛病。所以真正的
+       提示要落在底栏上，打开 App 第一眼就看见。
+
+       刻意做成两段：先按本地台账画（查 SQLite，毫秒级，不等网络），
+       再让 LibBadge 静默查一轮把数字改准。这样底栏永远不会因为等请求
+       而空着转圈，也不会一开机就打一串 GitHub 请求。 */
+    updateLibBadge: function (n) {
+      var b = document.getElementById('tab-lib-badge');
+      if (!b) return;
+      if (n > 0) { b.hidden = false; b.textContent = n > 99 ? '99+' : n; }
+      else b.hidden = true;
+    },
+
+    refreshLibBadge: function () {
+      try {
+        if (!window.LibBadge) { this.updateLibBadge(0); return; }
+        this.updateLibBadge(window.LibBadge.count());
+        var self = this;
+        window.LibBadge.refresh(6 * 3600 * 1000).then(function (m) {
+          self.updateLibBadge(m);
+        });
+      } catch (e) { /* 角标画不出来不能影响其它功能 */ }
+    }
+  };""",
+        "app.js 应用库角标方法")
 
     print("== 4. page-user.js：我的页入口（带可更新角标）==")
     # 4a. 插入 libRow 定义：放在 setRow 之前，两个函数同作用域
