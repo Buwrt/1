@@ -460,6 +460,40 @@ def main():
 """,
         "JsBridge 单文件直取拦截")
 
+    print("== 14. 全部标为已读后立刻清角标 ==")
+
+    replace_once(
+        os.path.join(W, "page-home.js"),
+        """      if (key === 'readall') {
+        UI.confirm('全部标为已读', '将把所有通知标记为已读，确定继续？', '标记').then(function (ok) {
+          if (!ok) return;
+          window.API.put('/notifications', {}).then(function () { UI.toast('已全部标为已读'); window.Router.reload(); })
+            .catch(function (e) { UI.toast('操作失败：' + e.message); });
+        });
+      }""",
+        """      if (key === 'readall') {
+        UI.confirm('全部标为已读', '将把所有通知标记为已读，确定继续？', '标记').then(function (ok) {
+          if (!ok) return;
+          window.API.put('/notifications', {}).then(function () {
+            UI.toast('已全部标为已读');
+
+            /* 角标**当场清零**，不等网络往返。
+               整箱标已读成功之后，未读数必然是 0，没必要再发一次请求去问。
+               而底栏角标的轮询是 2 分钟一轮 —— 不在这里清，用户点完看到的
+               就是「列表已经空了，角标上的 1 还挂着」，最长要等两分钟。 */
+            window.App.updateBadge(0);
+            window.Router.reload();
+
+            /* 服务端是最终一致的：紧接着查很可能还是旧值，角标会闪回来。
+               缓一下再确认真实值 —— 万一这期间真来了新通知，显示出来才是对的。 */
+            setTimeout(function () {
+              try { window.App.refreshBadge(); } catch (e) { }
+            }, 1500);
+          }).catch(function (e) { UI.toast('操作失败：' + e.message); });
+        });
+      }""",
+        "page-home.js readall 后清角标")
+
     print("补丁应用完成")
 
     print("== 10. 下载历史：本地文件删了，记录跟着走 ==")
