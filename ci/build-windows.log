@@ -1,16 +1,16 @@
 ......
-[1m[92m  Downloaded[0m tauri-winres v0.3.7
-[1m[92m  Downloaded[0m yoke-derive v0.8.4
-[1m[92m  Downloaded[0m crypto-common v0.1.7
+[1m[92m  Downloaded[0m time-macros v0.2.32
+[1m[92m  Downloaded[0m dtoa v1.0.11
+[1m[92m  Downloaded[0m tauri-codegen v2.7.4
 [1m[92m  Downloaded[0m thiserror v2.0.21
-[1m[92m  Downloaded[0m dtoa-short v0.3.5
-[1m[92m  Downloaded[0m cpufeatures v0.2.17
-[1m[92m  Downloaded[0m serde_spanned v1.1.2
+[1m[92m  Downloaded[0m windows-core v0.62.2
+[1m[92m  Downloaded[0m serde_with_macros v3.24.0
+[1m[92m  Downloaded[0m tauri-runtime v2.12.2
 ......
-[1m[92m   Compiling[0m windows-link v0.2.1
 [1m[92m   Compiling[0m phf_generator v0.13.1
 [1m[92m   Compiling[0m stable_deref_trait v1.2.1
-[1m[92m   Compiling[0m thiserror v2.0.21
 [1m[92m   Compiling[0m zmij v1.0.23
+[1m[92m   Compiling[0m thiserror v2.0.21
 [1m[92m   Compiling[0m smallvec v1.16.4
 [1m[92m   Compiling[0m syn v3.0.9
+[1m[92m   Compiling[0m syn v2.0.119
