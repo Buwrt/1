@@ -649,8 +649,7 @@ fn handle_beacon(win: &WebviewWindow, s: &str, host: &str) {
         _ => return,
     };
 
-    let mut changed = false;
-    {
+    let changed = {
         let mut g = st().lock().unwrap();
         if id == g.id {
             return; // 忽略自己
@@ -672,8 +671,8 @@ fn handle_beacon(win: &WebviewWindow, s: &str, host: &str) {
                 g.save_peers();
             }
         }
-        changed = !seen_before;
-    }
+        !seen_before
+    };
     if changed {
         emit_devices(win);
     }
@@ -1003,7 +1002,7 @@ pub fn lan_pull(window: WebviewWindow, peer_id: String) -> String {
                     }
                     Err(e) => fail(&format!("数据解析失败：{}", e)),
                 },
-                Err(e) => fail(e),
+                Err(e) => fail(&e),
             }
         }
         Some(r) => fail(r.get("msg").and_then(|v| v.as_str()).unwrap_or("对方拒绝")),
