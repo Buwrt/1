@@ -18,6 +18,18 @@ tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+# 原生网络通道。
+#
+# 为什么要它：桌面版一开始让前端直接 fetch GitHub API，结果登录就报
+# "Failed to fetch" —— WebView2 里从 http://tauri.localhost 跨域打出去，
+# 受 CSP / CORS / 系统代理这一堆东西影响，任何一环不通就整体失败，
+# 而在安卓端同样的请求走原生通道从来没出过问题。
+#
+# 所以跟安卓端对齐：请求交给 Rust 发，发完把结果 eval 回前端。
+# 用 native-tls：Windows 上走 schannel（系统自带），不用编 OpenSSL，
+# 在 CI 上又快又稳。
+reqwest = { version = "0.12", default-features = false, features = ["native-tls", "charset", "gzip", "brotli", "deflate"] }
+
 [profile.release]
 codegen-units = 1
 lto = true

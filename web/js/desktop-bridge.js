@@ -443,6 +443,50 @@
     },
     getClipboard: function () { return clipboardCache || ''; },
 
+    /* ---------- 网络：走 Rust 原生通道 ---------- */
+    /*
+     * 为什么不直接 fetch：页面 origin 是 http://tauri.localhost，往
+     * api.github.com 打要过 CSP + CORS，还受系统代理影响 —— 登录那句
+     * "Failed to fetch" 就是这么来的。这里和安卓端走同一条路：
+     * 交给 Rust 发，结果由 window.Native._cb 回收。
+     *
+     * 契约跟安卓端一模一样，所以 api.js 里 Native.has() 会判定为 true，
+     * 所有请求自动走原生通道，无需改动任何调用方。
+     */
+    isDesktop: function () { return true; },
+
+    http: function (id, method, url, body, headersJson) {
+      invoke('http_request', {
+        id: String(id),
+        method: String(method || 'GET'),
+        url: String(url || ''),
+        body: body === null || body === undefined ? null : String(body),
+        headers: String(headersJson || '{}')
+      }).catch(function (e) {
+        // 命令本身没跑起来（没注册 / 崩溃）时不会有 eval 回调，
+        // 这里必须自己收场，否则前端那个 Promise 会永远挂起，界面一直转圈。
+        if (window.Native && typeof window.Native._cb === 'function') {
+          window.Native._cb(id, 502, JSON.stringify({
+            message: '网络通道不可用：' + (e && e.message ? e.message : e)
+          }), '{}');
+        }
+      });
+    },
+
+    httpB64: function (id, url, headersJson) {
+      invoke('http_b64', {
+        id: String(id),
+        url: String(url || ''),
+        headers: String(headersJson || '{}')
+      }).catch(function (e) {
+        if (window.Native && typeof window.Native._cb === 'function') {
+          window.Native._cb(id, 502, JSON.stringify({
+            message: '网络通道不可用：' + (e && e.message ? e.message : e)
+          }), '{}');
+        }
+      });
+    },
+
     /* ---------- 打开外部 ---------- */
     openExternal: function (url) {
       invoke('open_url', { url: String(url || '') }).catch(function () { window.open(url, '_blank'); });

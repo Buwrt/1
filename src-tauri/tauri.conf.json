@@ -13,10 +13,10 @@
       {
         "label": "main",
         "title": "githup",
-        "width": 430,
-        "height": 880,
-        "minWidth": 360,
-        "minHeight": 600,
+        "width": 470,
+        "height": 920,
+        "minWidth": 400,
+        "minHeight": 640,
         "resizable": true,
         "center": true
       }
@@ -27,10 +27,18 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.ico"],
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.ico"
+    ],
     "windows": {
-      "nsis": { "installMode": "currentUser" }
+      "nsis": {
+        "installMode": "currentUser"
+      }
     }
   }
 }

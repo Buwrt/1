@@ -4,9 +4,12 @@
 //! 文件选择、读文件、上传、剪贴板、偏好存储这些一律交给前端 JS 完成，
 //! 这样桌面端不需要堆一堆 Rust 依赖，构建也更快更稳。
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::OnceLock;
+use std::time::Duration;
 
 /* ============================ 命令 ============================ */
 
@@ -137,6 +140,148 @@ fn reveal_path(path: String) -> Result<(), String> {
     Ok(())
 }
 
+/* ============================ 网络通道 ============================
+ *
+ * 与安卓端 JsBridge.http 同一套契约：前端调 http(id, method, url, body,
+ * headersJson)，这里发完请求后用 eval 回调 window.Native._cb(id, status,
+ * body, headersJson)。
+ *
+ * 为什么不让前端直接 fetch：WebView2 里页面 origin 是 http://tauri.localhost，
+ * 往外打要过 CSP 和 CORS，还受系统代理影响 —— 登录时那句
+ * "Failed to fetch" 就是这么来的。交给 Rust 发请求，这些限制一个都不存在，
+ * 行为也和安卓端完全一致。
+ */
+
+/// 复用一个客户端：TLS 握手和连接池都能跨请求复用，冷启动快很多。
+static HTTP: OnceLock<reqwest::Client> = OnceLock::new();
+
+fn http_client() -> &'static reqwest::Client {
+    HTTP.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(Duration::from_secs(40))
+            // 不跟随重定向：GitHub 的 3xx 会把 Location 带在响应里，
+            // 前端自己决定要不要跟（跟安卓端保持一致）。
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new())
+    })
+}
+
+/// 转成合法的 JS 字符串字面量（JSON 字符串语法是 JS 的子集，够用且安全）。
+fn js_str(s: &str) -> String {
+    serde_json::to_string(s).unwrap_or_else(|_| "\"\"".to_string())
+}
+
+/// 把结果送回前端。eval 失败只记日志，不能让它把命令本身搞挂。
+fn emit_cb(window: &tauri::WebviewWindow, id: &str, status: u16, body: &str, headers: &str) {
+    let js = format!(
+        "window.Native._cb({},{},{},{})",
+        js_str(id),
+        status,
+        js_str(body),
+        js_str(headers)
+    );
+    if let Err(e) = window.eval(&js) {
+        eprintln!("回调前端失败：{}", e);
+    }
+}
+
+/// 收集响应头。Link（翻页）和 X-RateLimit-Remaining（限流提示）前端都要读。
+fn headers_to_json(resp: &reqwest::Response) -> String {
+    let mut m = serde_json::Map::new();
+    for (k, v) in resp.headers().iter() {
+        if let Ok(s) = v.to_str() {
+            m.insert(k.as_str().to_lowercase(), serde_json::Value::String(s.to_string()));
+        }
+    }
+    serde_json::Value::Object(m).to_string()
+}
+
+/// 解析前端传来的请求头 JSON，解析不出来就当空处理。
+fn parse_headers(raw: &str) -> HashMap<String, String> {
+    serde_json::from_str::<HashMap<String, String>>(raw).unwrap_or_default()
+}
+
+#[tauri::command]
+async fn http_request(
+    id: String,
+    method: String,
+    url: String,
+    body: Option<String>,
+    headers: String,
+    window: tauri::WebviewWindow,
+) -> Result<(), String> {
+    let m = reqwest::Method::from_bytes(method.as_bytes())
+        .map_err(|_| format!("不支持的请求方法：{}", method))?;
+
+    let mut rb = http_client().request(m, &url);
+    for (k, v) in parse_headers(&headers) {
+        // 这两个由 reqwest 自己算，手动塞进去会导致请求体长度对不上而卡住
+        if k.eq_ignore_ascii_case("content-length") || k.eq_ignore_ascii_case("host") {
+            continue;
+        }
+        rb = rb.header(k, v);
+    }
+    if let Some(b) = body {
+        if !b.is_empty() {
+            rb = rb.body(b);
+        }
+    }
+
+    match rb.send().await {
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            let hdrs = headers_to_json(&resp);
+            match resp.text().await {
+                Ok(text) => emit_cb(&window, &id, status, &text, &hdrs),
+                Err(e) => emit_cb(&window, &id, 502, &format!("读取响应失败：{}", e), "{}"),
+            }
+        }
+        Err(e) => {
+            // 网络层失败：给一个带 message 的假响应，前端会把它显示成
+            // "网络请求失败：…"，比空 body 的"响应内容读取失败"清楚得多
+            let msg = format!("网络请求失败：{}", e);
+            let body = serde_json::json!({ "message": msg }).to_string();
+            emit_cb(&window, &id, 502, &body, "{}");
+        }
+    }
+    Ok(())
+}
+
+/// 二进制资源（README 图片等）走这条路，返回 Base64 文本。
+#[tauri::command]
+async fn http_b64(
+    id: String,
+    url: String,
+    headers: String,
+    window: tauri::WebviewWindow,
+) -> Result<(), String> {
+    let mut rb = http_client().get(&url);
+    for (k, v) in parse_headers(&headers) {
+        if k.eq_ignore_ascii_case("content-length") || k.eq_ignore_ascii_case("host") {
+            continue;
+        }
+        rb = rb.header(k, v);
+    }
+
+    match rb.send().await {
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            let hdrs = headers_to_json(&resp);
+            match resp.bytes().await {
+                Ok(b) => emit_cb(&window, &id, status, &b64_encode(&b), &hdrs),
+                Err(e) => emit_cb(&window, &id, 502, &format!("读取响应失败：{}", e), "{}"),
+            }
+        }
+        Err(e) => {
+            let msg = format!("网络请求失败：{}", e);
+            let body = serde_json::json!({ "message": msg }).to_string();
+            emit_cb(&window, &id, 502, &body, "{}");
+        }
+    }
+    Ok(())
+}
+
 /* ============================ 工具 ============================ */
 
 fn downloads_dir() -> Option<PathBuf> {
@@ -165,6 +310,21 @@ fn sanitize(name: &str) -> String {
     } else {
         cleaned
     }
+}
+
+/// 标准 Base64 编码。不引外部 crate，二十来行的事。
+fn b64_encode(bytes: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len() / 3 * 4 + 4);
+    for chunk in bytes.chunks(3) {
+        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+        let n = ((b[0] as u32) << 16) | ((b[1] as u32) << 8) | (b[2] as u32);
+        out.push(T[(n >> 18) as usize & 63] as char);
+        out.push(T[(n >> 12) as usize & 63] as char);
+        out.push(if chunk.len() > 1 { T[(n >> 6) as usize & 63] as char } else { '=' });
+        out.push(if chunk.len() > 2 { T[n as usize & 63] as char } else { '=' });
+    }
+    out
 }
 
 fn b64_decode(s: &str) -> Result<Vec<u8>, String> {
@@ -205,7 +365,9 @@ pub fn run() {
             app_exit,
             open_url,
             save_file,
-            reveal_path
+            reveal_path,
+            http_request,
+            http_b64
         ])
         .run(tauri::generate_context!())
         .expect("启动 githup 桌面版失败");
