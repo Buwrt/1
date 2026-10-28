@@ -124,10 +124,14 @@ jobs:
           set -e
           API=https://api.github.com/repos/Buwrt/1/contents
 
+          # 注意：base64 结果不能走 jq 的 --arg 传。
+          # Windows 上命令行总长上限约 32K 字符，把一个 2MB 的 exe 编成
+          # base64 塞进 argv 会直接 "Argument list too long"。
+          # 所以先落盘成 b64.txt，再用 jq 的 --rawfile 让 jq 自己去读文件。
           put() {   # put <本地文件> <仓库路径>
             local src="$1" dest="$2"
-            local b64 sha=""
-            b64=$(base64 -w0 "$src")
+            local sha=""
+            base64 -w0 "$src" | tr -d '\n' > b64.txt
 
             # 已存在的文件要带 sha 才能覆盖
             sha=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" \
@@ -135,10 +139,10 @@ jobs:
                        "$API/$dest?ref=main" | jq -r '.sha // empty')
 
             if [ -n "$sha" ]; then
-              jq -n --arg m "ci: $dest" --arg c "$b64" --arg s "$sha" \
+              jq -n --rawfile c b64.txt --arg m "ci: $dest" --arg s "$sha" \
                  '{message:$m, content:$c, branch:"main", sha:$s}' > body.json
             else
-              jq -n --arg m "ci: $dest" --arg c "$b64" \
+              jq -n --rawfile c b64.txt --arg m "ci: $dest" \
                  '{message:$m, content:$c, branch:"main"}' > body.json
             fi
 
