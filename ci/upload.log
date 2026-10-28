@@ -1,13 +1,10 @@
 Release id = 425708437
-curl: (3) URL rejected: Malformed input to a URL function
-已删除旧附件 684216838
-已删除旧附件 684216925
 上传 githup-1.2.17-portable.exe (4725248 字节)
-  结果: Validation Failed | null B
-上传 githup-1.2.17-setup.exe (2438076 字节)
-  结果: githup-1.2.17-setup.exe | 2438076 B
+  结果: OK 4725248
+上传 githup-1.2.17-setup.exe (2437312 字节)
+  结果: OK 2437312
 --- 复查 ---
   附件数: 3
-   - githup-1.2.17-portable.exe 4070400 B
-   - githup-1.2.17-setup.exe 2438076 B
+   - githup-1.2.17-portable.exe 4725248 B
+   - githup-1.2.17-setup.exe 2437312 B
    - githup-v1.2.17.apk 1148715 B
