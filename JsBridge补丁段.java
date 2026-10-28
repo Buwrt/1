@@ -132,6 +132,135 @@
         enqueueDownload(url, filename, headersJson, null, true, null, category);
     }
 
+    /* ============================================================
+     * 单文件直取：仓库里的文件不走 DownloadManager
+     * ============================================================ */
+
+    /** 直取的上限。超过就退回原来的通道（那本来就是为大文件准备的）。 */
+    private static final long DIRECT_FETCH_MAX_BYTES = 8L * 1024 * 1024;
+
+    /**
+     * 这是不是「仓库里的单个文件」？
+     *
+     * 只认两类地址：
+     *   raw.githubusercontent.com/...          最常见
+     *   github.com/{o}/{r}/raw|blob/{ref}/...   网页地址转来的
+     * 刻意**不认** releases/download（Release 附件）和 codeload（源码包）——
+     * 那两类是大文件，正是要靠镜像救的，别抢。
+     */
+    private static boolean isRawFileUrl(String url) {
+        if (url == null || url.isEmpty()) return false;
+        String h = DownloadChannels.hostOf(url);
+        if (h == null) return false;
+        if ("raw.githubusercontent.com".equals(h)) return true;
+        if (!"github.com".equals(h)) return false;
+        String lc = url.toLowerCase(java.util.Locale.US);
+        return lc.contains("/raw/") || lc.contains("/blob/");
+    }
+
+    /**
+     * 直接把文件抓下来（在线程池里跑）。
+     *
+     * 为什么单独开这一条路：
+     *   下载通道（DownloadManager + 第三方加速镜像）是为**大文件**准备的 ——
+     *   Release 附件、源码包会 302 到对象存储，国内不少宽带下确实又慢又断，
+     *   所以要靠镜像和自动换道去救。
+     *
+     *   但仓库里的单个文件根本不是同一个量级的东西：它走的是
+     *   raw.githubusercontent.com，而 App 自己读列表、README、代码用的
+     *   也是同一个域名、同一套原生网络栈 —— 那条路本来就是通的。
+     *
+     *   把一个几 KB 的 yml 送进 DownloadManager 再绕一圈第三方镜像，等于
+     *   放着自家通畅的路不走，去挤一条为救急修的、随时可能限流或关停的路。
+     *   用户看到的就是「下个小文件也慢得要死、还老失败，换网络也没用」——
+     *   换网络当然没用，卡的不是用户的网，是那台第三方代理服务器。
+     *
+     * 所以单文件走原生栈直取：不镜像、不换道、不看 Star，秒完。
+     */
+    private void startDirectFileFetch(String url, String name, String headersJson,
+                                      String category) {
+        pool.execute(() -> {
+            boolean ok = false;
+            long bytes = 0;
+            String saved = name;
+            String reason = "";
+            try {
+                Map<String, String> headers = new HashMap<>();
+                try {
+                    if (headersJson != null && !headersJson.isEmpty()) {
+                        JSONObject j = new JSONObject(headersJson);
+                        java.util.Iterator<String> it = j.keys();
+                        while (it.hasNext()) {
+                            String k = it.next();
+                            String v = j.optString(k, "");
+                            if (!v.isEmpty()) headers.put(k, v);
+                        }
+                    }
+                } catch (Throwable ignored) { }
+
+                Http.RawResponse r = Http.requestRaw("GET", url, headers);
+                if (r == null || r.code < 200 || r.code >= 300) {
+                    reason = r == null ? "网络不通" : ("HTTP " + r.code);
+                } else if (r.body == null || r.body.length == 0) {
+                    reason = "内容是空的";
+                } else {
+                    bytes = r.body.length;
+                    File tmp = new File(activity.getCacheDir(), safeName(name));
+                    try (java.io.OutputStream out = new java.io.FileOutputStream(tmp)) {
+                        out.write(r.body);
+                    }
+                    String[] outName = new String[1];
+                    moveToPublicDownloads(tmp, name, category, outName);
+                    if (outName[0] != null && !outName[0].isEmpty()) saved = outName[0];
+                    try { tmp.delete(); } catch (Throwable ignored) { }
+                    ok = true;
+                }
+            } catch (Throwable t) {
+                reason = t.getMessage() == null ? "取不到" : t.getMessage();
+            }
+
+            final boolean fOk = ok;
+            final long fBytes = bytes;
+            final String fSaved = saved;
+            final String fReason = reason;
+            activity.runOnUiThread(() -> {
+                /* 历史照常记一笔，下载管理页里能看到 */
+                try {
+                    JSONObject o = new JSONObject();
+                    o.put("name", name);
+                    o.put("saved", fSaved);
+                    o.put("url", url);
+                    o.put("dlId", -1);
+                    o.put("ok", fOk);
+                    o.put("bytes", fBytes);
+                    o.put("time", System.currentTimeMillis());
+                    o.put("install", false);
+                    o.put("sha", "");
+                    o.put("channel", "直取");
+                    synchronized (dlHistory) {
+                        loadHistoryLocked();
+                        prependHistoryLocked(o);
+                        dedupeLatestLocked();
+                        while (dlHistory.length() > HISTORY_MAX) {
+                            dlHistory.remove(dlHistory.length() - 1);
+                        }
+                        saveHistoryLocked();
+                    }
+                } catch (Throwable ignored) { }
+
+                if (!fOk) {
+                    Toast.makeText(activity,
+                            "下载失败" + (fReason.isEmpty() ? "" : "：" + fReason),
+                            Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                Toast.makeText(activity,
+                        "已保存到 Download/" + DOWNLOAD_SUBDIR + "/" + fSaved,
+                        Toast.LENGTH_SHORT).show();
+            });
+        });
+    }
+
     /**
      * 用**已经下载好**的那个包直接拉起系统安装器，不再下一遍。
      *
