@@ -1,69 +1,60 @@
 === 关键行 ===
-67:[1m[91merror[E0425][0m[1m[97m: cannot find type `Sha1` in crate `sha2`[0m
-73:[1m[91merror[E0308][0m[1m[97m: mismatched types[0m
-99:[1m[91merror[E0505][0m[1m[97m: cannot move out of `w` because it is borrowed[0m
-129:[1m[97mSome errors have detailed explanations: E0308, E0425, E0505.[0m
-130:[1m[97mFor more information about an error, try `rustc --explain E0308`.[0m
-132:[1m[91merror[0m: could not compile `githup` (lib) due to 3 previous errors; 2 warnings emitted
+21:[1m[91merror[E0308][0m[1m[97m: mismatched types[0m
+50:[1m[97mFor more information about this error, try `rustc --explain E0308`.[0m
+52:[1m[91merror[0m: could not compile `githup` (lib) due to 1 previous error; 1 warning emitted
 
 === 日志尾部 ===
+
+> githup-desktop@1.2.17 build
+> tauri build
+
+        Info Looking up installed tauri packages to check mismatched versions...
+        Warn The bundle identifier "com.hubmobile.app" set in `"tauri.conf.json" identifier` ends with `.app`. This is not recommended because it conflicts with the application bundle extension on macOS.
+[1m[92m    Updating[0m crates.io index
+[1m[92m     Locking[0m 455 packages to highest compatible versions
+[1m[92m      Adding[0m aes-gcm v0.10.3 [1m[93m(available: v0.11.1)[0m
+[1m[92m      Adding[0m base64 v0.22.1 [1m[93m(available: v0.23.1)[0m
+[1m[92m      Adding[0m generic-array v0.14.7 [1m[93m(available: v0.14.9)[0m
+[1m[92m      Adding[0m hmac v0.12.1 [1m[93m(available: v0.13.0)[0m
+[1m[92m      Adding[0m pbkdf2 v0.12.2 [1m[93m(available: v0.13.0)[0m
+[1m[92m      Adding[0m rand v0.8.8 [1m[93m(available: v0.10.3)[0m
+[1m[92m      Adding[0m reqwest v0.12.28 [1m[93m(available: v0.13.5)[0m
+[1m[92m      Adding[0m sha2 v0.10.9 [1m[93m(available: v0.11.1)[0m
+[1m[92m      Adding[0m toml v0.8.2 [1m[93m(available: v0.8.23)[0m
+[1m[92m      Adding[0m toml_datetime v0.6.3 [1m[93m(available: v0.6.11)[0m
+[1m[92m      Adding[0m toml_edit v0.20.2 [1m[93m(available: v0.20.7)[0m
+[1m[92m   Compiling[0m githup v1.2.17 (D:\a\1\1\src-tauri)
+[1m[91merror[E0308][0m[1m[97m: mismatched types[0m
+    [1m[96m--> [0msrc\lansync.rs:1006:32
      [1m[96m|[0m
-[1m[96m1000[0m [1m[96m|[0m                 Err(e) => fail(e),
+[1m[96m1006[0m [1m[96m|[0m                 Err(e) => fail(e),
      [1m[96m|[0m                           [1m[96m----[0m [1m[91m^[0m [1m[91mexpected `&str`, found `String`[0m
      [1m[96m|[0m                           [1m[96m|[0m
      [1m[96m|[0m                           [1m[96marguments to this function are incorrect[0m
      [1m[96m|[0m
 [1m[92mnote[0m: function defined here
-    [1m[96m--> [0msrc\lansync.rs:299:4
+    [1m[96m--> [0msrc\lansync.rs:305:4
      [1m[96m|[0m
-[1m[96m 299[0m [1m[96m|[0m fn fail(msg: &str) -> String {
+[1m[96m 305[0m [1m[96m|[0m fn fail(msg: &str) -> String {
      [1m[96m|[0m    [1m[92m^^^^[0m [1m[96m---------[0m
 [1m[96mhelp[0m: consider borrowing here
      [1m[96m|[0m
-[1m[96m1000[0m [1m[96m| [0m                Err(e) => fail([92m&[0me),
+[1m[96m1006[0m [1m[96m| [0m                Err(e) => fail([92m&[0me),
      [1m[96m|[0m                                [92m+[0m
 
-[1m[93mwarning[0m[1m[97m: unused import: `Mac`[0m
-  [1m[96m--> [0msrc\lansync.rs:34:18
-   [1m[96m|[0m
-[1m[96m34[0m [1m[96m|[0m use hmac::{Hmac, Mac};
-   [1m[96m|[0m                  [1m[93m^^^[0m
-   [1m[96m|[0m
-   [1m[96m= [0m[1m[97mnote[0m: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
-
-[1m[91merror[E0505][0m[1m[97m: cannot move out of `w` because it is borrowed[0m
-   [1m[96m--> [0msrc\lansync.rs:238:34
-    [1m[96m|[0m
-[1m[96m236[0m [1m[96m|[0m     let w = win.clone();
-    [1m[96m|[0m         [1m[96m-[0m [1m[96mbinding `w` declared here[0m
-[1m[96m237[0m [1m[96m|[0m     // eval 必须在主线程跑，同步任务里直接调会出问题
-[1m[96m238[0m [1m[96m|[0m     let _ = w.run_on_main_thread(move || {
-    [1m[96m|[0m             [1m[96m-[0m [1m[96m------------------[0m [1m[91m^^^^^^^[0m [1m[91mmove out of `w` occurs here[0m
-    [1m[96m|[0m             [1m[96m|[0m [1m[96m|[0m
-    [1m[96m|[0m             [1m[96m|[0m [1m[96mborrow later used by call[0m
-    [1m[96m|[0m             [1m[96mborrow of `w` occurs here[0m
-[1m[96m239[0m [1m[96m|[0m         let _ = w.eval(&js);
-    [1m[96m|[0m                 [1m[96m-[0m [1m[96mmove occurs due to use in closure[0m
-    [1m[96m|[0m
-[1m[96mhelp[0m: consider cloning the value if the performance cost is acceptable
-    [1m[96m|[0m
-[1m[96m238[0m [1m[96m| [0m    let _ = w[92m.clone()[0m.run_on_main_thread(move || {
-    [1m[96m|[0m              [92m++++++++[0m
-
 [1m[93mwarning[0m[1m[97m: value assigned to `changed` is never read[0m
-   [1m[96m--> [0msrc\lansync.rs:646:23
+   [1m[96m--> [0msrc\lansync.rs:652:23
     [1m[96m|[0m
-[1m[96m646[0m [1m[96m|[0m     let mut changed = false;
+[1m[96m652[0m [1m[96m|[0m     let mut changed = false;
     [1m[96m|[0m                       [1m[93m^^^^^[0m [1m[93mthis value is reassigned later and never used[0m
 [1m[96m...[0m
-[1m[96m669[0m [1m[96m|[0m         changed = !seen_before;
+[1m[96m675[0m [1m[96m|[0m         changed = !seen_before;
     [1m[96m|[0m         [1m[96m----------------------[0m [1m[96m`changed` is overwritten here before the previous value is read[0m
     [1m[96m|[0m
     [1m[96m= [0m[1m[97mnote[0m: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
 
-[1m[97mSome errors have detailed explanations: E0308, E0425, E0505.[0m
-[1m[97mFor more information about an error, try `rustc --explain E0308`.[0m
-[1m[93mwarning[0m: `githup` (lib) generated 2 warnings
-[1m[91merror[0m: could not compile `githup` (lib) due to 3 previous errors; 2 warnings emitted
+[1m[97mFor more information about this error, try `rustc --explain E0308`.[0m
+[1m[93mwarning[0m: `githup` (lib) generated 1 warning
+[1m[91merror[0m: could not compile `githup` (lib) due to 1 previous error; 1 warning emitted
 failed to build app: failed to build app
        Error failed to build app: failed to build app
