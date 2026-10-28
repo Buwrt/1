@@ -30,6 +30,15 @@ serde_json = "1"
 # 在 CI 上又快又稳。
 reqwest = { version = "0.12", default-features = false, features = ["native-tls", "charset", "gzip", "brotli", "deflate"] }
 
+# 局域网同步：与安卓端 LanCrypto 同一套算法（PBKDF2 + AES-256-GCM）。
+# 全用纯 Rust 实现，Windows 上不需要编 OpenSSL / 装 NASM。
+aes-gcm = { version = "0.10", features = ["std"] }
+pbkdf2 = { version = "0.12", features = ["hmac", "sha2"] }
+hmac = "0.12"
+sha2 = "0.10"
+rand = "0.8"
+base64 = "0.22"
+
 [profile.release]
 codegen-units = 1
 lto = true

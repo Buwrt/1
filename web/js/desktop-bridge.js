@@ -487,6 +487,41 @@
       });
     },
 
+    /* ---------- 局域网同步 ---------- */
+    /*
+     * 由 Rust 侧 lansync.rs 实现，协议与安卓端 LanSync.java 完全一致，
+     * 所以两端能互相发现、配对、同步。
+     *
+     * 注意这里绝大多数返回 Promise：Tauri 的 invoke 本来就是异步的，
+     * 而安卓端 Java 桥是同步返回字符串。lan-sync.js 里做了两套兼容，
+     * 一份代码两端通用。
+     */
+    lanStart: function () {
+      return invoke('lan_start', {}).then(function () { return true; },
+        function (e) { console.warn('[lan] 启动失败', e); return false; });
+    },
+    lanStop: function () { return invoke('lan_stop', {}); },
+    lanStatus: function () { return invoke('lan_status', {}); },
+    lanDiscover: function () { return invoke('lan_discover', {}); },
+    lanPeers: function () { return invoke('lan_peers', {}); },
+    lanFound: function () { return invoke('lan_found', {}); },
+    lanNewPairCode: function () { return invoke('lan_new_pair_code', {}); },
+    lanPairEnvelope: function () { return invoke('lan_pair_envelope', {}); },
+    lanPair: function (peerId, pin) { return invoke('lan_pair', { peerId: peerId, pin: pin }); },
+    lanRemovePeer: function (peerId) { return invoke('lan_remove_peer', { peerId: peerId }); },
+    lanPush: function (peerId, payload) {
+      return invoke('lan_push', { peerId: peerId, payload: payload });
+    },
+    lanPull: function (peerId) { return invoke('lan_pull', { peerId: peerId }); },
+    lanApprove: function (reqId, granted) {
+      return invoke('lan_approve', { reqId: reqId, granted: !!granted });
+    },
+    /** 回应原生的 onCollect：把本机 localStorage 数据交给它打包发出去 */
+    lanSubmitCollect: function (token, payload) {
+      return invoke('lan_submit_collect', { token: token, payload: payload });
+    },
+    lanDeviceName: function () { return invoke('lan_device_name', {}); },
+
     /* ---------- 打开外部 ---------- */
     openExternal: function (url) {
       invoke('open_url', { url: String(url || '') }).catch(function () { window.open(url, '_blank'); });

@@ -4,11 +4,13 @@
 //! 文件选择、读文件、上传、剪贴板、偏好存储这些一律交给前端 JS 完成，
 //! 这样桌面端不需要堆一堆 Rust 依赖，构建也更快更稳。
 
+mod lansync;
+
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 /* ============================ 命令 ============================ */
@@ -152,19 +154,169 @@ fn reveal_path(path: String) -> Result<(), String> {
  * 行为也和安卓端完全一致。
  */
 
-/// 复用一个客户端：TLS 握手和连接池都能跨请求复用，冷启动快很多。
-static HTTP: OnceLock<reqwest::Client> = OnceLock::new();
+/* ---------------- 代理 ----------------
+ *
+ * 为什么必须自己处理：reqwest 只认环境变量里的代理，而 Windows 用户
+ * 多半是在「系统设置 → 代理」里配的（走注册表），reqwest 根本不看。
+ * 于是电脑上明明开着代理、浏览器能上 GitHub，客户端却报
+ * "error sending request for url" —— 请求根本没走到代理。
+ *
+ * 所以按这个顺序找：
+ *   1. 用户在设置里手动填的（最优先，能override一切）
+ *   2. 环境变量 HTTPS_PROXY / ALL_PROXY / HTTP_PROXY
+ *   3. Windows 注册表里的系统代理
+ */
 
-fn http_client() -> &'static reqwest::Client {
-    HTTP.get_or_init(|| {
-        reqwest::Client::builder()
-            .timeout(Duration::from_secs(40))
-            // 不跟随重定向：GitHub 的 3xx 会把 Location 带在响应里，
-            // 前端自己决定要不要跟（跟安卓端保持一致）。
-            .redirect(reqwest::redirect::Policy::none())
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new())
-    })
+struct NetState {
+    proxy: Option<String>,
+    client: reqwest::Client,
+}
+
+static NET: OnceLock<Mutex<NetState>> = OnceLock::new();
+
+fn build_client(spec: &Option<String>) -> reqwest::Client {
+    let mut b = reqwest::Client::builder()
+        .timeout(Duration::from_secs(40))
+        // 不跟随重定向：Location 由前端自己决定要不要跟（与安卓端一致）
+        .redirect(reqwest::redirect::Policy::none());
+
+    let chosen = match spec {
+        Some(v) => {
+            let v = v.trim().to_string();
+            if v.is_empty() { detect_system_proxy() } else { Some(v) }
+        }
+        None => detect_system_proxy(),
+    };
+    if let Some(p) = &chosen {
+        match reqwest::Proxy::all(p) {
+            Ok(px) => { b = b.proxy(px); }
+            Err(e) => eprintln!("代理地址无效（{}）：{}", p, e),
+        }
+    }
+    b.build().unwrap_or_else(|_| reqwest::Client::new())
+}
+
+fn net() -> &'static Mutex<NetState> {
+    NET.get_or_init(|| Mutex::new(NetState { proxy: None, client: build_client(&None) }))
+}
+
+fn http_client() -> reqwest::Client {
+    net().lock().map(|g| g.client.clone()).unwrap_or_else(|_| build_client(&None))
+}
+
+/// 当前实际生效的代理（手动优先，否则自动探测出来的）。
+fn active_proxy() -> Option<String> {
+    let g = net().lock().ok()?;
+    match &g.proxy {
+        Some(v) if !v.trim().is_empty() => Some(v.clone()),
+        _ => detect_system_proxy(),
+    }
+}
+
+fn env_proxy() -> Option<String> {
+    for k in ["HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy"] {
+        if let Ok(v) = std::env::var(k) {
+            let v = v.trim().to_string();
+            if !v.is_empty() { return Some(v); }
+        }
+    }
+    None
+}
+
+/// Windows 系统代理：读 HKCU\...\Internet Settings 的 ProxyEnable / ProxyServer。
+/// 用 reg.exe 查，不为这点事引一个注册表 crate。
+#[cfg(target_os = "windows")]
+fn registry_proxy() -> Option<String> {
+    let key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings";
+
+    let en = Command::new("reg").args(["query", key, "/v", "ProxyEnable"]).output().ok()?;
+    if !String::from_utf8_lossy(&en.stdout).contains("0x1") {
+        return None;   // 系统代理没开
+    }
+
+    let sv = Command::new("reg").args(["query", key, "/v", "ProxyServer"]).output().ok()?;
+    let txt = String::from_utf8_lossy(&sv.stdout).to_string();
+    // 输出形如：    ProxyServer    REG_SZ    http=127.0.0.1:7890;https=127.0.0.1:7890
+    let val = txt.lines()
+        .rev()
+        .find(|l| l.contains("REG_SZ"))?
+        .split("REG_SZ").nth(1)?
+        .trim().to_string();
+    if val.is_empty() { return None; }
+
+    // 可能是 "http=...;https=..." 的分段形式，优先取 https
+    let pick = val.split(';')
+        .find_map(|p| p.trim().strip_prefix("https=").or_else(|| p.trim().strip_prefix("http=")))
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| val.split(';').next().unwrap_or("").trim().to_string());
+    if pick.is_empty() { return None; }
+    if pick.contains("://") { Some(pick) } else { Some(format!("http://{}", pick)) }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn registry_proxy() -> Option<String> { None }
+
+fn detect_system_proxy() -> Option<String> {
+    env_proxy().or_else(registry_proxy)
+}
+
+/// 设置手动代理。传空字符串表示「清空，回到自动探测」。
+#[tauri::command]
+fn net_set_proxy(spec: String) -> String {
+    let spec = if spec.trim().is_empty() { None } else { Some(spec.trim().to_string()) };
+    let client = build_client(&spec);
+    let shown = match &spec {
+        Some(v) => v.clone(),
+        None => detect_system_proxy().unwrap_or_else(|| "".to_string()),
+    };
+    if let Ok(mut g) = net().lock() {
+        g.proxy = spec;
+        g.client = client;
+    }
+    shown
+}
+
+/// 查询当前生效的代理（供设置面板显示）。
+#[tauri::command]
+fn net_get_proxy() -> String {
+    active_proxy().unwrap_or_else(|| "".to_string())
+}
+
+/// 网络诊断：分别试几个地址，把耗时和错误原样返回，方便判断是哪一层断了。
+#[tauri::command]
+async fn net_diagnose() -> String {
+    let targets = [
+        ("GitHub API", "https://api.github.com/zen"),
+        ("GitHub 主页", "https://github.com"),
+        ("百度（对照）", "https://www.baidu.com"),
+    ];
+    let p = active_proxy();
+    let mut out = serde_json::Map::new();
+    out.insert(
+        "proxy".to_string(),
+        serde_json::Value::String(p.clone().unwrap_or_else(|| "（未检测到）".to_string())),
+    );
+
+    let client = http_client();
+    let mut items = Vec::new();
+    for (name, url) in targets {
+        let t0 = std::time::Instant::now();
+        let r = client.get(url).send().await;
+        let ms = t0.elapsed().as_millis();
+        let item = match r {
+            Ok(resp) => serde_json::json!({
+                "name": name, "ok": true,
+                "status": resp.status().as_u16(), "ms": ms
+            }),
+            Err(e) => serde_json::json!({
+                "name": name, "ok": false,
+                "error": format!("{}", e), "ms": ms
+            }),
+        };
+        items.push(item);
+    }
+    out.insert("items".to_string(), serde_json::Value::Array(items));
+    serde_json::Value::Object(out).to_string()
 }
 
 /// 转成合法的 JS 字符串字面量（JSON 字符串语法是 JS 的子集，够用且安全）。
@@ -367,7 +519,25 @@ pub fn run() {
             save_file,
             reveal_path,
             http_request,
-            http_b64
+            http_b64,
+            net_set_proxy,
+            net_get_proxy,
+            net_diagnose,
+            lansync::lan_start,
+            lansync::lan_stop,
+            lansync::lan_status,
+            lansync::lan_discover,
+            lansync::lan_peers,
+            lansync::lan_found,
+            lansync::lan_new_pair_code,
+            lansync::lan_pair_envelope,
+            lansync::lan_pair,
+            lansync::lan_remove_peer,
+            lansync::lan_push,
+            lansync::lan_pull,
+            lansync::lan_approve,
+            lansync::lan_submit_collect,
+            lansync::lan_device_name
         ])
         .run(tauri::generate_context!())
         .expect("启动 githup 桌面版失败");
