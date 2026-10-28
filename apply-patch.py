@@ -432,6 +432,34 @@ def main():
         "          setRow('graph', 'API 配额', '/settings?tab=quota') +\n",
         "page-user.js 加数据概览入口")
 
+    print("== 13. 单文件直取：仓库里的文件不走 DownloadManager ==")
+
+    replace_once(
+        os.path.join(J, "JsBridge.java"),
+        """        if (url == null || url.isEmpty()) return;
+        final String name = (filename == null || filename.isEmpty()) ? "download" : filename;
+        final String dlCategory = safeCategory(category);
+""",
+        """        if (url == null || url.isEmpty()) return;
+        final String name = (filename == null || filename.isEmpty()) ? "download" : filename;
+        final String dlCategory = safeCategory(category);
+
+        /*
+          单文件（仓库里的 yml / md / 源码）直接抓，别送进 DownloadManager。
+          那条通道是给大文件（Release 附件、源码包）准备的，中间要绕第三方
+          加速镜像 —— 那些镜像是免费的第三方服务，随时限流或关停。一个小文件
+          绕这一圈，慢和失败都出在代理那头，用户换自己的网络当然没用。
+          而 raw.githubusercontent.com 正是 App 自己读 README、代码用的域名，
+          同一套原生栈本来就是通的。
+          大文件（Release 附件 / 源码包）不在这里拦，照旧走镜像换道。
+        */
+        if (isRawFileUrl(url) && expectedBytes <= DIRECT_FETCH_MAX_BYTES) {
+            startDirectFileFetch(url, name, headersJson, dlCategory);
+            return;
+        }
+""",
+        "JsBridge 单文件直取拦截")
+
     print("补丁应用完成")
 
     print("== 10. 下载历史：本地文件删了，记录跟着走 ==")
