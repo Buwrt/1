@@ -31,7 +31,7 @@ use std::time::{Duration, SystemTime};
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Nonce};
 use base64::Engine;
-use hmac::{Hmac, Mac};
+use hmac::Hmac;
 use pbkdf2::pbkdf2;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
@@ -73,17 +73,19 @@ fn sha256(b: &[u8]) -> Vec<u8> {
     h.finalize().to_vec()
 }
 
-/// PBKDF2 派生。SHA-256 拿不到时退 SHA-1（桌面端其实两者都有，留着跟安卓对称）。
+/// PBKDF2 派生，与安卓端同一个 salt 拼法和同一个迭代数。
+///
+/// salt 约定：**展示配对码的一方 ID 在前，输入码的一方 ID 在后**。
+/// 安卓端 LanSync 也是这个顺序，改了就配对不上。
+///
+/// 只用 SHA-256：桌面端一定支持，不像安卓 7.x 需要退到 SHA-1
+/// （那条回退只存在于 Java 端，且不影响互操作性 —— 算法只影响本机
+/// 这一次派生，认领方单方面加密 PSK，两端不需要用同一个算法）。
 fn pin_key(pin: &str, salt: &str) -> Result<Vec<u8>, String> {
     let mut out = [0u8; 32];
     let s = format!("githup-lan-pair|{}", salt);
     let r = pbkdf2::<Hmac<Sha256>>(pin.as_bytes(), s.as_bytes(), 210_000, &mut out);
-    let _ = r;
-    if out.iter().any(|&x| x != 0) {
-        return Ok(out.to_vec());
-    }
-    let r = pbkdf2::<Hmac<sha2::Sha1>>(pin.as_bytes(), s.as_bytes(), 310_000, &mut out);
-    let _ = r;
+    let _ = r;   // 0.12 早期版本返回 ()，新版返回 Result，两种都接受
     Ok(out.to_vec())
 }
 
@@ -233,10 +235,14 @@ fn hostname() -> String {
 /* ============================ 前端回调 ============================ */
 
 fn emit(win: &WebviewWindow, js: String) {
-    let w = win.clone();
-    // eval 必须在主线程跑，同步任务里直接调会出问题
-    let _ = w.run_on_main_thread(move || {
-        let _ = w.eval(&js);
+    // 拿两份句柄：一份给 run_on_main_thread 借用，一份移进闭包。
+    // 只 clone 一份的话闭包会把 w 整个 move 走，而方法本身还借着 &w，
+    // 编译器直接报错（E0505）。
+    let outer = win.clone();
+    let inner = win.clone();
+    // eval 必须在主线程跑，工作线程里直接调会有问题
+    let _ = outer.run_on_main_thread(move || {
+        let _ = inner.eval(&js);
     });
 }
 

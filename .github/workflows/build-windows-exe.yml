@@ -87,6 +87,14 @@ jobs:
       - name: 收集产物
         id: collect
         run: |
+          # 构建这一步现在是 continue-on-error（打包失手也要能出绿色版），
+          # 但 Cargo 缓存会把上一轮的 target/ 带回来 —— 编译失败时旧的
+          # githup.exe 还在，不检查退出码就会把上一版的包当新包发出去。
+          # 这里必须先看编译到底过没过。
+          if [ "${{ steps.build.outputs.rc }}" != "0" ]; then
+            echo "::error::编译失败（rc=${{ steps.build.outputs.rc }}），不发布产物"
+            exit 1
+          fi
           mkdir -p dist
           VER=1.2.17
           echo "VER=$VER" >> "$GITHUB_ENV"
