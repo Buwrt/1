@@ -187,24 +187,64 @@ jobs:
           fi
           echo "Release id = $RID"
 
-          # 同名旧附件先删，否则报 asset already exists
-          for AID in $(curl -sS "${AUTH[@]}" \
+          # 同名旧附件先删，否则报 asset already exists（新包换不上去，
+          # 列表里还留着上一版的大小，最容易被误判成"构建成功了"）。
+          #
+          # 两个坑都踩过：
+          #   1) jq -r 在 Windows 的 git-bash 下行尾带 \r，拼进 URL 会让 curl
+          #      报 "URL rejected: Malformed input"，那一次删除被静默跳过。
+          #      所以统一接 tr -d '\r'。
+          #   2) 删完立刻传，服务端偶发还看得到旧记录 —— 于是先复查一轮，
+          #      确认同名真的没了再上传。
+          del_same_name() {
+            curl -sS "${AUTH[@]}" \
               "https://api.github.com/repos/$OWNER/$REPO/releases/$RID/assets?per_page=100" \
-              | jq -r '.[] | select(.name | endswith(".exe") or endswith(".exe.sha256")) | .id'); do
-            curl -sS -X DELETE "${AUTH[@]}" \
-              "https://api.github.com/repos/$OWNER/$REPO/releases/assets/$AID" > /dev/null
-            echo "已删除旧附件 $AID"
+              | jq -r '.[] | select(.name | test("\\.exe(\\.sha256)?$")) | .id' | tr -d '\r'
+          }
+
+          for round in 1 2 3; do
+            IDS=$(del_same_name)
+            [ -z "$IDS" ] && break
+            echo "第 $round 轮清理"
+            for AID in $IDS; do
+              curl -sS -X DELETE "${AUTH[@]}" \
+                "https://api.github.com/repos/$OWNER/$REPO/releases/assets/$AID" > /dev/null
+              echo "  已删除 $AID"
+            done
+            sleep 3
           done
+
+          LEFT=$(del_same_name)
+          if [ -n "$LEFT" ]; then
+            echo "::warning::仍残留同名附件，上传可能会判重"
+          fi
 
           for f in dist/*.exe; do
             [ -f "$f" ] || continue
             name=$(basename "$f")
             echo "上传 $name ($(stat -c%s "$f") 字节)"
-            curl -sS -L --post302 -X POST "${AUTH[@]}" \
+            RES=$(curl -sS -L --post302 -X POST "${AUTH[@]}" \
               -H "Content-Type: application/vnd.microsoft.portable-executable" \
               --data-binary @"$f" \
               "https://uploads.github.com/repos/$OWNER/$REPO/releases/$RID/assets?name=$name" \
-              | jq -r '"  结果: " + (.name // .message) + " | " + (.size|tostring) + " B"'
+              | jq -r 'if .name then "OK " + (.size|tostring) else "FAIL " + (.message // "?") end')
+            echo "  结果: $RES"
+            # 判重就再清一轮重传：多半是上面删除的服务端延迟没追上
+            case "$RES" in
+              FAIL*)
+                sleep 5
+                for AID in $(del_same_name); do
+                  curl -sS -X DELETE "${AUTH[@]}" \
+                    "https://api.github.com/repos/$OWNER/$REPO/releases/assets/$AID" > /dev/null
+                done
+                sleep 3
+                curl -sS -L --post302 -X POST "${AUTH[@]}" \
+                  -H "Content-Type: application/vnd.microsoft.portable-executable" \
+                  --data-binary @"$f" \
+                  "https://uploads.github.com/repos/$OWNER/$REPO/releases/$RID/assets?name=$name" \
+                  | jq -r '"  重传: " + (if .name then "OK " + (.size|tostring) else "FAIL " + (.message // "?") end)'
+                ;;
+            esac
           done
 
           echo "--- 复查 ---"
