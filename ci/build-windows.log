@@ -1,7 +1,6 @@
 === 关键行 ===
-21:[1m[91merror[E0308][0m[1m[97m: mismatched types[0m
-50:[1m[97mFor more information about this error, try `rustc --explain E0308`.[0m
-52:[1m[91merror[0m: could not compile `githup` (lib) due to 1 previous error; 1 warning emitted
+33:[1m[92m    Finished[0m `release` profile [optimized] target(s) in 1m 58s
+44:    Finished 1 bundle at:
 
 === 日志尾部 ===
 
@@ -24,37 +23,29 @@
 [1m[92m      Adding[0m toml_datetime v0.6.3 [1m[93m(available: v0.6.11)[0m
 [1m[92m      Adding[0m toml_edit v0.20.2 [1m[93m(available: v0.20.7)[0m
 [1m[92m   Compiling[0m githup v1.2.17 (D:\a\1\1\src-tauri)
-[1m[91merror[E0308][0m[1m[97m: mismatched types[0m
-    [1m[96m--> [0msrc\lansync.rs:1006:32
-     [1m[96m|[0m
-[1m[96m1006[0m [1m[96m|[0m                 Err(e) => fail(e),
-     [1m[96m|[0m                           [1m[96m----[0m [1m[91m^[0m [1m[91mexpected `&str`, found `String`[0m
-     [1m[96m|[0m                           [1m[96m|[0m
-     [1m[96m|[0m                           [1m[96marguments to this function are incorrect[0m
-     [1m[96m|[0m
-[1m[92mnote[0m: function defined here
-    [1m[96m--> [0msrc\lansync.rs:305:4
-     [1m[96m|[0m
-[1m[96m 305[0m [1m[96m|[0m fn fail(msg: &str) -> String {
-     [1m[96m|[0m    [1m[92m^^^^[0m [1m[96m---------[0m
-[1m[96mhelp[0m: consider borrowing here
-     [1m[96m|[0m
-[1m[96m1006[0m [1m[96m| [0m                Err(e) => fail([92m&[0me),
-     [1m[96m|[0m                                [92m+[0m
-
-[1m[93mwarning[0m[1m[97m: value assigned to `changed` is never read[0m
-   [1m[96m--> [0msrc\lansync.rs:652:23
+[1m[93mwarning[0m[1m[97m: field `running` is never read[0m
+   [1m[96m--> [0msrc\lansync.rs:164:5
     [1m[96m|[0m
-[1m[96m652[0m [1m[96m|[0m     let mut changed = false;
-    [1m[96m|[0m                       [1m[93m^^^^^[0m [1m[93mthis value is reassigned later and never used[0m
+[1m[96m160[0m [1m[96m|[0m struct State {
+    [1m[96m|[0m        [1m[96m-----[0m [1m[96mfield in this struct[0m
 [1m[96m...[0m
-[1m[96m675[0m [1m[96m|[0m         changed = !seen_before;
-    [1m[96m|[0m         [1m[96m----------------------[0m [1m[96m`changed` is overwritten here before the previous value is read[0m
+[1m[96m164[0m [1m[96m|[0m     running: bool,
+    [1m[96m|[0m     [1m[93m^^^^^^^[0m
     [1m[96m|[0m
-    [1m[96m= [0m[1m[97mnote[0m: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+    [1m[96m= [0m[1m[97mnote[0m: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
 
-[1m[97mFor more information about this error, try `rustc --explain E0308`.[0m
 [1m[93mwarning[0m: `githup` (lib) generated 1 warning
-[1m[91merror[0m: could not compile `githup` (lib) due to 1 previous error; 1 warning emitted
-failed to build app: failed to build app
-       Error failed to build app: failed to build app
+[1m[92m    Finished[0m `release` profile [optimized] target(s) in 1m 58s
+       Built application at: D:\a\1\1\src-tauri\target\release\githup.exe
+        Info Patching D:\a\1\1\src-tauri\target\release\githup.exe with bundle type information: nsis
+        Info Verifying NSIS package
+ Downloading https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.13/nsis-3.13.zip
+        Info validating hash
+        Info extracting NSIS
+ Downloading https://github.com/tauri-apps/nsis-tauri-utils/releases/download/nsis_tauri_utils-v0.5.3/nsis_tauri_utils.dll
+        Info validating hash
+        Info Target: x64
+     Running makensis to produce D:\a\1\1\src-tauri\target\release\bundle\nsis\githup_1.2.17_x64-setup.exe
+    Finished 1 bundle at:
+        D:\a\1\1\src-tauri\target\release\bundle\nsis\githup_1.2.17_x64-setup.exe (2.39 MiB)
+
