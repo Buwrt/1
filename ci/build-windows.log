@@ -1,9 +1,9 @@
 === 关键行 ===
-120:[1m[92m  Downloaded[0m thiserror-impl v2.0.21
-130:[1m[92m  Downloaded[0m thiserror v2.0.21
-270:[1m[92m   Compiling[0m thiserror v2.0.21
-298:[1m[92m   Compiling[0m thiserror-impl v2.0.21
-478:[1m[92m    Finished[0m `release` profile [optimized] target(s) in 4m 17s
+62:[1m[92m  Downloaded[0m thiserror-impl v2.0.21
+78:[1m[92m  Downloaded[0m thiserror v2.0.21
+269:[1m[92m   Compiling[0m thiserror v2.0.21
+300:[1m[92m   Compiling[0m thiserror-impl v2.0.21
+478:[1m[92m    Finished[0m `release` profile [optimized] target(s) in 3m 12s
 489:    Finished 1 bundle at:
 
 === 日志尾部 ===
@@ -26,23 +26,23 @@
 [1m[92m   Compiling[0m png v0.18.1
 [1m[92m   Compiling[0m digest v0.10.7
 [1m[92m   Compiling[0m crossbeam-channel v0.5.17
-[1m[92m   Compiling[0m wry v0.57.1
-[1m[92m   Compiling[0m webview2-com v0.39.1
-[1m[92m   Compiling[0m tracing-core v0.1.36
 [1m[92m   Compiling[0m byteorder v1.5.0
 [1m[92m   Compiling[0m tauri-runtime v2.12.2
+[1m[92m   Compiling[0m wry v0.57.1
+[1m[92m   Compiling[0m tracing-core v0.1.36
 [1m[92m   Compiling[0m cpufeatures v0.2.17
 [1m[92m   Compiling[0m sha2 v0.10.9
-[1m[92m   Compiling[0m ico v0.6.0
+[1m[92m   Compiling[0m webview2-com v0.39.1
 [1m[92m   Compiling[0m tracing v0.1.44
+[1m[92m   Compiling[0m ico v0.6.0
 [1m[92m   Compiling[0m tauri v2.12.5
-[1m[92m   Compiling[0m getrandom v0.3.4
-[1m[92m   Compiling[0m muda v0.20.0
 [1m[92m   Compiling[0m unicode-segmentation v1.13.3
+[1m[92m   Compiling[0m muda v0.20.0
 [1m[92m   Compiling[0m tauri-runtime-wry v2.12.3
+[1m[92m   Compiling[0m getrandom v0.3.4
 [1m[92m   Compiling[0m tao v0.37.2
-[1m[92m   Compiling[0m softbuffer v0.4.8
 [1m[92m   Compiling[0m tauri-codegen v2.7.4
+[1m[92m   Compiling[0m softbuffer v0.4.8
 [1m[92m   Compiling[0m keyboard-types v0.8.3
 [1m[92m   Compiling[0m serialize-to-javascript-impl v0.1.2
 [1m[92m   Compiling[0m once_cell v1.21.4
@@ -53,7 +53,7 @@
 [1m[92m   Compiling[0m githup v1.2.17 (D:\a\1\1\src-tauri)
 [1m[92m   Compiling[0m serde_repr v0.1.21
 [1m[92m   Compiling[0m mime v0.3.17
-[1m[92m    Finished[0m `release` profile [optimized] target(s) in 4m 17s
+[1m[92m    Finished[0m `release` profile [optimized] target(s) in 3m 12s
        Built application at: D:\a\1\1\src-tauri\target\release\githup.exe
         Info Patching D:\a\1\1\src-tauri\target\release\githup.exe with bundle type information: nsis
         Info Verifying NSIS package
