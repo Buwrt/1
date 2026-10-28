@@ -38,6 +38,14 @@ jobs:
         with:
           node-version: '20'
 
+      # 必须显式装：windows 镜像里的 Python 在 hostedtoolcache 下，
+      # 不经过 setup-python 就不会进 PATH，后面用 python 解析 JSON 的步骤
+      # 会直接 command not found（第一次跑就栽在这）。
+      - name: 装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: 装 Rust 工具链（带 MSVC 目标）
         uses: dtolnay/rust-toolchain@stable
 
