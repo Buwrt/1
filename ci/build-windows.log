@@ -1,59 +1,55 @@
 === 关键行 ===
-62:[1m[92m  Downloaded[0m thiserror-impl v2.0.21
-78:[1m[92m  Downloaded[0m thiserror v2.0.21
-269:[1m[92m   Compiling[0m thiserror v2.0.21
-300:[1m[92m   Compiling[0m thiserror-impl v2.0.21
-478:[1m[92m    Finished[0m `release` profile [optimized] target(s) in 3m 12s
-489:    Finished 1 bundle at:
+130:[1m[92m    Finished[0m `release` profile [optimized] target(s) in 1m 43s
+141:    Finished 1 bundle at:
 
 === 日志尾部 ===
-[1m[92m   Compiling[0m tauri-winres v0.3.7
-[1m[92m   Compiling[0m dirs v7.0.0
-[1m[92m   Compiling[0m miniz_oxide v0.9.1
-[1m[92m   Compiling[0m cargo_toml v1.0.1
-[1m[92m   Compiling[0m dpi v0.1.2
-[1m[92m   Compiling[0m cookie v0.18.2
-[1m[92m   Compiling[0m static_vcruntime v3.0.0
-[1m[92m   Compiling[0m tauri-build v2.7.4
+[1m[92m   Compiling[0m tower-service v0.3.3
+[1m[92m   Compiling[0m want v0.3.2
+[1m[92m   Compiling[0m parking_lot_core v0.9.12
+[1m[92m   Compiling[0m urlpattern v0.6.0
+[1m[92m   Compiling[0m walkdir v2.5.0
 [1m[92m   Compiling[0m flate2 v1.1.10
-[1m[92m   Compiling[0m block-buffer v0.10.4
-[1m[92m   Compiling[0m crypto-common v0.1.7
-[1m[92m   Compiling[0m miniz_oxide v0.8.9
-[1m[92m   Compiling[0m fdeflate v0.3.7
-[1m[92m   Compiling[0m webview2-com-macros v0.8.1
-[1m[92m   Compiling[0m windows-version v0.1.7
-[1m[92m   Compiling[0m pin-project-lite v0.2.17
-[1m[92m   Compiling[0m png v0.18.1
-[1m[92m   Compiling[0m digest v0.10.7
-[1m[92m   Compiling[0m crossbeam-channel v0.5.17
-[1m[92m   Compiling[0m byteorder v1.5.0
+[1m[92m   Compiling[0m schannel v0.1.30
+[1m[92m   Compiling[0m compression-core v0.4.34
+[1m[92m   Compiling[0m atomic-waker v1.1.2
+[1m[92m   Compiling[0m hyper v1.12.0
+[1m[92m   Compiling[0m compression-codecs v0.4.46
+[1m[92m   Compiling[0m tauri-utils v2.10.2
+[1m[92m   Compiling[0m parking_lot v0.12.5
+[1m[92m   Compiling[0m encoding_rs v0.8.42
+[1m[92m   Compiling[0m http-body-util v0.1.5
+[1m[92m   Compiling[0m futures-channel v0.3.34
+[1m[92m   Compiling[0m sync_wrapper v1.0.2
+[1m[92m   Compiling[0m futures-sink v0.3.34
+[1m[92m   Compiling[0m tower-layer v0.3.3
+[1m[92m   Compiling[0m ipnet v2.12.2
+[1m[92m   Compiling[0m tower v0.5.3
+[1m[92m   Compiling[0m hyper-util v0.1.21
+[1m[92m   Compiling[0m dirs-sys v0.5.0
+[1m[92m   Compiling[0m tokio-util v0.7.20
+[1m[92m   Compiling[0m tao v0.37.2
+[1m[92m   Compiling[0m tokio-native-tls v0.3.1
+[1m[92m   Compiling[0m async-compression v0.4.51
 [1m[92m   Compiling[0m tauri-runtime v2.12.2
-[1m[92m   Compiling[0m wry v0.57.1
-[1m[92m   Compiling[0m tracing-core v0.1.36
-[1m[92m   Compiling[0m cpufeatures v0.2.17
-[1m[92m   Compiling[0m sha2 v0.10.9
-[1m[92m   Compiling[0m webview2-com v0.39.1
-[1m[92m   Compiling[0m tracing v0.1.44
-[1m[92m   Compiling[0m ico v0.6.0
-[1m[92m   Compiling[0m tauri v2.12.5
-[1m[92m   Compiling[0m unicode-segmentation v1.13.3
+[1m[92m   Compiling[0m softbuffer v0.4.8
+[1m[92m   Compiling[0m ryu v1.0.23
+[1m[92m   Compiling[0m zeroize v1.9.1
+[1m[92m   Compiling[0m simdutf8 v0.1.5
+[1m[92m   Compiling[0m core_detect v1.0.0
+[1m[92m   Compiling[0m multiversion_no_op v1.0.0
+[1m[92m   Compiling[0m rustls-pki-types v1.15.1
+[1m[92m   Compiling[0m serde_urlencoded v0.7.1
 [1m[92m   Compiling[0m muda v0.20.0
 [1m[92m   Compiling[0m tauri-runtime-wry v2.12.3
-[1m[92m   Compiling[0m getrandom v0.3.4
-[1m[92m   Compiling[0m tao v0.37.2
-[1m[92m   Compiling[0m tauri-codegen v2.7.4
-[1m[92m   Compiling[0m softbuffer v0.4.8
-[1m[92m   Compiling[0m keyboard-types v0.8.3
-[1m[92m   Compiling[0m serialize-to-javascript-impl v0.1.2
-[1m[92m   Compiling[0m once_cell v1.21.4
-[1m[92m   Compiling[0m serialize-to-javascript v0.1.2
-[1m[92m   Compiling[0m tauri-macros v2.7.4
-[1m[92m   Compiling[0m tokio v1.54.1
+[1m[92m   Compiling[0m tower-http v0.6.11
+[1m[92m   Compiling[0m hyper-tls v0.6.0
+[1m[92m   Compiling[0m dirs v7.0.0
 [1m[92m   Compiling[0m window-vibrancy v0.8.1
 [1m[92m   Compiling[0m githup v1.2.17 (D:\a\1\1\src-tauri)
-[1m[92m   Compiling[0m serde_repr v0.1.21
-[1m[92m   Compiling[0m mime v0.3.17
-[1m[92m    Finished[0m `release` profile [optimized] target(s) in 3m 12s
+[1m[92m   Compiling[0m base64 v0.22.1
+[1m[92m   Compiling[0m tauri v2.12.5
+[1m[92m   Compiling[0m reqwest v0.12.28
+[1m[92m    Finished[0m `release` profile [optimized] target(s) in 1m 43s
        Built application at: D:\a\1\1\src-tauri\target\release\githup.exe
         Info Patching D:\a\1\1\src-tauri\target\release\githup.exe with bundle type information: nsis
         Info Verifying NSIS package
@@ -65,5 +61,5 @@
         Info Target: x64
      Running makensis to produce D:\a\1\1\src-tauri\target\release\bundle\nsis\githup_1.2.17_x64-setup.exe
     Finished 1 bundle at:
-        D:\a\1\1\src-tauri\target\release\bundle\nsis\githup_1.2.17_x64-setup.exe (2.03 MiB)
+        D:\a\1\1\src-tauri\target\release\bundle\nsis\githup_1.2.17_x64-setup.exe (2.33 MiB)
 
