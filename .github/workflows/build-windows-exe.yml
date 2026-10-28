@@ -114,49 +114,48 @@ jobs:
           fi
         shell: bash
 
+      # 用 curl + jq 而不是 python：windows 的 git-bash 里 python 容易被
+      # 解析到微软商店那个占位程序，<stdin> 形式的 heredoc 直接报错退出
+      # （前两次跑都栽在这）。jq 是运行器自带的，稳。
       - name: 把 exe 提交进仓库 dist/
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python - <<'PYEOF'
-          import base64, glob, hashlib, json, os, urllib.parse, urllib.request
+          set -e
+          API=https://api.github.com/repos/Buwrt/1/contents
 
-          TOKEN = os.environ["GH_TOKEN"]
-          OWNER, REPO, BRANCH = "Buwrt", "1", "main"
-          API = "https://api.github.com"
+          put() {   # put <本地文件> <仓库路径>
+            local src="$1" dest="$2"
+            local b64 sha=""
+            b64=$(base64 -w0 "$src")
 
-          def api_put(path, data, msg):
-              body = {"message": msg, "branch": BRANCH,
-                      "content": base64.b64encode(data).decode()}
-              # 已存在的文件必须带 sha 才能覆盖
-              try:
-                  r = urllib.request.Request(
-                      f"{API}/repos/{OWNER}/{REPO}/contents/{urllib.parse.quote(path)}?ref={BRANCH}",
-                      headers={"Authorization": "Bearer " + TOKEN,
-                               "Accept": "application/vnd.github+json",
-                               "User-Agent": "ci-exe"})
-                  with urllib.request.urlopen(r, timeout=60) as z:
-                      body["sha"] = json.loads(z.read().decode()).get("sha")
-              except Exception:
-                  pass
-              req = urllib.request.Request(
-                  f"{API}/repos/{OWNER}/{REPO}/contents/{urllib.parse.quote(path)}",
-                  data=json.dumps(body).encode(), method="PUT",
-                  headers={"Authorization": "Bearer " + TOKEN,
-                           "Accept": "application/vnd.github+json",
-                           "Content-Type": "application/json",
-                           "User-Agent": "ci-exe"})
-              with urllib.request.urlopen(req, timeout=600) as z:
-                  print("已提交", path, len(data), "字节")
+            # 已存在的文件要带 sha 才能覆盖
+            sha=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" \
+                       -H "Accept: application/vnd.github+json" \
+                       "$API/$dest?ref=main" | jq -r '.sha // empty')
 
-          for p in sorted(glob.glob("dist/*.exe")):
-              data = open(p, "rb").read()
-              name = os.path.basename(p)
-              api_put(f"dist/{name}", data, f"ci: {name}")
-              api_put(f"dist/{name}.sha256",
-                      (hashlib.sha256(data).hexdigest() + "\n").encode(),
-                      f"ci: {name} sha256")
-          PYEOF
+            if [ -n "$sha" ]; then
+              jq -n --arg m "ci: $dest" --arg c "$b64" --arg s "$sha" \
+                 '{message:$m, content:$c, branch:"main", sha:$s}' > body.json
+            else
+              jq -n --arg m "ci: $dest" --arg c "$b64" \
+                 '{message:$m, content:$c, branch:"main"}' > body.json
+            fi
+
+            echo "提交 $dest ($(stat -c%s "$src") 字节)"
+            curl -sS -X PUT -H "Authorization: Bearer $GH_TOKEN" \
+                 -H "Accept: application/vnd.github+json" \
+                 -H "Content-Type: application/json" \
+                 --data-binary @body.json "$API/$dest" \
+                 | jq -r '"  结果: " + (.content.name // .message)'
+          }
+
+          for f in dist/*.exe; do
+            [ -f "$f" ] || continue
+            put "$f" "dist/$(basename "$f")"
+            sha256sum "$f" | awk '{print $1}' > "$f.sha256"
+            put "$f.sha256" "dist/$(basename "$f").sha256"
+          done
         shell: bash
 
       # 附件上传走 uploads.github.com，且必须 curl + --post302：
@@ -175,24 +174,19 @@ jobs:
 
           RID=$(curl -sS "${AUTH[@]}" \
             "https://api.github.com/repos/$OWNER/$REPO/releases/tags/$TAG" \
-            | python -c "import json,sys; d=json.load(sys.stdin); print(d.get('id',''))")
+            | jq -r '.id // empty')
           if [ -z "$RID" ]; then
             RID=$(curl -sS -X POST "${AUTH[@]}" \
               -d "{\"tag_name\":\"$TAG\",\"name\":\"githup v1.2.17\",\"draft\":false,\"prerelease\":false}" \
               "https://api.github.com/repos/$OWNER/$REPO/releases" \
-              | python -c "import json,sys; print(json.load(sys.stdin)['id'])")
+              | jq -r '.id')
           fi
           echo "Release id = $RID"
 
           # 同名旧附件先删，否则报 asset already exists
           for AID in $(curl -sS "${AUTH[@]}" \
               "https://api.github.com/repos/$OWNER/$REPO/releases/$RID/assets?per_page=100" \
-              | python -c "
-          import json,sys
-          for a in json.load(sys.stdin):
-              if a['name'].endswith('.exe') or a['name'].endswith('.exe.sha256'):
-                  print(a['id'])
-          "); do
+              | jq -r '.[] | select(.name | endswith(".exe") or endswith(".exe.sha256")) | .id'); do
             curl -sS -X DELETE "${AUTH[@]}" \
               "https://api.github.com/repos/$OWNER/$REPO/releases/assets/$AID" > /dev/null
             echo "已删除旧附件 $AID"
@@ -206,25 +200,13 @@ jobs:
               -H "Content-Type: application/vnd.microsoft.portable-executable" \
               --data-binary @"$f" \
               "https://uploads.github.com/repos/$OWNER/$REPO/releases/$RID/assets?name=$name" \
-              | python -c "
-          import json,sys
-          try:
-              d=json.load(sys.stdin)
-              print('  结果:', d.get('name') or d.get('message'), '|', d.get('size'), 'B')
-          except Exception as e:
-              print('  解析失败', e)
-          "
+              | jq -r '"  结果: " + (.name // .message) + " | " + (.size|tostring) + " B"'
           done
 
           echo "--- 复查 ---"
           curl -sS "${AUTH[@]}" \
             "https://api.github.com/repos/$OWNER/$REPO/releases/$RID/assets?per_page=100" \
-            | python -c "
-          import json,sys
-          xs=json.load(sys.stdin)
-          print('  附件数:', len(xs))
-          for a in xs: print('   -', a['name'], a['size'], 'B')
-          "
+            | jq -r '"  附件数: " + (length|tostring), (.[] | "   - " + .name + " " + (.size|tostring) + " B")'
           } 2>&1 | tee upload.log
           RC=${PIPESTATUS[0]}
           grep -q "附件数: 0" upload.log && RC=1
@@ -239,60 +221,37 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python - <<'PYEOF'
-          import base64, json, os, re, urllib.parse, urllib.request
+          set -e
+          API=https://api.github.com/repos/Buwrt/1/contents
+          put() {
+            local src="$1" dest="$2"
+            local b64 sha=""
+            b64=$(base64 -w0 "$src")
+            sha=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" \
+                       -H "Accept: application/vnd.github+json" \
+                       "$API/$dest?ref=main" | jq -r '.sha // empty')
+            if [ -n "$sha" ]; then
+              jq -n --arg c "$b64" --arg s "$sha" \
+                 '{message:"ci: 构建日志", content:$c, branch:"main", sha:$s}' > logbody.json
+            else
+              jq -n --arg c "$b64" \
+                 '{message:"ci: 构建日志", content:$c, branch:"main"}' > logbody.json
+            fi
+            curl -sS -X PUT -H "Authorization: Bearer $GH_TOKEN" \
+                 -H "Accept: application/vnd.github+json" \
+                 -H "Content-Type: application/json" \
+                 --data-binary @logbody.json "$API/$dest" \
+                 | jq -r '"  已写入 " + (.content.path // .message)'
+          }
 
-          TOKEN = os.environ["GH_TOKEN"]
-          OWNER, REPO, BRANCH = "Buwrt", "1", "main"
-          API = "https://api.github.com"
+          # 只留关键行：整份日志几百 KB，没必要全塞进仓库
+          grep -nE "error|warning: unused|FAILED|panicked|Finished|Caused by" \
+            build-windows.log > ci-grep.txt 2>/dev/null || true
+          { echo "=== 关键行 ==="; cat ci-grep.txt; echo; echo "=== 日志尾部 ==="; tail -60 build-windows.log; } > ci/build-windows.log 2>/dev/null || true
+          mkdir -p ci
+          { echo "=== 关键行 ==="; cat ci-grep.txt; echo; echo "=== 日志尾部 ==="; tail -60 build-windows.log; } > ci/build-windows.log
+          put ci/build-windows.log ci/build-windows.log
 
-          def api_put(path, data):
-              body = {"message": "ci: 构建日志", "branch": BRANCH,
-                      "content": base64.b64encode(data).decode()}
-              try:
-                  r = urllib.request.Request(
-                      f"{API}/repos/{OWNER}/{REPO}/contents/{urllib.parse.quote(path)}?ref={BRANCH}",
-                      headers={"Authorization": "Bearer " + TOKEN,
-                               "Accept": "application/vnd.github+json",
-                               "User-Agent": "ci-log"})
-                  with urllib.request.urlopen(r, timeout=60) as z:
-                      body["sha"] = json.loads(z.read().decode()).get("sha")
-              except Exception:
-                  pass
-              req = urllib.request.Request(
-                  f"{API}/repos/{OWNER}/{REPO}/contents/{urllib.parse.quote(path)}",
-                  data=json.dumps(body).encode(), method="PUT",
-                  headers={"Authorization": "Bearer " + TOKEN,
-                           "Accept": "application/vnd.github+json",
-                           "Content-Type": "application/json",
-                           "User-Agent": "ci-log"})
-              with urllib.request.urlopen(req, timeout=300) as z:
-                  print("已写入", path, len(data))
-
-          try:
-              log = open("build-windows.log", encoding="utf-8", errors="replace").read()
-          except Exception as e:
-              log = "读不到 build-windows.log: %s" % e
-
-          lines = log.split("\n")
-          marks = set()
-          for i, s in enumerate(lines):
-              if re.search(r'error(\[|:|\s)|warning: unused|FAILED|panicked|错误', s, re.I):
-                  for k in range(max(0, i - 3), min(len(lines), i + 4)):
-                      marks.add(k)
-          out, last = [], -2
-          for k in sorted(marks):
-              if k != last + 1:
-                  out.append("......")
-              out.append(lines[k])
-              last = k
-          body = "\n".join(out) if out else log[-12000:]
-          api_put("ci/build-windows.log", body[:20000].encode())
-
-          try:
-              api_put("ci/upload.log", open("upload.log", encoding="utf-8",
-                      errors="replace").read()[:20000].encode())
-          except Exception as e:
-              print("upload.log 跳过:", e)
-          PYEOF
+          if [ -f upload.log ]; then put upload.log ci/upload.log; fi
         shell: bash
+
