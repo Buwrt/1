@@ -1,0 +1,105 @@
+name: Analyze Meizu LogReport 2
+
+on:
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 下载并解压
+        run: |
+          set -e
+          mkdir -p work && cd work
+          curl -sL -m 900 -o report.zip \
+            "https://github.com/Buwrt/3/releases/download/1/LogReport_261029_101217_generic.zip"
+          unzip -q -o report.zip -d rep
+
+      - name: crash.log 中 githup 相关
+        run: |
+          cd work
+          echo "=== crash.log.0 大小 ==="
+          ls -lh rep/logd/crash.log.0
+          echo "=== crash.log.0 里 com.hubmobile 命中（含上下文） ==="
+          grep -n -B 3 -A 40 "com.hubmobile" rep/logd/crash.log.0 2>/dev/null | head -300
+
+      - name: dropbox 事件
+        run: |
+          cd work
+          echo "=== dropbox 里的数据崩溃/app 崩溃条目 ==="
+          grep -n "com.hubmobile" rep/dumpsys/dumpsys_dropbox.txt 2>/dev/null | head -40
+          echo ""
+          echo "=== dropbox 摘要（前 80 行） ==="
+          head -80 rep/dumpsys/dumpsys_dropbox.txt 2>/dev/null
+
+      - name: ANR 文件
+        run: |
+          cd work
+          F=rep/anr/anr_2026-10-29-05-37-55-096
+          echo "=== ANR 文件 ==="
+          ls -lh $F 2>/dev/null || ls -lh rep/anr/
+          echo "=== 前 60 行 ==="
+          head -60 $F 2>/dev/null
+          echo "=== 其中 com.hubmobile 部分 ==="
+          grep -n -B 5 -A 60 "com.hubmobile" $F 2>/dev/null | head -200
+
+      - name: system.log 中的进程死亡/崩溃
+        run: |
+          cd work
+          echo "=== system.log.0 中 am_proc_died / has died / Force finishing ==="
+          grep -nE "com\.hubmobile" rep/logd/system.log.0 2>/dev/null | head -60
+
+      - name: main.log 中的异常栈
+        run: |
+          cd work
+          echo "=== main.log.0 中 com.hubmobile 的 E 级与异常 ==="
+          grep -nE "com\.hubmobile" rep/logd/main.log.0 2>/dev/null | grep -iE " E |fatal|exception|died|crash|error" | head -60
+
+      - name: tombstone 中是否有 githup
+        run: |
+          cd work
+          echo "=== tombstone 命中 com.hubmobile ==="
+          grep -l "com.hubmobile" rep/tombstones/* 2>/dev/null | head
+          echo "=== 最近 tombstone 头部 ==="
+          for f in $(ls -t rep/tombstones/tombstone_* 2>/dev/null | grep -v "\.pb$" | head -3); do
+            echo "--- $f"
+            head -20 "$f"
+          done
+
+      - name: 保存
+        run: |
+          cd work
+          mkdir -p ../ci
+          {
+            echo "########## crash.log.0 ##########"
+            grep -n -B 3 -A 40 "com.hubmobile" rep/logd/crash.log.0 2>/dev/null | head -400
+            echo ""
+            echo "########## dropbox ##########"
+            grep -n -B 5 -A 30 "com.hubmobile" rep/dumpsys/dumpsys_dropbox.txt 2>/dev/null | head -200
+            echo ""
+            echo "########## ANR ##########"
+            head -80 rep/anr/anr_2026-10-29-05-37-55-096 2>/dev/null
+            echo ""
+            echo "########## system.log ##########"
+            grep -nE "com\.hubmobile" rep/logd/system.log.0 2>/dev/null | head -80
+            echo ""
+            echo "########## main.log ##########"
+            grep -nE "com\.hubmobile" rep/logd/main.log.0 2>/dev/null | grep -iE " E |fatal|exception|died|crash|error" | head -80
+          } > ../ci/meizu-detail.txt
+          wc -c ../ci/meizu-detail.txt
+
+      - name: 提交
+        run: |
+          set -e
+          git config user.name "ci"
+          git config user.email "ci@example.com"
+          git add ci/
+          git diff --cached --quiet && echo "无变更" || git commit -m "ci: 魅族日志详细提取"
+          git push || echo "push 失败"
