@@ -129,6 +129,38 @@
       });
     },
 
+    /* ════════════════════════════════════════════════
+     * 自动同步
+     *
+     * 双向的意思是：官网改了这里要看得见，这里改了官网也要跟着变。
+     *   · 官网 → App：进收藏夹 / 打开勾选弹层时自动拉；
+     *   · App → 官网：加删改之后立刻推，推完再拉一次，以官网为准。
+     *
+     * 但"自动"不等于"随时狂拉"。两个闸门：
+     *   · syncing —— 正在拉就不再起新的，避免并发把镜像写乱；
+     *   · 节流窗 —— 拉完重绘往往会再次触发同步（重绘 → 进收藏夹 → 又拉），
+     *     没有这个窗就会转成死循环，转起来没完。
+     * ════════════════════════════════════════════════ */
+    _syncing: false,
+    _lastSyncAt: 0,
+    /** 拉一次并在成功后回调；正在拉或刚拉过就静默跳过。force 可越过节流。 */
+    autoSync: function (cb, force) {
+      var self = this;
+      var now = Date.now();
+      if (self._syncing) return;
+      if (!force && now - self._lastSyncAt < 8000) return;
+      if (!syncOn() || !window.GqLists) return;
+      self._syncing = true;
+      self._lastSyncAt = now;
+      self.syncFromGitHub().then(function (lists) {
+        self._syncing = false;
+        if (cb) cb(null, lists);
+      }).catch(function (e) {
+        self._syncing = false;
+        if (cb) cb(e, null);
+      });
+    },
+
     /**
      * 把本机攒下的老列表搬到官网去 —— 双向的另一半。
      *
@@ -190,9 +222,16 @@
       return Object.keys(l.repos).map(function (k) { return l.repos[k]; });
     },
 
-    /** 这个仓库在哪些列表里（返回 id 数组，勾选态用） */
+    /**
+     * 这个仓库在哪些列表里（返回 id 数组，勾选态用）。
+     *
+     * ⚠️ 必须和 all() 读同一份数据。all() 在同步时走镜像，而这里以前
+     * 死读本机那份 —— 于是「加入列表」写进了镜像、勾选态却去本机查，
+     * 结果就是：提示"已加入列表"，复选框却是空的。写入和读取必须是
+     * 同一份，不然界面永远在撒谎。
+     */
     listsOf: function (fullName, login) {
-      var hit = [], lists = load(login);
+      var hit = [], lists = syncOn() ? (loadMirror(login) || load(login)) : load(login);
       for (var i = 0; i < lists.length; i++) {
         if (lists[i].repos && lists[i].repos[fullName]) hit.push(lists[i].id);
       }
@@ -294,6 +333,13 @@
         /* 异步推官网。失败就回滚镜像 —— 宁可界面回到原样，也不能让人
            以为加成功了其实官网没加。 */
         window.GqLists.toggleRepoInList(repo.full_name, id, true)
+          .then(function () {
+            /* 推完了再拉一次：官网才是权威，本地镜像只是缓存。
+               不回拉的话，官网那边的真实状态（可能因为并发、权限、
+               或者仓库已被删除而不一致）我们永远看不到。 */
+            if (window.GqLists.invalidate) window.GqLists.invalidate();
+            SL.autoSync(null, true);
+          })
           .catch(function (e) {
             var m2 = loadMirror(login) || [], l2 = null;
             for (var j = 0; j < m2.length; j++) if (m2[j].id === id) l2 = m2[j];
@@ -326,6 +372,10 @@
         delete l.repos[fullName];
         saveMirror(login || me(), m);
         window.GqLists.toggleRepoInList(fullName, id, false)
+          .then(function () {
+            if (window.GqLists.invalidate) window.GqLists.invalidate();
+            SL.autoSync(null, true);
+          })
           .catch(function (e) {
             var m2 = loadMirror(login) || [], l2 = null;
             for (var j = 0; j < m2.length; j++) if (m2[j].id === id) l2 = m2[j];
@@ -449,6 +499,10 @@
       body: bodyHtml(),
       onMount: function (bodyEl, close) {
         var wrap = function () { bodyEl.innerHTML = bodyHtml(); bind(); };
+        /* 打开就拉一次官网最新：列表可能是在网页上建的，本机镜像里
+           还没有。拉完重画，不然对着一份过期的列表勾半天，勾了个
+           官网已经删掉的东西。 */
+        SL.autoSync(function (err) { if (!err) wrap(); }, true);
         function bind() {
           UI.$$('.opt', bodyEl).forEach(function (btn) {
             var lid = btn.getAttribute('data-lid');
