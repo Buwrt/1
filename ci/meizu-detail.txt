@@ -1,0 +1,89 @@
+########## crash.log.0 ##########
+
+########## dropbox ##########
+
+########## ANR ##########
+Subject: Input dispatching timed out (135fdd8 com.github.android/com.github.android.main.MainActivity is not responding. Waited 5000ms for FocusEvent(hasFocus=true)).
+RssHwmKb: 385972
+RssKb: 282124
+RssAnonKb: 90436
+RssShmemKb: 3700
+VmSwapKb: 52344
+
+
+--- CriticalEventLog ---
+capacity: 20
+events <
+  timestamp_ms: 1793223440279
+  install_packages <
+  >
+>
+timestamp_ms: 1793223475095
+window_ms: 300000
+
+----- dumping pid: 20179 at 353675036
+
+----- pid 20179 at 2026-10-29 05:37:55.097491443+0800 -----
+Cmd line: com.github.android
+Build fingerprint: 'meizu/meizu_21_CN/meizu21:16/BQ2A.251016.001-BP2A.250605.031.A3/1763702019:user/release-keys'
+ABI: 'arm64'
+Build type: optimized
+Debug Store: 3,16,353675046::ID:9,C:E,T:353619340||ID:9,C:S,T:353619339,N:SvcBind,D:rebind=false;act=null;cmp=ComponentInfo{com.github.android/com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService};pkg=null||ID:8,C:E,T:353619339||ID:8,C:S,T:353619339,N:SvcCreate,D:name=com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService;pkg=com.github.android||ID:0,C:P,T:353597592,N:Finish,D:tname=main;tid=2;prid=45bab68||ID:7,C:E,T:353597592||ID:7,C:S,T:353597592,N:BcRcvReg,D:tname=main;tid=2;act=android.intent.action.PROXY_CHANGE;cmp=null;pkg=null;prid=45bab68||ID:6,C:E,T:353597459||ID:6,C:S,T:353597459,N:SchRcvReg,D:tname=binder:20179_1;tid=41||ID:5,C:E,T:353577605||ID:5,C:S,T:353577604,N:SvcBind,D:rebind=false;act=null;cmp=ComponentInfo{com.github.android/androidx.work.impl.background.systemjob.SystemJobService};pkg=null||ID:4,C:E,T:353577604||ID:4,C:S,T:353577604,N:SvcCreate,D:name=androidx.work.impl.background.systemjob.SystemJobService;pkg=com.github.android||ID:0,C:P,T:353577586,N:Finish,D:tname=WM.task-1;tid=66;prid=232cf00||ID:3,C:E,T:353577568||ID:0,C:P,T:353577568,N:GoAsync,D:tname=main;tid=2;prid=232cf00;;
+suspend all histogram:	Sum: 302us 99% C.I. 0.130us-68us Avg: 16.777us Max: 68us
+DALVIK THREADS (84):
+"main" prio=5 tid=1 Native
+  | group="main" sCount=1 ucsCount=0 flags=1 obj=0x72a684a8 self=0xb4000071a9a25380
+  | sysTid=20179 nice=-10 cgrp=top-app sched=0/0 handle=0x73a9f7d090
+  | state=S schedstat=( 4289578081 133859238 17662 ) utm=335 stm=93 core=7 HZ=100
+  | stack=0x7fff14a000-0x7fff14c000 stackSize=8188KB
+  | held mutexes=
+  native: #00 pc 000985e0  /apex/com.android.runtime/lib64/bionic/libc.so (syscall+32) (BuildId: 36b35500021e9dc87307390efd6e8d5e)
+  native: #01 pc 000738fc  /apex/com.android.runtime/lib64/bionic/libc.so (__futex_wait_ex+148) (BuildId: 36b35500021e9dc87307390efd6e8d5e)
+  native: #02 pc 00081894  /apex/com.android.runtime/lib64/bionic/libc.so (pthread_cond_wait+76) (BuildId: 36b35500021e9dc87307390efd6e8d5e)
+  native: #03 pc 000a19ac  /system/lib64/libc++.so (std::__1::__assoc_sub_state::copy+56) (BuildId: ada37e5198285720b02f7d77fd27626c7782fe29)
+  native: #04 pc 000a1d14  /system/lib64/libc++.so (std::__1::future<void>::get+28) (BuildId: ada37e5198285720b02f7d77fd27626c7782fe29)
+  native: #05 pc 00537670  /system/lib64/libhwui.so (android::uirenderer::renderthread::RenderProxy::setStopped+356) (BuildId: 99de0040383584d6b300be489694ac1f)
+  at android.graphics.HardwareRenderer.nSetStopped(Native method)
+  at android.graphics.HardwareRenderer.setStopped(HardwareRenderer.java:533)
+  at android.view.ViewRootImpl.performDraw(ViewRootImpl.java:5668)
+  at android.view.ViewRootImpl.performTraversals(ViewRootImpl.java:4601)
+  at android.view.ViewRootImpl.doTraversal(ViewRootImpl.java:3169)
+  at android.view.ViewRootImpl$TraversalRunnable.run(ViewRootImpl.java:10886)
+  at android.view.Choreographer$CallbackRecord.run(Choreographer.java:1726)
+  at android.view.Choreographer$CallbackRecord.run(Choreographer.java:1735)
+  at android.view.Choreographer.doCallbacks(Choreographer.java:1329)
+  at android.view.Choreographer.doFrame(Choreographer.java:1255)
+  at android.view.Choreographer$FrameDisplayEventReceiver.run(Choreographer.java:1704)
+  at android.os.Handler.handleCallback(Handler.java:995)
+  at android.os.Handler.dispatchMessage(Handler.java:103)
+  at android.os.Looper.loopOnce(Looper.java:248)
+  at android.os.Looper.loop(Looper.java:338)
+  at android.app.ActivityThread.main(ActivityThread.java:9404)
+  at java.lang.reflect.Method.invoke(Native method)
+  at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:593)
+  at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:940)
+DumpLatencyMs: 1.96365
+
+"ReferenceQueueDaemon" daemon prio=5 tid=6 Waiting
+  | group="system" sCount=1 ucsCount=0 flags=1 obj=0x2000468 self=0xb4000071a9a2a6f0
+  | sysTid=20186 nice=4 cgrp=top-app sched=0/0 handle=0x70a8ca3500
+  | state=S schedstat=( 59203754 3037241 38 ) utm=5 stm=0 core=1 HZ=100
+  | stack=0x70a8ba0000-0x70a8ba2000 stackSize=1037KB
+  | held mutexes=
+  at java.lang.Object.wait(Native method)
+  - waiting on <0x0790ab40> (a java.lang.Class<java.lang.ref.ReferenceQueue>)
+  at java.lang.Object.wait(Object.java:405)
+  at java.lang.Object.wait(Object.java:543)
+  at java.lang.Daemons$ReferenceQueueDaemon.runInternal(Daemons.java:260)
+  - locked <0x0790ab40> (a java.lang.Class<java.lang.ref.ReferenceQueue>)
+  at java.lang.Daemons$Daemon.run(Daemons.java:132)
+  at java.lang.Thread.run(Thread.java:1119)
+DumpLatencyMs: 75.6322
+
+"FinalizerDaemon" daemon prio=5 tid=7 Waiting
+  | group="system" sCount=1 ucsCount=0 flags=1 obj=0x20004f8 self=0xb4000071a9a20010
+  | sysTid=20187 nice=4 cgrp=top-app sched=0/0 handle=0x70a8b93500
+
+########## system.log ##########
+
+########## main.log ##########
