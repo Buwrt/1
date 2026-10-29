@@ -1,0 +1,134 @@
+########## FILE: rep/logd/events.log.0
+1852:10-29 05:13:03.135 30782 30782 I snet_event_log: [individual_permissions_requested,10220,com.hubmobile.app:com.hubmobile.app:;android.permission.POST_NOTIFICATIONS|false|768]
+1853:10-29 05:13:04.414 30782 30782 I snet_event_log: [individual_permissions_requested,10220,com.hubmobile.app:com.hubmobile.app:;android.permission.POST_NOTIFICATIONS|false|769]
+1866:10-29 05:35:24.261 19194 19194 I snet_event_log: [individual_permissions_requested,10220,com.hubmobile.app:com.hubmobile.app:;android.permission.POST_NOTIFICATIONS|false|768]
+1867:10-29 05:35:25.218 19194 19194 I snet_event_log: [individual_permissions_requested,10220,com.hubmobile.app:com.hubmobile.app:;android.permission.POST_NOTIFICATIONS|false|769]
+1870:10-29 05:37:26.439 19194 19194 I snet_event_log: [individual_permissions_requested,10223,com.hubmobile.app:com.hubmobile.app:;android.permission.POST_NOTIFICATIONS|false|768]
+1871:10-29 05:37:27.513 19194 19194 I snet_event_log: [individual_permissions_requested,10223,com.hubmobile.app:com.hubmobile.app:;android.permission.POST_NOTIFICATIONS|false|769]
+1901:10-29 09:27:53.925 27949 27949 I snet_event_log: [individual_permissions_requested,10466,com.hubmobile.app:com.hubmobile.app:;android.permission.POST_NOTIFICATIONS|false|768]
+1902:10-29 09:27:54.702 27949 27949 I snet_event_log: [individual_permissions_requested,10466,com.hubmobile.app:com.hubmobile.app:;android.permission.POST_NOTIFICATIONS|false|769]
+
+########## FILE: rep/dumpsys/dumpsys_activity_exit-info.txt
+15910:  package: com.hubmobile.app
+15918:          process=com.hubmobile.app reason=10 (USER REQUESTED) subreason=22 (REMOVE TASK) status=0
+
+########## FILE: rep/dumpsys/dumpsys_connectivity_dialg.txt
+166:      NetworkRequest [ REQUEST id=40742, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10466 RequestorUid: 10466 RequestorPkg: com.hubmobile.app UnderlyingNetworks: Null] ]
+167:      NetworkRequest [ LISTEN id=40743, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&FOREGROUND&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Forbidden: LOCAL_NETWORK Uid: 10466 RequestorUid: 10466 RequestorPkg: com.hubmobile.app UnderlyingNetworks: Null] ]
+411:  uid/pid:10466/28393 activeRequest: 40742 callbackRequest: 40741 [NetworkRequest [ REQUEST id=40742, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10466 RequestorUid: 10466 RequestorPkg: com.hubmobile.app UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647 isUidTracked: true declaredMethods: AVAIL|LOST|NC|LP
+412:  uid/pid:10466/28393 activeRequest: null callbackRequest: 40743 [NetworkRequest [ LISTEN id=40743, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&FOREGROUND&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Forbidden: LOCAL_NETWORK Uid: 10466 RequestorUid: 10466 RequestorPkg: com.hubmobile.app UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647 isUidTracked: true declaredMethods: AVAIL|LOSING|LOST|NC
+
+########## FILE: rep/dumpsys/dumpsys_activity_com_android_launcher3.txt
+941:} targetComponent=ComponentInfo{com.hubmobile.app/com.hubmobile.app.MainActivity} screen=5 cell(0,0) span(1,1) minSpan(1,1) rank=0 user=UserHandle{0} category=-1 cloneId=0 container=-100 oldContainer=-1 title=githup supportsMultiInstance=false nonResizeable=false isPromise=false hasPromiseIconUi=false installProgress=100)
+1236:    	Package index, name, class, description, bitmap flag: 61/com.hubmobile.app:com.hubmobile.app.MainActivity, githup, 0+0
+1421:2026/10/29 05:04 SessionCommitReceiver Adding package name to install queue. Package name: com.hubmobile.app, has app icon: true, has app label: false
+1422:2026/10/29 05:04 ItemInstallQueue Adding PendingInstallShortcutInfo to queue. Attached info: ItemInfo(id=-1 type=APP container=# com.android.launcher3.logger.LauncherAtom$ContainerInfo@7bc6f targetComponent=ComponentInfo{com.hubmobile.app/com.hubmobile.app.MainActivity} screen=-1 cell(-1,-1) span(1,1) minSpan(1,1) rank=0 user=UserHandle{0} category=-1 cloneId=0 container=-1 oldContainer=0 title=githup supportsMultiInstance=false nonResizeable=false isPromise=false hasPromiseIconUi=false installProgress=100)
+1423:2026/10/29 05:04 LauncherAppsCallbackImpl onPackageAdded triggered for packageName=com.hubmobile.app, user=UserHandle{0}
+1429:} targetComponent=ComponentInfo{com.hubmobile.app/com.hubmobile.app.MainActivity} screen=5 cell(0,0) span(1,1) minSpan(1,1) rank=0 user=UserHandle{0} category=-1 cloneId=0 container=-100 oldContainer=-1 title=githup supportsMultiInstance=false nonResizeable=false isPromise=false hasPromiseIconUi=false installProgress=100)
+1448:2026/10/29 05:35 ModelWriter [LocationPrivacy] removing items from db com.hubmobile.app. Reason: [Batched uninstallation.]
+1449:2026/10/29 05:35 LauncherAppsCallbackImpl onPackageRemoved triggered for packageName=com.hubmobile.app, user=UserHandle{0}
+1450:2026/10/29 05:35 PackageUpdatedTask Removing app iconcom.hubmobile.app
+1451:2026/10/29 05:35 ModelWriter [LocationPrivacy] removing items from db . Reason: [removed because the corresponding package or component is removed. mOp=3 removedPackages=[com.hubmobile.app] removedComponents=[]]
+1452:2026/10/29 05:37 SessionCommitReceiver Adding package name to install queue. Package name: com.hubmobile.app, has app icon: true, has app label: false
+1453:2026/10/29 05:37 ItemInstallQueue Adding PendingInstallShortcutInfo to queue. Attached info: ItemInfo(id=-1 type=APP container=# com.android.launcher3.logger.LauncherAtom$ContainerInfo@7bc6f targetComponent=ComponentInfo{com.hubmobile.app/com.hubmobile.app.MainActivity} screen=-1 cell(-1,-1) span(1,1) minSpan(1,1) rank=0 user=UserHandle{0} category=-1 cloneId=0 container=-1 oldContainer=0 title=githup supportsMultiInstance=false nonResizeable=false isPromise=false hasPromiseIconUi=false installProgress=100)
+1454:2026/10/29 05:37 LauncherAppsCallbackImpl onPackageAdded triggered for packageName=com.hubmobile.app, user=UserHandle{0}
+1460:} targetComponent=ComponentInfo{com.hubmobile.app/com.hubmobile.app.MainActivity} screen=5 cell(0,0) span(1,1) minSpan(1,1) rank=0 user=UserHandle{0} category=-1 cloneId=0 container=-100 oldContainer=-1 title=githup supportsMultiInstance=false nonResizeable=false isPromise=false hasPromiseIconUi=false installProgress=100)
+1461:2026/10/29 05:37 ModelWriter [LocationPrivacy] removing items from db com.hubmobile.app. Reason: [Batched uninstallation.]
+1462:2026/10/29 05:37 LauncherAppsCallbackImpl onPackageRemoved triggered for packageName=com.hubmobile.app, user=UserHandle{0}
+1463:2026/10/29 05:37 PackageUpdatedTask Removing app iconcom.hubmobile.app
+1464:2026/10/29 05:37 ModelWriter [LocationPrivacy] removing items from db . Reason: [removed because the corresponding package or component is removed. mOp=3 removedPackages=[com.hubmobile.app] removedComponents=[]]
+1561:2026/10/29 09:27 SessionCommitReceiver Adding package name to install queue. Package name: com.hubmobile.app, has app icon: true, has app label: false
+1562:2026/10/29 09:27 ItemInstallQueue Adding PendingInstallShortcutInfo to queue. Attached info: ItemInfo(id=-1 type=APP container=# com.android.launcher3.logger.LauncherAtom$ContainerInfo@7bc6f targetComponent=ComponentInfo{com.hubmobile.app/com.hubmobile.app.MainActivity} screen=-1 cell(-1,-1) span(1,1) minSpan(1,1) rank=0 user=UserHandle{0} category=-1 cloneId=0 container=-1 oldContainer=0 title=githup supportsMultiInstance=false nonResizeable=false isPromise=false hasPromiseIconUi=false installProgress=100)
+1563:2026/10/29 09:27 LauncherAppsCallbackImpl onPackageAdded triggered for packageName=com.hubmobile.app, user=UserHandle{0}
+1569:} targetComponent=ComponentInfo{com.hubmobile.app/com.hubmobile.app.MainActivity} screen=5 cell(0,0) span(1,1) minSpan(1,1) rank=0 user=UserHandle{0} category=-1 cloneId=0 container=-100 oldContainer=-1 title=githup supportsMultiInstance=false nonResizeable=false isPromise=false hasPromiseIconUi=false installProgress=100)
+1754:       title="githup" bitmapIcon=android.graphics.Bitmap@5db5560 componentName=com.hubmobile.app
+2368:} targetComponent=ComponentInfo{com.hubmobile.app/com.hubmobile.app.MainActivity} screen=5 cell(0,0) span(1,1) minSpan(1,1) rank=0 user=UserHandle{0} category=-1 cloneId=0 container=-100 oldContainer=-1 title=githup supportsMultiInstance=false nonResizeable=false isPromise=false hasPromiseIconUi=false installProgress=100)
+2540:    	key=ItemInfoKey{mItemType=0, mComponentName=ComponentInfo{com.hubmobile.app/com.hubmobile.app.MainActivity}, mUser=UserHandle{0}, mShortcutId='null'}, times=5
+
+########## FILE: rep/dumpsys/dumpsys_activity_service_TouchInteractionService.txt
+692:      Desk ID= -1, Desk Display ID=-1, Tasks=[id=99028 winMode=fullscreen visReq=false vis=false excluded=false baseIntent=com.hubmobile.app/.MainActivity], Type=FULLSCREEN, Minimized Task IDs=null
+
+########## FILE: rep/dumpsys/dumpsys_activity_com_meizu_flyme_launcher.txt
+708:    	Package index, name, class, description, bitmap flag: 61/com.hubmobile.app:com.hubmobile.app.MainActivity, githup, 0+0
+893:2026/10/29 05:04 SessionCommitReceiver Adding package name to install queue. Package name: com.hubmobile.app, has app icon: true, has app label: false
+894:2026/10/29 05:04 ItemInstallQueue Adding PendingInstallShortcutInfo to queue. Attached info: ItemInfo(id=-1 type=APP container=# com.android.launcher3.logger.LauncherAtom$ContainerInfo@7bc6f targetComponent=ComponentInfo{com.hubmobile.app/com.hubmobile.app.MainActivity} screen=-1 cell(-1,-1) span(1,1) minSpan(1,1) rank=0 user=UserHandle{0} category=-1 cloneId=0 container=-1 oldContainer=0 title=githup supportsMultiInstance=false nonResizeable=false isPromise=false hasPromiseIconUi=false installProgress=100)
+895:2026/10/29 05:04 LauncherAppsCallbackImpl onPackageAdded triggered for packageName=com.hubmobile.app, user=UserHandle{0}
+901:} targetComponent=ComponentInfo{com.hubmobile.app/com.hubmobile.app.MainActivity} screen=5 cell(0,0) span(1,1) minSpan(1,1) rank=0 user=UserHandle{0} category=-1 cloneId=0 container=-100 oldContainer=-1 title=githup supportsMultiInstance=false nonResizeable=false isPromise=false hasPromiseIconUi=false installProgress=100)
+920:2026/10/29 05:35 ModelWriter [LocationPrivacy] removing items from db com.hubmobile.app. Reason: [Batched uninstallation.]
+921:2026/10/29 05:35 LauncherAppsCallbackImpl onPackageRemoved triggered for packageName=com.hubmobile.app, user=UserHandle{0}
+922:2026/10/29 05:35 PackageUpdatedTask Removing app iconcom.hubmobile.app
+923:2026/10/29 05:35 ModelWriter [LocationPrivacy] removing items from db . Reason: [removed because the corresponding package or component is removed. mOp=3 removedPackages=[com.hubmobile.app] removedComponents=[]]
+924:2026/10/29 05:37 SessionCommitReceiver Adding package name to install queue. Package name: com.hubmobile.app, has app icon: true, has app label: false
+925:2026/10/29 05:37 ItemInstallQueue Adding PendingInstallShortcutInfo to queue. Attached info: ItemInfo(id=-1 type=APP container=# com.android.launcher3.logger.LauncherAtom$ContainerInfo@7bc6f targetComponent=ComponentInfo{com.hubmobile.app/com.hubmobile.app.MainActivity} screen=-1 cell(-1,-1) span(1,1) minSpan(1,1) rank=0 user=UserHandle{0} category=-1 cloneId=0 container=-1 oldContainer=0 title=githup supportsMultiInstance=false nonResizeable=false isPromise=false hasPromiseIconUi=false installProgress=100)
+926:2026/10/29 05:37 LauncherAppsCallbackImpl onPackageAdded triggered for packageName=com.hubmobile.app, user=UserHandle{0}
+932:} targetComponent=ComponentInfo{com.hubmobile.app/com.hubmobile.app.MainActivity} screen=5 cell(0,0) span(1,1) minSpan(1,1) rank=0 user=UserHandle{0} category=-1 cloneId=0 container=-100 oldContainer=-1 title=githup supportsMultiInstance=false nonResizeable=false isPromise=false hasPromiseIconUi=false installProgress=100)
+933:2026/10/29 05:37 ModelWriter [LocationPrivacy] removing items from db com.hubmobile.app. Reason: [Batched uninstallation.]
+934:2026/10/29 05:37 LauncherAppsCallbackImpl onPackageRemoved triggered for packageName=com.hubmobile.app, user=UserHandle{0}
+935:2026/10/29 05:37 PackageUpdatedTask Removing app iconcom.hubmobile.app
+936:2026/10/29 05:37 ModelWriter [LocationPrivacy] removing items from db . Reason: [removed because the corresponding package or component is removed. mOp=3 removedPackages=[com.hubmobile.app] removedComponents=[]]
+1033:2026/10/29 09:27 SessionCommitReceiver Adding package name to install queue. Package name: com.hubmobile.app, has app icon: true, has app label: false
+1034:2026/10/29 09:27 ItemInstallQueue Adding PendingInstallShortcutInfo to queue. Attached info: ItemInfo(id=-1 type=APP container=# com.android.launcher3.logger.LauncherAtom$ContainerInfo@7bc6f targetComponent=ComponentInfo{com.hubmobile.app/com.hubmobile.app.MainActivity} screen=-1 cell(-1,-1) span(1,1) minSpan(1,1) rank=0 user=UserHandle{0} category=-1 cloneId=0 container=-1 oldContainer=0 title=githup supportsMultiInstance=false nonResizeable=false isPromise=false hasPromiseIconUi=false installProgress=100)
+1035:2026/10/29 09:27 LauncherAppsCallbackImpl onPackageAdded triggered for packageName=com.hubmobile.app, user=UserHandle{0}
+1041:} targetComponent=ComponentInfo{com.hubmobile.app/com.hubmobile.app.MainActivity} screen=5 cell(0,0) span(1,1) minSpan(1,1) rank=0 user=UserHandle{0} category=-1 cloneId=0 container=-100 oldContainer=-1 title=githup supportsMultiInstance=false nonResizeable=false isPromise=false hasPromiseIconUi=false installProgress=100)
+1665:} targetComponent=ComponentInfo{com.hubmobile.app/com.hubmobile.app.MainActivity} screen=5 cell(0,0) span(1,1) minSpan(1,1) rank=0 user=UserHandle{0} category=-1 cloneId=0 container=-100 oldContainer=-1 title=githup supportsMultiInstance=false nonResizeable=false isPromise=false hasPromiseIconUi=false installProgress=100)
+1835:    	key=ItemInfoKey{mItemType=0, mComponentName=ComponentInfo{com.hubmobile.app/com.hubmobile.app.MainActivity}, mUser=UserHandle{0}, mShortcutId='null'}, times=5
+
+########## FILE: rep/dumpsys/dumpsys.txt
+
+########## FILE: rep/dumpsys/dumpsys_activity_service_com_android_systemui.txt
+7688:      Desk ID= -1, Desk Display ID=-1, Tasks=[id=99028 winMode=fullscreen visReq=false vis=false excluded=false baseIntent=com.hubmobile.app/.MainActivity], Type=FULLSCREEN, Minimized Task IDs=null
+15103:    10-29 09:27:09.366 D PackageChangeRepoLog: Package com.hubmobile.app (10466) installed on user UserHandle{0}
+15104:    10-29 09:27:09.403 D PackageChangeRepoLog: Package com.hubmobile.app (10466) changed on user UserHandle{0}
+
+########## FILE: rep/bugreport/dumpbugreport.txt
+283795:9,h,559,Epi=1002017:"com.hubmobile.app"
+283797:9,h,2,Epi=1002017:"com.hubmobile.app"
+283798:9,h,6,-Chtp,Epi=1002017:"com.hubmobile.app"
+284115:9,h,1,Eaa=u0a220:"com.hubmobile.app"
+284117:9,h,0,+Etp=u0a220:"com.hubmobile.app"
+284123:9,h,141,+Efg=u0a220:"com.hubmobile.app"
+284124:9,h,83,-Chtp,-Etp=u0a220:"com.hubmobile.app"
+284128:9,h,4,-Chtp,-Efg=u0a220:"com.hubmobile.app"
+284134:9,h,0,-Chtp,+Etp=u0a220:"com.hubmobile.app"
+284135:9,h,10,+Efg=u0a220:"com.hubmobile.app"
+284138:9,h,0,-Chtp,-Efg=u0a220:"com.hubmobile.app"
+284140:9,h,0,+Efg=u0a220:"com.hubmobile.app"
+284141:9,h,4,-Etp=u0a220:"com.hubmobile.app"
+284144:9,h,0,-Chtp,-Efg=u0a220:"com.hubmobile.app"
+284148:9,h,771,+Efg=u0a220:"com.hubmobile.app"
+284150:9,h,0,+Etp=u0a220:"com.hubmobile.app"
+284153:9,h,1,-Chtp,-Efg=u0a220:"com.hubmobile.app"
+284155:9,h,0,+Efg=u0a220:"com.hubmobile.app"
+284156:9,h,4,-Etp=u0a220:"com.hubmobile.app"
+284159:9,h,0,-Chtp,-Efg=u0a220:"com.hubmobile.app"
+284161:9,h,14,+Efg=u0a220:"com.hubmobile.app"
+284163:9,h,0,+Etp=u0a220:"com.hubmobile.app"
+284166:9,h,0,-Chtp,-Efg=u0a220:"com.hubmobile.app"
+284168:9,h,2,+Efg=u0a220:"com.hubmobile.app"
+284169:9,h,2,-Etp=u0a220:"com.hubmobile.app"
+284172:9,h,9,-Chtp,-Efg=u0a220:"com.hubmobile.app"
+284175:9,h,0,+Etp=u0a220:"com.hubmobile.app"
+284176:9,h,1,+Efg=u0a220:"com.hubmobile.app"
+284179:9,h,1,-Chtp,-Efg=u0a220:"com.hubmobile.app"
+284181:9,h,0,+Efg=u0a220:"com.hubmobile.app"
+284182:9,h,3,-Etp=u0a220:"com.hubmobile.app"
+284185:9,h,3,-Chtp,-Efg=u0a220:"com.hubmobile.app"
+284187:9,h,4,+Efg=u0a220:"com.hubmobile.app"
+284189:9,h,0,+Etp=u0a220:"com.hubmobile.app"
+284192:9,h,2,-Chtp,-Efg=u0a220:"com.hubmobile.app"
+284194:9,h,4,+Efg=u0a220:"com.hubmobile.app"
+284195:9,h,3,-Etp=u0a220:"com.hubmobile.app"
+284198:9,h,1,-Chtp,-Efg=u0a220:"com.hubmobile.app"
+284200:9,h,10,+Efg=u0a220:"com.hubmobile.app"
+284202:9,h,0,+Etp=u0a220:"com.hubmobile.app"
+
+########## FILE: rep/logcat/events.txt
+1853:10-29 05:13:03.135 30782 30782 I snet_event_log: [individual_permissions_requested,10220,com.hubmobile.app:com.hubmobile.app:;android.permission.POST_NOTIFICATIONS|false|768]
+1854:10-29 05:13:04.414 30782 30782 I snet_event_log: [individual_permissions_requested,10220,com.hubmobile.app:com.hubmobile.app:;android.permission.POST_NOTIFICATIONS|false|769]
+1867:10-29 05:35:24.261 19194 19194 I snet_event_log: [individual_permissions_requested,10220,com.hubmobile.app:com.hubmobile.app:;android.permission.POST_NOTIFICATIONS|false|768]
+1868:10-29 05:35:25.218 19194 19194 I snet_event_log: [individual_permissions_requested,10220,com.hubmobile.app:com.hubmobile.app:;android.permission.POST_NOTIFICATIONS|false|769]
+1871:10-29 05:37:26.439 19194 19194 I snet_event_log: [individual_permissions_requested,10223,com.hubmobile.app:com.hubmobile.app:;android.permission.POST_NOTIFICATIONS|false|768]
+1872:10-29 05:37:27.513 19194 19194 I snet_event_log: [individual_permissions_requested,10223,com.hubmobile.app:com.hubmobile.app:;android.permission.POST_NOTIFICATIONS|false|769]
+1902:10-29 09:27:53.925 27949 27949 I snet_event_log: [individual_permissions_requested,10466,com.hubmobile.app:com.hubmobile.app:;android.permission.POST_NOTIFICATIONS|false|768]
+1903:10-29 09:27:54.702 27949 27949 I snet_event_log: [individual_permissions_requested,10466,com.hubmobile.app:com.hubmobile.app:;android.permission.POST_NOTIFICATIONS|false|769]
+
