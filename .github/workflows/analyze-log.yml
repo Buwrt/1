@@ -1,0 +1,102 @@
+name: Analyze Meizu LogReport
+
+on:
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 下载魅族日志包
+        run: |
+          set -e
+          mkdir -p work && cd work
+          curl -sL -m 900 -o report.zip \
+            "https://github.com/Buwrt/3/releases/download/1/LogReport_261029_101217_generic.zip"
+          ls -lh report.zip
+          file report.zip
+
+      - name: 解压并列出结构
+        run: |
+          set -e
+          cd work
+          unzip -q -o report.zip -d rep || unzip -o report.zip -d rep
+          echo "=== 顶层 ==="
+          ls -la rep | head -40
+          echo "=== 文件大小合计 ==="
+          du -sh rep
+          echo "=== 目录树（两层） ==="
+          find rep -maxdepth 2 -type d | head -60
+
+      - name: 找 githup 相关文件
+        run: |
+          cd work
+          echo "=== 文件名含 hubmobile/com.hubmobile ==="
+          find rep -iname "*hubmobile*" 2>/dev/null | head -40
+          echo "=== dropbox / tombstone / crash 目录 ==="
+          find rep -type d \( -iname "*dropbox*" -o -iname "*tombstone*" -o -iname "*crash*" -o -iname "*anr*" \) 2>/dev/null | head -30
+
+      - name: grep com.hubmobile
+        run: |
+          cd work
+          echo "=== 命中 com.hubmobile 的文件（限 60 个） ==="
+          grep -rl "com.hubmobile" rep 2>/dev/null | head -60 > hits.txt
+          cat hits.txt
+          echo "=== 命中总数 ==="
+          grep -rl "com.hubmobile" rep 2>/dev/null | wc -l
+
+      - name: 提取崩溃栈
+        run: |
+          cd work
+          mkdir -p out
+          i=0
+          while read -r f; do
+            i=$((i+1))
+            [ $i -gt 25 ] && break
+            echo "########## FILE: $f" >> out/crash.txt
+            grep -n "com.hubmobile" "$f" 2>/dev/null | head -40 >> out/crash.txt
+            echo "" >> out/crash.txt
+          done < hits.txt
+          echo "=== 崩溃栈摘要大小 ==="
+          wc -c out/crash.txt
+
+      - name: 找 Java 崩溃与 ANR 事件
+        run: |
+          cd work
+          echo "=== 含 FATAL EXCEPTION 的文件 ==="
+          grep -rl "FATAL EXCEPTION" rep 2>/dev/null | head -20
+          echo ""
+          echo "=== 含 AndroidRuntime / Crash 关键字的文件 ==="
+          grep -rl "AndroidRuntime" rep 2>/dev/null | head -20
+          echo ""
+          for f in $(grep -rl "FATAL EXCEPTION" rep 2>/dev/null | head -8); do
+            echo "########## $f"
+            grep -n -A 30 "FATAL EXCEPTION" "$f" 2>/dev/null | head -50
+            echo ""
+          done
+
+      - name: 保存结果
+        run: |
+          cd work
+          cp out/crash.txt ../ci-log-crash.txt 2>/dev/null || echo "none" > ../ci-log-crash.txt
+          echo "--- 文件清单（前 200 个） ---" > ../ci-log-tree.txt
+          find rep -type f | head -200 >> ../ci-log-tree.txt
+
+      - name: 提交结果
+        run: |
+          set -e
+          git config user.name "ci"
+          git config user.email "ci@example.com"
+          mkdir -p ci
+          cp ci-log-crash.txt ci/meizu-crash.txt 2>/dev/null || true
+          cp ci-log-tree.txt ci/meizu-tree.txt 2>/dev/null || true
+          git add ci/ || true
+          git diff --cached --quiet && echo "无变更" || git commit -m "ci: 魅族日志分析结果"
+          git push || echo "push 失败"
