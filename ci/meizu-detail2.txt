@@ -1,0 +1,175 @@
+########## crash.log.0 头部 ##########
+
+########## crash.log 包名统计 ##########
+
+########## dropbox 头部 ##########
+Drop box contents: 4 entries
+Max entries: 1000
+Low priority rate limit period: 2000 ms
+Low priority tags: {data_app_wtf, keymaster, system_server_wtf, system_app_strictmode, system_app_wtf, system_server_strictmode, data_app_strictmode, netstats}
+
+========================================
+2026-10-26 21:36:42 data_app_crash (text, 2903 bytes)
+SystemUptimeMs: 176809611
+Process: com.duokan.reader:pushservice
+PID: 11660
+UID: 10286
+Frozen: false
+Flags: 0x38983e04
+Package: com.duokan.reader v804260000 (8.4.26)
+Foreground: No
+Process-Runtime: 24017
+Timestamp: 2026-10-26 21:36:42.597+0800
+Build: meizu/meizu_21_CN/meizu21:16/BQ2A.251016.001-BP2A.250605.031.A3/1763702019:user/release-keys
+Crash-Handler: com.yuewen.q90$a
+Loading-Progress: 1.0
+Dropped-Count: 0
+
+java.lang.IllegalStateException: GeneratedAppGlideModuleImpl is implemented incorrectly. If you've manually implemented this class, remove your implementation. The Annotation processor will generate a correct implementation.
+	at com.bumptech.glide.Glide.throwIncorrectGlideModule(Unknown Source:4)
+	at com.bumptech.glide.Glide.getAnnotationGeneratedGlideModules(Unknown Source:30)
+	at com.bumptech.glide.Glide.get(Unknown Source:8)
+	at com.bumptech.glide.Glide.getRetriever(Unknown Source:5)
+	at com.bumptech.glide.Glide.with(SourceFile:1)
+	at com.duokan.reader.DkReader.onTrimMemory(Unknown Source:26)
+	at android.app.ActivityThread.handleTrimMemory(ActivityThread.java:7578)
+	at android.app.ActivityThread.-$$Nest$mhandleTrimMemory(Unknown Source:0)
+	at android.app.ActivityThread$ApplicationThread.$r8$lambda$G6hCvS-Qza2XVRHE5EG8OQS6lcg(Unknown Source:0)
+	at android.app.ActivityThread$ApplicationThread$$ExternalSyntheticLambda2.accept(D8$$SyntheticClass:0)
+	at com.android.internal.util.function.pooled.PooledLambdaImpl.doInvoke(PooledLambdaImpl.java:281)
+	at com.android.internal.util.function.pooled.PooledLambdaImpl.invoke(PooledLambdaImpl.java:204)
+	at com.android.internal.util.function.pooled.OmniFunction.run(OmniFunction.java:87)
+	at android.os.Handler.handleCallback(Handler.java:995)
+	at android.os.Handler.dispatchMessage(Handler.java:103)
+	at android.os.Looper.loopOnce(Looper.java:248)
+	at android.os.Looper.loop(Looper.java:338)
+	at android.app.ActivityThread.main(ActivityThread.java:9404)
+	at java.lang.reflect.Method.invoke(Native Method)
+	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:593)
+	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:940)
+Caused by: java.lang.reflect.InvocationTargetException
+	at java.lang.reflect.Constructor.newInstance0(Native Method)
+	at java.lang.reflect.Constructor.newInstance(Constructor.java:343)
+	at com.bumptech.glide.Glide.getAnnotationGeneratedGlideModules(Unknown Source:22)
+	... 19 more
+Caused by: java.lang.ExceptionInInitializerError
+	at com.yuewen.t91.b(Unknown Source:0)
+	at com.duokan.common.ui.DkGlideModule.<init>(Unknown Source:12)
+	at com.bumptech.glide.GeneratedAppGlideModuleImpl.<init>(Unknown Source:5)
+	... 22 more
+Caused by: java.lang.NullPointerException: Attempt to invoke virtual method 'java.lang.String com.duokan.reader.ReaderEnv.getDeviceIdPrefix()' on a null object reference
+	at com.duokan.core.sys.SystemInfoHelper.<clinit>(Unknown Source:12)
+	... 25 more
+
+========================================
+2026-10-27 01:26:37 system_server_pre_watchdog (compressed text, 20631 bytes)
+SystemUptimeMs: 190604487
+Process: system_server
+ErrorId: 83d81b0e-abc4-4525-85f2-1ddeed3e3df4
+Build: meizu/meizu_21_CN/meizu21:16/BQ2A.251016.001-BP2A.250605.031.A3/1763702019:user/release-keys
+Dropped-Count: 0
+
+----- Output from /proc/pressure/memory -----
+some avg10=6.87 avg60=3.73 avg300=2.53 total=873606392
+full avg10=2.48 avg60=2.26 avg300=1.88 total=719198802
+----- End output from /proc/pressure/memory -----
+----- Output from /proc/pressure/cpu -----
+some avg10=45.30 avg60=25.14 avg300=21.84 total=30868458226
+full avg10=0.00 avg60=0.00 avg300=0.00 total=0
+----- End output from /proc/pressure/cpu -----
+----- Output from /proc/pressure/io -----
+some avg10=43.25 avg60=26.43 avg300=9.87 total=2058579509
+full avg10=18.88 avg60=13.59 avg300=4.88 total=1200415627
+----- End output from /proc/pressure/io -----
+
+CPU usage from 277ms to 13756ms later (2026-10-27 01:26:23.826 to 2026-10-27 01:26:37.305):
+  57% 32115/com.meizu.mstore: 39% user + 17% kernel / faults: 3035 minor 1345 major
+  49% 2984/system_server: 26% user + 22% kernel / faults: 36041 minor 694 major
+  16% 4864/com.meizu.flyme.launcher: 12% user + 3.6% kernel / faults: 66563 minor 1129 major
+  13% 29011/com.tencent.mm:appbrand0: 6.8% user + 6.5% kernel / faults: 8731 minor 208 major
+  5% 83/kswapd0: 0% user + 5% kernel
+  4.4% 1160/android.system.suspend-service: 0% user + 4.4% kernel / faults: 111 minor 49 major
+  3.9% 1969/installd: 0.2% user + 3.6% kernel / faults: 331 minor 12 major
+  3.2% 2093/media.swcodec: 1.3% user + 1.9% kernel / faults: 29675 minor
+  3.2% 3740/com.meizu.net.nativelockscreen: 2.8% user + 0.3% kernel / faults: 6560 minor
+  3.2% 25802/kworker/u16:3-bwmon_wq: 0% user + 3.2% kernel
+50% TOTAL: 15% user + 15% kernel + 16% iowait + 3.5% irq + 0.2% softirq
+Data File: /data/anr/anr_2026-10-27-01-26-23-844
+Subject: Blocked in handler on i/o thread (android.io) for 15s
+Watchdog-Type: pre_watchdog
+
+
+--- CriticalEventLog ---
+capacity: 20
+events <
+  timestamp_ms: 1793035551978
+  install_packages <
+  >
+>
+timestamp_ms: 1793035570255
+window_ms: 300000
+
+----- dumping pid: 2984 at 190590859
+
+----- pid 2984 at 2026-10-27 01:26:23.849984061+0800 -----
+Cmd line: system_server
+Build fingerprint: 'meizu/meizu_21_CN/meizu21:16/BQ2A.251016.001-BP2A.250605.031.A3/1763702019:user/release-keys'
+ABI: 'arm64'
+Build type: optimized
+Debug Store: 3,16,190590864::ID:91441,C:E,T:190588978||ID:91441,C:S,T:190588978,N:SchRcvReg,D:tname=android.fg;tid=25||ID:0,C:P,T:190588802,N:Finish,D:tname=main;tid=2;prid=a695c5d||ID:91440,C:E,T:190588802||ID:91440,C:S,T:190588802,N:BcRcvReg,D:tname=main;tid=2;act=android.os.action.POWER_SAVE_TEMP_WHITELIST_CHANGED;cmp=null;pkg=null;prid=a695c5d||ID:91439,C:E,T:190588802||ID:91439,C:S,T:190588802,N:SchRcvReg,D:tname=android.fg;tid=25||ID:0,C:P,T:190588382,N:Finish,D:tname=charging_service;tid=80;prid=196d8c5||ID:91438,C:E,T:190588382||ID:91438,C:S,T:190588338,N:BcRcvReg,D:tname=charging_service;tid=80;act=android.intent.action.SCREEN_OFF;cmp=null;pkg=null;prid=196d8c5||ID:91437,C:E,T:190588338||ID:91437,C:S,T:190588338,N:SchRcvReg,D:tname=android.fg;tid=25||ID:0,C:P,T:190588337,N:Finish,D:tname=main;tid=2;prid=255033c||ID:91436,C:E,T:190588337||ID:91436,C:S,T:190588337,N:BcRcvReg,D:tname=main;tid=2;act=android.intent.action.SCREEN_OFF;cmp=null;pkg=null;prid=255033c||ID:91435,C:E,T:190588337;;
+suspend all histogram:	Sum: 710.029ms 99% C.I. 2.621us-2856us Avg: 145.646us Max: 19970us
+DALVIK THREADS (305):
+"PackageInstaller" prio=5 tid=52 Blocked
+  | group="main" sCount=1 ucsCount=0 flags=1 obj=0x4a9b720 self=0xb4000071a9a4ef00
+  | sysTid=3835 nice=0 cgrp=foreground sched=0/0 handle=0x6f6546c500
+  | state=S schedstat=( 7285478850 21076597449 44747 ) utm=429 stm=299 core=2 HZ=100
+  | stack=0x6f65369000-0x6f6536b000 stackSize=1037KB
+  | held mutexes=
+  at com.android.server.pm.PackageInstallerSession.getPackageName(PackageInstallerSession.java:4413)
+  - waiting to lock <0x02b17a38> (a java.lang.Object) held by thread 17
+  at com.android.server.pm.PackageInstallerService.shouldFilterSession(PackageInstallerService.java:1901)
+  at com.android.server.pm.PackageInstallerService.-$$Nest$mshouldFilterSession(PackageInstallerService.java:0)
+  at com.android.server.pm.PackageInstallerService$Callbacks.handleMessage(PackageInstallerService.java:2094)
+  at android.os.Handler.dispatchMessage(Handler.java:110)
+  at android.os.Looper.loopOnce(Looper.java:248)
+  at android.os.Looper.loop(Looper.java:338)
+  at android.os.HandlerThread.run(HandlerThread.java:85)
+DumpLatencyMs: 247.623
+
+"binder:2984_12" prio=5 tid=176 Blocked
+  | group="main" sCount=1 ucsCount=0 flags=1 obj=0x590f198 self=0xb4000071a9b95bc0
+  | sysTid=5065 nice=0 cgrp=foreground sched=1073741824/0 handle=0x6f4c88a500
+  | state=S schedstat=( 213092453187 258165159496 1094238 ) utm=12207 stm=9101 core=4 HZ=100
+  | stack=0x6f4c793000-0x6f4c795000 stackSize=989KB
+  | held mutexes=
+  at com.android.server.pm.PackageInstallerSession.hasParentSessionId(PackageInstallerSession.java:5177)
+  - waiting to lock <0x02b17a38> (a java.lang.Object) held by thread 17
+  at com.android.server.pm.PackageInstallerService.getAllSessions(PackageInstallerService.java:1366)
+  - locked <0x08d7ede8> (a android.util.SparseArray)
+  at com.android.server.pm.LauncherAppsService$LauncherAppsImpl.getAllSessions(LauncherAppsService.java:411)
+  at android.content.pm.ILauncherApps$Stub.onTransact(ILauncherApps.java:789)
+  at android.os.Binder.execTransactInternal(Binder.java:1433)
+  at android.os.Binder.execTransact(Binder.java:1372)
+DumpLatencyMs: 327.951
+
+"binder:2984_11" prio=5 tid=220 Blocked
+
+########## 全库 hubmobile 命中文件 ##########
+rep/logd/kernel.log.0
+rep/logd/events.log.0
+rep/dumpsys/dumpsys_activity_exit-info.txt
+rep/dumpsys/dumpsys_connectivity_dialg.txt
+rep/dumpsys/dumpsys_activity_com_android_launcher3.txt
+rep/dumpsys/dumpsys_activity_service_TouchInteractionService.txt
+rep/dumpsys/dumpsys_activity_com_meizu_flyme_launcher.txt
+rep/dumpsys/dumpsys.txt
+rep/dumpsys/dumpsys_activity_service_com_android_systemui.txt
+rep/bugreport/dumpbugreport.txt
+rep/logcat/dmesg_T.txt
+rep/logcat/events.txt
+
+########## system.log has died ##########
+
+########## main.log githup ##########
+
+########## events 进程生命周期 ##########
