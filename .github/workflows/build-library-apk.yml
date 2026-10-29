@@ -1,7 +1,7 @@
 # 打包「应用库」版 APK
 #
-# 思路：源码主体从公开的 Buwrt/githup 现取现打。
-# 应用库 / 数据概览的改动已合进 Buwrt/githup 本身，这里不再打补丁。
+# 思路：源码主体取自本仓库的 githup-source.zip（随源码一起上传）。
+# 不再 clone Buwrt/githup —— 保证「改了什么就打什么」。
 #
 # 两件事必须按顺序做对，否则装上去会被自己拦下：
 #   1. gen-srcfingerprint.py 改写 api.js 的 SRC_SHA256
@@ -31,13 +31,25 @@ jobs:
         with:
           path: patchrepo
 
-      - name: 取 githup 源码（公开库，无需令牌）
+      # 源码取自**本仓库**的 githup-source.zip，不再 clone Buwrt/githup。
+      # 这样改哪个库就打哪个库的包，不会出现「改了本地但流水线 clone 的是旧远端」
+      # —— 之前踩过：本地改完以为进了包，实际流水线抓的是远端的老代码。
+      - name: 取 githup 源码（本仓库源码包）
         run: |
           set -e
-          git clone --depth 1 https://github.com/Buwrt/githup.git src
+          mkdir -p src
+          unzip -q patchrepo/githup-source.zip -d src
+          if [ -d src/githup ]; then
+            mv src/githup/.[!.]* src/ 2>/dev/null || true
+            mv src/githup/* src/ 2>/dev/null || true
+            rmdir src/githup 2>/dev/null || true
+          fi
           cd src
           echo "--- version.lock ---"
           grep -E "^version=|^versionCode=" version.lock
+          echo "--- 关键改动自检 ---"
+          grep -c "secondary rate limit" app/src/main/assets/web/js/page-repo.js || true
+          ls app/src/main/java/com/hubmobile/app/UploadService.java
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
