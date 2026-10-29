@@ -32,8 +32,16 @@
     return Object.prototype.toString.call(v) === '[object Array]' ? v : [];
   }
   function save(login, lists) { window.Store.setJSON(keyOf(login), lists); }
+  /**
+   * 按 id 取一个列表。
+   *
+   * ⚠️ 开着同步时必须读**镜像**：all() 返回的是官网列表（id 是官网的
+   * UL_xxx 那一套），而本机那份里根本没有这个 id。以前这里只 load()
+   * 本机，结果就是「隔层计数显示 1，点进去却是空的」—— 计数走 all()
+   * （镜像）拿到了，内容走 byId（本机）拿不到。两个数据源必须一致。
+   */
   function byId(id, login) {
-    var lists = load(login);
+    var lists = syncOn() ? (loadMirror(login) || load(login)) : load(login);
     for (var i = 0; i < lists.length; i++) if (lists[i].id === id) return lists[i];
     return null;
   }
