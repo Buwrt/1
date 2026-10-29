@@ -1,0 +1,99 @@
+name: Analyze Meizu LogReport 3
+
+on:
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 下载并解压
+        run: |
+          set -e
+          mkdir -p work && cd work
+          curl -sL -m 900 -o report.zip \
+            "https://github.com/Buwrt/3/releases/download/1/LogReport_261029_101217_generic.zip"
+          unzip -q -o report.zip -d rep
+
+      - name: crash.log 全文头部
+        run: |
+          cd work
+          echo "=== crash.log.0 大小与行数 ==="
+          ls -lh rep/logd/crash.log.0; wc -l rep/logd/crash.log.0
+          echo "=== 前 100 行 ==="
+          head -100 rep/logd/crash.log.0
+          echo "=== crash.log 里的包名统计 ==="
+          grep -oE "com\.[a-z0-9_.]+" rep/logd/crash.log.0 2>/dev/null | sort | uniq -c | sort -rn | head -20
+
+      - name: dropbox 全部条目
+        run: |
+          cd work
+          echo "=== dropbox 大小 ==="
+          ls -lh rep/dumpsys/dumpsys_dropbox.txt; wc -l rep/dumpsys/dumpsys_dropbox.txt
+          echo "=== 前 120 行 ==="
+          head -120 rep/dumpsys/dumpsys_dropbox.txt
+
+      - name: 搜 hubmobile 与 uid
+        run: |
+          cd work
+          echo "=== 全库搜 hubmobile（含压缩包外所有文本） ==="
+          grep -rl "hubmobile" rep 2>/dev/null | head -30
+          echo ""
+          echo "=== system.log 里 uid 10466 / 10466 相关进程 ==="
+          grep -nE "10466" rep/logd/system.log.0 2>/dev/null | head -30
+          echo ""
+          echo "=== system.log 里 Process .* has died ==="
+          grep -nE "has died" rep/logd/system.log.0 2>/dev/null | head -30
+
+      - name: githup 进程启动/死亡时间线
+        run: |
+          cd work
+          echo "=== events.log 里 am_proc_start / am_proc_died 含 hubmobile 或 githup ==="
+          grep -nE "am_proc_(start|died)" rep/logd/events.log.0 2>/dev/null | grep -iE "hubmobile|githup" | head -30
+          echo ""
+          echo "=== main.log 搜 githup ==="
+          grep -niE "githup" rep/logd/*.log* 2>/dev/null | head -40
+
+      - name: 保存
+        run: |
+          cd work
+          mkdir -p ../ci
+          {
+            echo "########## crash.log.0 头部 ##########"
+            head -150 rep/logd/crash.log.0 2>/dev/null
+            echo ""
+            echo "########## crash.log 包名统计 ##########"
+            grep -oE "com\.[a-z0-9_.]+" rep/logd/crash.log.0 2>/dev/null | sort | uniq -c | sort -rn | head -20
+            echo ""
+            echo "########## dropbox 头部 ##########"
+            head -150 rep/dumpsys/dumpsys_dropbox.txt 2>/dev/null
+            echo ""
+            echo "########## 全库 hubmobile 命中文件 ##########"
+            grep -rl "hubmobile" rep 2>/dev/null | head -30
+            echo ""
+            echo "########## system.log has died ##########"
+            grep -nE "has died" rep/logd/system.log.0 2>/dev/null | head -30
+            echo ""
+            echo "########## main.log githup ##########"
+            grep -niE "githup" rep/logd/*.log* 2>/dev/null | head -40
+            echo ""
+            echo "########## events 进程生命周期 ##########"
+            grep -nE "am_proc_(start|died)" rep/logd/events.log.0 2>/dev/null | grep -iE "hubmobile|githup" | head -30
+          } > ../ci/meizu-detail2.txt
+          wc -c ../ci/meizu-detail2.txt
+
+      - name: 提交
+        run: |
+          set -e
+          git config user.name "ci"
+          git config user.email "ci@example.com"
+          git add ci/
+          git diff --cached --quiet && echo "无变更" || git commit -m "ci: 魅族日志第三轮提取"
+          git push || echo "push 失败"
