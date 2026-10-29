@@ -39,8 +39,8 @@ Warning: SDK processing. This version only understands SDK XML versions up to 3 
 > Task :app:processReleaseMainManifest
 > Task :app:processReleaseManifest
 > Task :app:extractProguardFiles
-> Task :app:processReleaseJavaRes NO-SOURCE
 > Task :app:mergeReleaseArtProfile
+> Task :app:processReleaseJavaRes NO-SOURCE
 > Task :app:mergeReleaseShaders FROM-CACHE
 > Task :app:compileReleaseShaders NO-SOURCE
 > Task :app:generateReleaseAssets UP-TO-DATE
@@ -52,16 +52,18 @@ Warning: SDK processing. This version only understands SDK XML versions up to 3 
 > Task :app:collectReleaseDependencies
 > Task :app:bundleReleaseResources
 > Task :app:sdkReleaseDependencyData
-> Task :app:processReleaseResources
 > Task :app:validateSigningRelease
+> Task :app:writeReleaseAppMetadata
+> Task :app:writeReleaseSigningConfigVersions
+> Task :app:processReleaseResources
 
 > Task :app:compileReleaseJavaWithJavac
-/home/runner/work/1/1/src/app/src/main/java/com/hubmobile/app/UploadService.java:214: error: cannot find symbol
+/home/runner/work/1/1/src/app/src/main/java/com/hubmobile/app/UploadService.java:227: error: cannot find symbol
         if (!promote(buildProgress(0, 0, 0, 0))) {
                      ^
   symbol:   method buildProgress(int,int,int,int)
   location: class UploadService
-/home/runner/work/1/1/src/app/src/main/java/com/hubmobile/app/UploadService.java:223: error: cannot find symbol
+/home/runner/work/1/1/src/app/src/main/java/com/hubmobile/app/UploadService.java:236: error: cannot find symbol
         if (!foregroundReady && !promote(buildProgress(0, 0, 0, 0))) {
                                          ^
   symbol:   method buildProgress(int,int,int,int)
@@ -271,5 +273,5 @@ Caused by: org.gradle.api.internal.tasks.compile.CompilationFailedException: Com
 	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
 
 
-BUILD FAILED in 31s
-28 actionable tasks: 27 executed, 1 from cache
+BUILD FAILED in 32s
+30 actionable tasks: 29 executed, 1 from cache
