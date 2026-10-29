@@ -1,0 +1,75 @@
+name: Analyze Meizu LogReport 4
+
+on:
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 下载并解压
+        run: |
+          set -e
+          mkdir -p work && cd work
+          curl -sL -m 900 -o report.zip \
+            "https://github.com/Buwrt/3/releases/download/1/LogReport_261029_101217_generic.zip"
+          unzip -q -o report.zip -d rep
+
+      - name: exit-info 中 githup 全部段落
+        run: |
+          cd work
+          grep -n -B 20 -A 10 "com.hubmobile" rep/dumpsys/dumpsys_activity_exit-info.txt 2>/dev/null | head -120
+
+      - name: kernel.log 中 hubmobile
+        run: |
+          cd work
+          echo "=== kernel.log 命中（含上下文） ==="
+          grep -n -B 5 -A 10 "hubmobile" rep/logd/kernel.log.0 2>/dev/null | head -150
+
+      - name: dumpbugreport 中 hubmobile
+        run: |
+          cd work
+          grep -n -B 3 -A 15 "hubmobile" rep/bugreport/dumpbugreport.txt 2>/dev/null | head -150
+
+      - name: logcat events 中 hubmobile
+        run: |
+          cd work
+          echo "=== logcat/events.txt ==="
+          grep -n -B 2 -A 8 "hubmobile" rep/logcat/events.txt 2>/dev/null | head -100
+          echo "=== logcat 目录 ==="
+          ls -lh rep/logcat/ | head -30
+
+      - name: 保存
+        run: |
+          cd work
+          mkdir -p ../ci
+          {
+            echo "########## exit-info githup ##########"
+            grep -n -B 20 -A 10 "com.hubmobile" rep/dumpsys/dumpsys_activity_exit-info.txt 2>/dev/null | head -150
+            echo ""
+            echo "########## kernel.log ##########"
+            grep -n -B 5 -A 10 "hubmobile" rep/logd/kernel.log.0 2>/dev/null | head -150
+            echo ""
+            echo "########## dumpbugreport ##########"
+            grep -n -B 3 -A 15 "hubmobile" rep/bugreport/dumpbugreport.txt 2>/dev/null | head -150
+            echo ""
+            echo "########## logcat events ##########"
+            grep -n -B 2 -A 8 "hubmobile" rep/logcat/events.txt 2>/dev/null | head -100
+          } > ../ci/meizu-detail3.txt
+          wc -c ../ci/meizu-detail3.txt
+
+      - name: 提交
+        run: |
+          set -e
+          git config user.name "ci"
+          git config user.email "ci@example.com"
+          git add ci/
+          git diff --cached --quiet && echo "无变更" || git commit -m "ci: 魅族日志第四轮"
+          git push || echo "push 失败"
