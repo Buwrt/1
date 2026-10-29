@@ -566,10 +566,17 @@
       pullFromGitHub(true);
     });
 
+    /* 切到收藏夹的那一刻强制拉一次。
+       renderChips 里那趟是带节流的（20 秒），刚拉过就会被跳过 ——
+       可用户是**刚切进来**，他想看的是此刻官网的样子，不是 20 秒前的。
+       切 tab 触发重绘不该狂打请求，所以这一趟只在 onlyFav 从假变真时发。 */
+    var wasFav = false;
     function renderChips() {
       var el = UI.$('#fav-chips', box); if (!el) return;
       el.hidden = !onlyFav;
       if (!onlyFav || !window.StarLists) return;
+      if (onlyFav && !wasFav) { wasFav = true; pullFromGitHub(true); }
+      if (!onlyFav) wasFav = false;
       var lists = window.StarLists.all();
       var html = '<button class="chip' + (curList === '' ? ' active' : '') + '" data-c="">全部收藏</button>';
       html += lists.map(function (l) {
