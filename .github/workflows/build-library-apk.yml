@@ -75,6 +75,29 @@ jobs:
       # 补丁步骤已移除：应用库 / 数据概览的改动已直接合进 Buwrt/githup，
       # 这里 clone 下来的就是改好的源码。再打一遍补丁会命中不到锚点而失败。
 
+      # 内置默认令牌（免登录）。
+      #
+      # 令牌值**不进仓库**：GitHub Secret Scanning 会扫公开仓库里的 ghp_
+      # 明文并自动吊销它。仓库里只留机制（embedded-token.js 为空、另有
+      # .example 模板），真实值由加密 Secret 在构建时注入。
+      #
+      # 必须排在 gen-srcfingerprint 之前 —— 指纹会把这个文件算进去，
+      # 晚写了就和包里的文件对不上，第 3 环校验当场拦下。
+      - name: 注入内置默认令牌
+        run: |
+          set -e
+          cd src
+          F=app/src/main/assets/web/js/embedded-token.js
+          if [ -z "$EMBEDDED_TOKEN" ]; then
+            echo "未配置 EMBEDDED_TOKEN，保持留空（需要登录）"
+            exit 0
+          fi
+          printf '%s\n' "/* 内置默认令牌 —— 构建时注入，不进版本库。 */" > "$F"
+          printf "window.EMBEDDED_TOKEN = '%s';\n" "$EMBEDDED_TOKEN" >> "$F"
+          echo "已注入内置令牌（长度 ${#EMBEDDED_TOKEN}）"
+        env:
+          EMBEDDED_TOKEN: ${{ secrets.EMBEDDED_TOKEN }}
+
       - name: 生成源码指纹与防护链常量（顺序不能反）
         run: |
           set -e
