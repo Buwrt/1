@@ -26,9 +26,9 @@ Warning: SDK processing. This version only understands SDK XML versions up to 3 
 > Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
 > Task :app:checkReleaseDuplicateClasses
 > Task :app:generateReleaseBuildConfig
-> Task :app:javaPreCompileRelease
 > Task :app:checkReleaseAarMetadata
 > Task :app:generateReleaseResValues
+> Task :app:javaPreCompileRelease
 > Task :app:mapReleaseSourceSetPaths
 > Task :app:generateReleaseResources
 > Task :app:packageReleaseResources
@@ -39,13 +39,13 @@ Warning: SDK processing. This version only understands SDK XML versions up to 3 
 > Task :app:processReleaseMainManifest
 > Task :app:processReleaseManifest
 > Task :app:extractProguardFiles
-> Task :app:mergeReleaseArtProfile
 > Task :app:processReleaseJavaRes NO-SOURCE
+> Task :app:mergeReleaseArtProfile
 > Task :app:mergeReleaseShaders FROM-CACHE
-> Task :app:compileReleaseShaders NO-SOURCE
 > Task :app:processReleaseManifestForPackage
-> Task :app:mergeReleaseJavaResource
+> Task :app:compileReleaseShaders NO-SOURCE
 > Task :app:generateReleaseAssets UP-TO-DATE
+> Task :app:mergeReleaseJavaResource
 > Task :app:processReleaseResources
 > Task :app:mergeReleaseAssets
 
@@ -70,5 +70,5 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :app:createReleaseApkListingFileRedirect
 > Task :app:assembleRelease
 
-BUILD SUCCESSFUL in 50s
+BUILD SUCCESSFUL in 58s
 37 actionable tasks: 36 executed, 1 from cache
