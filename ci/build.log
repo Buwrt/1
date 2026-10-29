@@ -39,16 +39,15 @@ Warning: SDK processing. This version only understands SDK XML versions up to 3 
 > Task :app:processReleaseMainManifest
 > Task :app:processReleaseManifest
 > Task :app:extractProguardFiles
-> Task :app:processReleaseJavaRes NO-SOURCE
 > Task :app:mergeReleaseArtProfile
+> Task :app:processReleaseJavaRes NO-SOURCE
 > Task :app:mergeReleaseShaders FROM-CACHE
 > Task :app:compileReleaseShaders NO-SOURCE
 > Task :app:processReleaseManifestForPackage
-> Task :app:mergeReleaseJavaResource
 > Task :app:generateReleaseAssets UP-TO-DATE
-> Task :app:mergeReleaseAssets
+> Task :app:mergeReleaseJavaResource
 > Task :app:processReleaseResources
-> Task :app:compressReleaseAssets
+> Task :app:mergeReleaseAssets
 
 > Task :app:compileReleaseJavaWithJavac
 Note: Some input files use or override a deprecated API.
@@ -57,11 +56,12 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :app:mergeReleaseGeneratedProguardFiles
 > Task :app:processApplicationManifestReleaseForBundle
 > Task :app:collectReleaseDependencies
+> Task :app:compressReleaseAssets
 > Task :app:sdkReleaseDependencyData
 > Task :app:validateSigningRelease
 > Task :app:writeReleaseAppMetadata
-> Task :app:bundleReleaseResources
 > Task :app:writeReleaseSigningConfigVersions
+> Task :app:bundleReleaseResources
 > Task :app:minifyReleaseWithR8
 > Task :app:compileReleaseArtProfile
 > Task :app:shrinkReleaseRes
@@ -70,5 +70,5 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :app:createReleaseApkListingFileRedirect
 > Task :app:assembleRelease
 
-BUILD SUCCESSFUL in 37s
+BUILD SUCCESSFUL in 49s
 37 actionable tasks: 36 executed, 1 from cache
