@@ -51,10 +51,10 @@ Warning: SDK processing. This version only understands SDK XML versions up to 3 
 > Task :app:compressReleaseAssets
 > Task :app:sdkReleaseDependencyData
 > Task :app:validateSigningRelease
-> Task :app:writeReleaseAppMetadata
 > Task :app:bundleReleaseResources
-> Task :app:writeReleaseSigningConfigVersions
 > Task :app:processReleaseManifestForPackage
+> Task :app:writeReleaseAppMetadata
+> Task :app:writeReleaseSigningConfigVersions
 > Task :app:processReleaseResources
 
 > Task :app:compileReleaseJavaWithJavac
@@ -70,5 +70,5 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :app:createReleaseApkListingFileRedirect
 > Task :app:assembleRelease
 
-BUILD SUCCESSFUL in 43s
+BUILD SUCCESSFUL in 49s
 37 actionable tasks: 36 executed, 1 from cache
