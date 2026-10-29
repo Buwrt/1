@@ -26,8 +26,8 @@ Warning: SDK processing. This version only understands SDK XML versions up to 3 
 > Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
 > Task :app:checkReleaseDuplicateClasses
 > Task :app:generateReleaseBuildConfig
-> Task :app:checkReleaseAarMetadata
 > Task :app:javaPreCompileRelease
+> Task :app:checkReleaseAarMetadata
 > Task :app:generateReleaseResValues
 > Task :app:mapReleaseSourceSetPaths
 > Task :app:generateReleaseResources
@@ -47,13 +47,13 @@ Warning: SDK processing. This version only understands SDK XML versions up to 3 
 > Task :app:mergeReleaseJavaResource
 > Task :app:mergeReleaseAssets
 > Task :app:processApplicationManifestReleaseForBundle
-> Task :app:processReleaseManifestForPackage
-> Task :app:compressReleaseAssets
 > Task :app:collectReleaseDependencies
+> Task :app:compressReleaseAssets
 > Task :app:bundleReleaseResources
 > Task :app:sdkReleaseDependencyData
 > Task :app:validateSigningRelease
 > Task :app:writeReleaseAppMetadata
+> Task :app:processReleaseManifestForPackage
 > Task :app:writeReleaseSigningConfigVersions
 > Task :app:processReleaseResources
 
@@ -70,5 +70,5 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :app:createReleaseApkListingFileRedirect
 > Task :app:assembleRelease
 
-BUILD SUCCESSFUL in 42s
+BUILD SUCCESSFUL in 51s
 37 actionable tasks: 36 executed, 1 from cache
