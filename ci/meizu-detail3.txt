@@ -1,0 +1,388 @@
+########## exit-info githup ##########
+15890-        ApplicationExitInfo #11:
+15891-          timestamp=2026-10-06 18:30:25.203 pid=29867 realUid=10218 packageUid=10218 definingUid=10218 user=0
+15892-          process=com.huawei.smarthome:p0 reason=3 (LOW_MEMORY) subreason=0 (UNKNOWN) status=0
+15893-          importance=400 pss=0.00 rss=124MB description=null state=empty trace=null
+15894-        ApplicationExitInfo #12:
+15895-          timestamp=2026-10-01 03:16:46.052 pid=15822 realUid=10218 packageUid=10218 definingUid=10218 user=0
+15896-          process=com.huawei.smarthome reason=10 (USER REQUESTED) subreason=22 (REMOVE TASK) status=0
+15897-          importance=400 pss=0.00 rss=373MB description=remove task state=empty trace=null
+15898-        ApplicationExitInfo #13:
+15899-          timestamp=2026-10-01 03:16:46.049 pid=16010 realUid=10218 packageUid=10218 definingUid=10218 user=0
+15900-          process=com.huawei.smarthome:p0 reason=10 (USER REQUESTED) subreason=22 (REMOVE TASK) status=0
+15901-          importance=400 pss=0.00 rss=385MB description=remove task state=empty trace=null
+15902-        ApplicationExitInfo #14:
+15903-          timestamp=2026-10-01 03:16:07.206 pid=15239 realUid=10218 packageUid=10218 definingUid=10218 user=0
+15904-          process=com.huawei.smarthome reason=10 (USER REQUESTED) subreason=21 (FORCE STOP) status=0
+15905-          importance=300 pss=0.00 rss=472MB description=stop com.huawei.smarthome due to from pid 8777 (com.meizu.flyme.launcher) state=empty trace=null
+15906-        ApplicationExitInfo #15:
+15907-          timestamp=2026-10-01 03:16:07.195 pid=15506 realUid=10218 packageUid=10218 definingUid=10218 user=0
+15908-          process=com.huawei.smarthome:p0 reason=10 (USER REQUESTED) subreason=21 (FORCE STOP) status=0
+15909-          importance=300 pss=0.00 rss=327MB description=stop com.huawei.smarthome due to from pid 8777 (com.meizu.flyme.launcher) state=empty trace=/data/system/procexitstore/anr_2026-10-01-03-16-01-801.gz
+15910:  package: com.hubmobile.app
+15911-    Historical Process Exit for uid=10466
+15912-        ApplicationExitInfo #0:
+15913-          timestamp=2026-10-29 09:28:26.914 pid=20939 realUid=99638 packageUid=10466 definingUid=10129 user=0
+15914-          process=com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0 reason=10 (USER REQUESTED) subreason=22 (REMOVE TASK) status=0
+15915-          importance=400 pss=0.00 rss=189MB description=remove task state=empty trace=null
+15916-        ApplicationExitInfo #1:
+15917-          timestamp=2026-10-29 09:28:26.911 pid=20895 realUid=10466 packageUid=10466 definingUid=10466 user=0
+15918:          process=com.hubmobile.app reason=10 (USER REQUESTED) subreason=22 (REMOVE TASK) status=0
+15919-          importance=400 pss=0.00 rss=318MB description=remove task state=71 bytes trace=null
+15920-  package: com.xingin.xhs
+15921-    Historical Process Exit for uid=0
+15922-        ApplicationExitInfo #0:
+15923-          timestamp=2026-10-24 11:48:56.222 pid=3672 realUid=99980 packageUid=10353 definingUid=10129 user=0
+15924-          process=com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0 reason=3 (LOW_MEMORY) subreason=0 (UNKNOWN) status=0
+15925-          importance=400 pss=0.00 rss=57MB description=null state=empty trace=null
+15926-    Historical Process Exit for uid=10353
+15927-        ApplicationExitInfo #0:
+15928-          timestamp=2026-10-29 10:00:37.579 pid=22658 realUid=10353 packageUid=10353 definingUid=10353 user=0
+
+########## kernel.log ##########
+4266-<6>[369962.842074][7:17361:klog] [mz_thermal_log] 2026-10-29 02:12:20,    system_base_power_batterySave,    50500,   45100,   42207,   45979,   43063,   38000,   44686,   39374,   37911,   37763,     672,    1612,    1075,     902,    1574,    2323,    2323,    1708,     310,     903,    1292,    4235,    3000,     240
+4267-<4>[369963.796114][7:17361:klog] audit: audit_lost=388400891 audit_rate_limit=5 audit_backlog_limit=64
+4268-<3>[369963.796125][7:17361:klog] audit: rate limit exceeded
+4269-<6>[369964.354644][3:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ndroid.systemui-4150-allowed mask:ff-new mask:fc
+4270-<6>[369964.354656][3:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4216-allowed mask:ff-new mask:fc
+4271:<6>[369964.358399][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:m.hubmobile.app-28393-allowed mask:ff-new mask:fc
+4272-<6>[369964.358411][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-28426-allowed mask:ff-new mask:fc
+4273-<6>[369964.362708][0:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ocessService0:0-28456-allowed mask:ff-new mask:fc
+4274-<3>[369964.460618][4:17361:klog] [SMARTSWAP] <1>[android.bg:2984 3059] [swapd_single_memcg_param_write:645]: cpu-6 80 0 0
+4275-<6>[369964.548007][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:ff-new mask:fc
+4276-<3>[369964.648740][6:17361:klog] [SMARTSWAP] <1>[android.bg:2984 3059] [swapd_single_memcg_param_write:645]: cpu-6 80 0 0
+4277-<6>[369964.662196][2:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:ff-new mask:fc
+4278-<4>[369964.799479][0:17361:klog] audit: audit_lost=388401585 audit_rate_limit=5 audit_backlog_limit=64
+4279-<3>[369964.799485][0:17361:klog] audit: rate limit exceeded
+4280:<6>[369964.811876][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:m.hubmobile.app-28393-allowed mask:ff-new mask:fc
+4281-<6>[369964.811953][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-28426-allowed mask:ff-new mask:fc
+4282-<6>[369964.812273][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ocessService0:0-28456-allowed mask:ff-new mask:fc
+4283-<6>[369964.828341][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:63-new mask:ff
+4284-<6>[369964.828361][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:63-new mask:ff
+4285-<6>[369964.837069][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:ff-new mask:fc
+4286-<6>[369964.837102][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:ff-new mask:fc
+4287:<6>[369964.862535][3:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:m.hubmobile.app-28393-allowed mask:ff-new mask:fc
+4288-<6>[369964.862548][3:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-28426-allowed mask:ff-new mask:fc
+4289-<6>[369964.862813][3:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ocessService0:0-28456-allowed mask:ff-new mask:fc
+4290-<6>[369964.876618][2:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:63-new mask:ff
+4291-<6>[369964.876630][2:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:63-new mask:ff
+4292-<6>[369964.889319][3:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:ff-new mask:fc
+4293-<6>[369964.889334][3:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:ff-new mask:fc
+4294:<6>[369964.912793][7:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:m.hubmobile.app-28393-allowed mask:ff-new mask:fc
+4295-<6>[369964.912804][7:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-28426-allowed mask:ff-new mask:fc
+4296-<6>[369964.913044][7:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ocessService0:0-28456-allowed mask:ff-new mask:fc
+4297-<6>[369964.922166][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:63-new mask:ff
+4298-<6>[369964.922185][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:63-new mask:ff
+4299-<6>[369964.933764][0:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:ff-new mask:fc
+4300-<6>[369964.933777][0:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:ff-new mask:fc
+4301-<6>[369964.950896][6:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:63-new mask:ff
+4302-<6>[369964.950908][6:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:63-new mask:ff
+4303:<6>[369964.951580][0:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:m.hubmobile.app-28393-allowed mask:ff-new mask:fc
+4304-<6>[369964.951592][0:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-28426-allowed mask:ff-new mask:fc
+4305-<6>[369964.952862][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ocessService0:0-28456-allowed mask:ff-new mask:fc
+4306-<3>[369965.052289][4:17361:klog] [SMARTSWAP] <1>[android.bg:2984 3059] [swapd_single_memcg_param_write:645]: cpu-1 80 90 0
+4307-<6>[369965.196087][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:ff-new mask:fc
+4308-<6>[369965.196112][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:ff-new mask:fc
+4309:<6>[369965.246798][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:m.hubmobile.app-28393-allowed mask:ff-new mask:fc
+4310-<6>[369965.246819][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-28426-allowed mask:ff-new mask:fc
+4311-<6>[369965.247111][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ocessService0:0-28456-allowed mask:ff-new mask:fc
+4312-<6>[369965.263590][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:63-new mask:ff
+4313-<6>[369965.263604][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:63-new mask:ff
+4314-<6>[369965.270153][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:ff-new mask:fc
+4315-<6>[369965.270164][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:ff-new mask:fc
+4316-<6>[369965.294976][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:63-new mask:ff
+4317-<6>[369965.294987][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:63-new mask:ff
+4318:<6>[369965.296710][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:m.hubmobile.app-28393-allowed mask:ff-new mask:fc
+4319-<6>[369965.296729][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-28426-allowed mask:ff-new mask:fc
+4320-<6>[369965.296919][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ocessService0:0-28456-allowed mask:ff-new mask:fc
+4321-<6>[369965.331507][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:ff-new mask:fc
+4322-<6>[369965.331527][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:ff-new mask:fc
+4323:<6>[369965.354337][1:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:m.hubmobile.app-28393-allowed mask:ff-new mask:fc
+4324-<6>[369965.354350][1:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-28426-allowed mask:ff-new mask:fc
+4325-<6>[369965.354535][1:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ocessService0:0-28456-allowed mask:ff-new mask:fc
+4326-<6>[369965.369091][1:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:63-new mask:ff
+4327-<6>[369965.369109][1:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:63-new mask:ff
+4328-<6>[369965.376863][1:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:ff-new mask:fc
+4329-<6>[369965.376906][1:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:ff-new mask:fc
+4330:<6>[369965.400759][1:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:m.hubmobile.app-28393-allowed mask:ff-new mask:fc
+4331-<6>[369965.400798][1:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-28426-allowed mask:ff-new mask:fc
+4332-<6>[369965.401133][1:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ocessService0:0-28456-allowed mask:ff-new mask:fc
+4333-<6>[369965.403450][1:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:63-new mask:ff
+4334-<6>[369965.403460][1:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:63-new mask:ff
+4335-<6>[369965.437430][3:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:ff-new mask:fc
+4336-<6>[369965.437505][3:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:ff-new mask:fc
+4337:<6>[369965.487376][5:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:m.hubmobile.app-28393-allowed mask:ff-new mask:fc
+4338-<6>[369965.487396][5:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-28426-allowed mask:ff-new mask:fc
+4339-<6>[369965.488135][2:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ocessService0:0-28456-allowed mask:ff-new mask:fc
+4340-<6>[369965.501864][6:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:63-new mask:ff
+4341-<6>[369965.501879][6:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:63-new mask:ff
+4342-<6>[369965.513839][3:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:ff-new mask:fc
+4343-<6>[369965.513853][3:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:ff-new mask:fc
+4344:<6>[369965.544610][2:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:m.hubmobile.app-28393-allowed mask:ff-new mask:fc
+4345-<6>[369965.544634][2:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-28426-allowed mask:ff-new mask:fc
+4346-<6>[369965.544807][2:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ocessService0:0-28456-allowed mask:ff-new mask:fc
+4347-<6>[369965.560533][3:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:63-new mask:ff
+4348-<6>[369965.560553][3:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:63-new mask:ff
+4349-<6>[369965.574460][3:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:ff-new mask:fc
+4350-<6>[369965.574567][3:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:ff-new mask:fc
+4351:<6>[369965.589084][7:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:m.hubmobile.app-28393-allowed mask:ff-new mask:fc
+4352-<6>[369965.589099][7:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-28426-allowed mask:ff-new mask:fc
+4353-<6>[369965.589307][7:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ocessService0:0-28456-allowed mask:ff-new mask:fc
+4354-<6>[369965.608402][7:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:63-new mask:ff
+4355-<6>[369965.608421][7:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:63-new mask:ff
+4356-<6>[369965.619700][7:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:ff-new mask:fc
+4357-<6>[369965.619709][7:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:ff-new mask:fc
+4358:<6>[369965.643255][7:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:m.hubmobile.app-28393-allowed mask:ff-new mask:fc
+4359-<6>[369965.643263][7:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-28426-allowed mask:ff-new mask:fc
+4360-<6>[369965.643539][7:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ocessService0:0-28456-allowed mask:ff-new mask:fc
+4361-<6>[369965.644785][7:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:63-new mask:ff
+4362-<6>[369965.644794][7:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:63-new mask:ff
+4363-<6>[369965.676005][7:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:ff-new mask:fc
+4364-<6>[369965.676037][7:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:ff-new mask:fc
+4365:<6>[369965.739003][1:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:m.hubmobile.app-28393-allowed mask:ff-new mask:fc
+4366-<6>[369965.739017][1:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-28426-allowed mask:ff-new mask:fc
+4367-<6>[369965.739512][1:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ocessService0:0-28456-allowed mask:ff-new mask:fc
+4368-<6>[369965.755145][3:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:63-new mask:ff
+4369-<6>[369965.755172][3:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:63-new mask:ff
+4370-<6>[369965.764844][3:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:ff-new mask:fc
+4371-<6>[369965.764854][3:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:ff-new mask:fc
+4372:<6>[369965.785488][7:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:m.hubmobile.app-28393-allowed mask:ff-new mask:fc
+4373-<6>[369965.785498][7:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-28426-allowed mask:ff-new mask:fc
+4374-<6>[369965.785727][7:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ocessService0:0-28456-allowed mask:ff-new mask:fc
+4375-<4>[369965.806275][7:17361:klog] audit: audit_lost=388402560 audit_rate_limit=5 audit_backlog_limit=64
+4376-<3>[369965.806288][7:17361:klog] audit: rate limit exceeded
+4377-<36>[369965.809662][2:17361:klog] type=1400 audit(1793239943.145:390168172): avc:  denied  { bpf } for  comm="binder:1953_2" capability=39  scontext=u:r:gpuservice:s0 tcontext=u:r:gpuservice:s0 tclass=capability2 permissive=0
+4378-<36>[369965.809769][2:17361:klog] type=1400 audit(1793239943.145:390168173): avc:  denied  { bpf } for  comm="binder:1953_2" capability=39  scontext=u:r:gpuservice:s0 tcontext=u:r:gpuservice:s0 tclass=capability2 permissive=0
+4379-<36>[369965.809830][2:17361:klog] type=1400 audit(1793239943.145:390168174): avc:  denied  { bpf } for  comm="binder:1953_2" capability=39  scontext=u:r:gpuservice:s0 tcontext=u:r:gpuservice:s0 tclass=capability2 permissive=0
+4380-<36>[369965.809888][2:17361:klog] type=1400 audit(1793239943.145:390168175): avc:  denied  { bpf } for  comm="binder:1953_2" capability=39  scontext=u:r:gpuservice:s0 tcontext=u:r:gpuservice:s0 tclass=capability2 permissive=0
+4381-<36>[369965.809949][2:17361:klog] type=1400 audit(1793239943.145:390168176): avc:  denied  { bpf } for  comm="binder:1953_2" capability=39  scontext=u:r:gpuservice:s0 tcontext=u:r:gpuservice:s0 tclass=capability2 permissive=0
+4382-<6>[369965.812223][6:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:63-new mask:ff
+4383-<6>[369965.812235][6:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:63-new mask:ff
+4384-<6>[369965.823485][6:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:ff-new mask:fc
+4385-<6>[369965.823495][6:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:ff-new mask:fc
+4386:<6>[369965.843202][6:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:m.hubmobile.app-28393-allowed mask:ff-new mask:fc
+4387-<6>[369965.843212][6:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-28426-allowed mask:ff-new mask:fc
+4388-<6>[369965.843446][6:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ocessService0:0-28456-allowed mask:ff-new mask:fc
+4389-<6>[369965.857572][6:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:63-new mask:ff
+4390-<6>[369965.857587][6:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:63-new mask:ff
+4391-<6>[369965.866563][6:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:ff-new mask:fc
+4392-<6>[369965.866579][6:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:ff-new mask:fc
+4393:<6>[369965.888735][2:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:m.hubmobile.app-28393-allowed mask:ff-new mask:fc
+4394-<6>[369965.888747][2:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-28426-allowed mask:ff-new mask:fc
+4395-<6>[369965.889363][5:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ocessService0:0-28456-allowed mask:ff-new mask:fc
+4396-<6>[369965.889714][5:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:63-new mask:ff
+4397-<6>[369965.889727][5:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:63-new mask:ff
+4398-<6>[369965.909722][5:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:ff-new mask:fc
+4399-<6>[369965.909780][5:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:ff-new mask:fc
+4400:<6>[369965.965066][5:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:m.hubmobile.app-28393-allowed mask:ff-new mask:fc
+4401-<6>[369965.965082][5:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-28426-allowed mask:ff-new mask:fc
+4402-<6>[369965.967457][1:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ocessService0:0-28456-allowed mask:ff-new mask:fc
+4403-<6>[369965.983306][7:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:63-new mask:ff
+4404-<6>[369965.983324][7:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:63-new mask:ff
+4405-<6>[369966.007975][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:ff-new mask:fc
+4406-<6>[369966.007986][4:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:ff-new mask:fc
+4407:<6>[369966.020384][3:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:m.hubmobile.app-28393-allowed mask:ff-new mask:fc
+4408-<6>[369966.020399][3:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-28426-allowed mask:ff-new mask:fc
+4409-<6>[369966.020710][3:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ocessService0:0-28456-allowed mask:ff-new mask:fc
+4410-<6>[369966.034476][3:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:63-new mask:ff
+4411-<6>[369966.034487][3:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:63-new mask:ff
+4412-<6>[369966.052147][2:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:ssioncontroller-4073-allowed mask:ff-new mask:fc
+4413-<6>[369966.052160][2:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-4093-allowed mask:ff-new mask:fc
+4414:<6>[369966.074665][7:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:m.hubmobile.app-28393-allowed mask:ff-new mask:fc
+4415-<6>[369966.074681][7:17361:klog] MZ VendorHooks: set affinity, s:tuning.thread-3969, o:RenderThread-28426-allowed mask:ff-new mask:fc
+
+########## dumpbugreport ##########
+283792-9,h,1,+Chtp
+283793-9,h,83
+283794-9,h,6009
+283795:9,h,559,Epi=1002017:"com.hubmobile.app"
+283796-9,h,56
+283797:9,h,2,Epi=1002017:"com.hubmobile.app"
+283798:9,h,6,-Chtp,Epi=1002017:"com.hubmobile.app"
+283799-9,h,57,+Chtp
+283800-9,h,76
+283801-9,h,27
+283802-9,h,49
+283803-9,h,265
+283804-9,h,14
+283805-9,h,19
+283806-9,h,17
+283807-9,h,616
+283808-9,h,40
+283809-9,h,136
+283810-9,h,9,PCB=328,FRONT=314,BACK=301,FRAME=303
+283811-9,h,61,-Chtp,-Etp=u0a61:"com.android.packageinstaller"
+283812-9,h,0,+Chtp,+Etp=985
+283813-9,h,5916
+--
+284112-9,h,2420,+Chtp,Est=146
+284113-9,h,632
+284114-9,h,25
+284115:9,h,1,Eaa=u0a220:"com.hubmobile.app"
+284116-9,h,1,-Chtp,-Etp=44
+284117:9,h,0,+Etp=u0a220:"com.hubmobile.app"
+284118-9,h,5,+Chtp
+284119-9,h,45
+284120-9,h,1
+284121-9,h,19
+284122-9,h,0
+284123:9,h,141,+Efg=u0a220:"com.hubmobile.app"
+284124:9,h,83,-Chtp,-Etp=u0a220:"com.hubmobile.app"
+284125-9,h,0,+Etp=280
+284126-9,h,1,+Chtp
+284127-9,h,3,+Ehc=u0a220:"download"
+284128:9,h,4,-Chtp,-Efg=u0a220:"com.hubmobile.app"
+284129-9,h,2,-Ehc=u0a220:"download"
+284130-9,h,139,+Chtp
+284131-9,h,0
+284132-9,h,0
+284133-9,h,1651,-Etp=280
+284134:9,h,0,-Chtp,+Etp=u0a220:"com.hubmobile.app"
+284135:9,h,10,+Efg=u0a220:"com.hubmobile.app"
+284136-9,h,12,+Chtp
+284137-9,h,0,+Ehc=u0a220:"download"
+284138:9,h,0,-Chtp,-Efg=u0a220:"com.hubmobile.app"
+284139-9,h,2,-Ehc=u0a220:"download"
+284140:9,h,0,+Efg=u0a220:"com.hubmobile.app"
+284141:9,h,4,-Etp=u0a220:"com.hubmobile.app"
+284142-9,h,0,+Chtp,+Etp=280
+284143-9,h,3,+Ehc=u0a220:"download"
+284144:9,h,0,-Chtp,-Efg=u0a220:"com.hubmobile.app"
+284145-9,h,1,-Ehc=u0a220:"download"
+284146-9,h,449,+Chtp
+284147-9,h,11
+284148:9,h,771,+Efg=u0a220:"com.hubmobile.app"
+284149-9,h,0,-Chtp,-Etp=280
+284150:9,h,0,+Etp=u0a220:"com.hubmobile.app"
+284151-9,h,13,+Chtp
+284152-9,h,0,+Ehc=u0a220:"download"
+284153:9,h,1,-Chtp,-Efg=u0a220:"com.hubmobile.app"
+284154-9,h,1,-Ehc=u0a220:"download"
+284155:9,h,0,+Efg=u0a220:"com.hubmobile.app"
+284156:9,h,4,-Etp=u0a220:"com.hubmobile.app"
+284157-9,h,0,+Chtp,+Etp=280
+284158-9,h,3,+Ehc=u0a220:"download"
+284159:9,h,0,-Chtp,-Efg=u0a220:"com.hubmobile.app"
+284160-9,h,2,-Ehc=u0a220:"download"
+284161:9,h,14,+Efg=u0a220:"com.hubmobile.app"
+284162-9,h,0,-Etp=280
+284163:9,h,0,+Etp=u0a220:"com.hubmobile.app"
+284164-9,h,10,+Chtp
+284165-9,h,0,+Ehc=u0a220:"download"
+284166:9,h,0,-Chtp,-Efg=u0a220:"com.hubmobile.app"
+284167-9,h,2,-Ehc=u0a220:"download"
+284168:9,h,2,+Efg=u0a220:"com.hubmobile.app"
+284169:9,h,2,-Etp=u0a220:"com.hubmobile.app"
+284170-9,h,0,+Chtp,+Etp=280
+284171-9,h,4,+Ehc=u0a220:"download"
+284172:9,h,9,-Chtp,-Efg=u0a220:"com.hubmobile.app"
+284173-9,h,2,-Ehc=u0a220:"download"
+284174-9,h,2,-Etp=280
+284175:9,h,0,+Etp=u0a220:"com.hubmobile.app"
+284176:9,h,1,+Efg=u0a220:"com.hubmobile.app"
+284177-9,h,9,+Chtp
+284178-9,h,0,+Ehc=u0a220:"download"
+284179:9,h,1,-Chtp,-Efg=u0a220:"com.hubmobile.app"
+284180-9,h,1,-Ehc=u0a220:"download"
+284181:9,h,0,+Efg=u0a220:"com.hubmobile.app"
+284182:9,h,3,-Etp=u0a220:"com.hubmobile.app"
+284183-9,h,0,+Chtp,+Etp=280
+284184-9,h,3,+Ehc=u0a220:"download"
+284185:9,h,3,-Chtp,-Efg=u0a220:"com.hubmobile.app"
+284186-9,h,2,-Ehc=u0a220:"download"
+284187:9,h,4,+Efg=u0a220:"com.hubmobile.app"
+284188-9,h,0,-Etp=280
+284189:9,h,0,+Etp=u0a220:"com.hubmobile.app"
+284190-9,h,6,+Chtp
+284191-9,h,2,+Ehc=u0a220:"download"
+284192:9,h,2,-Chtp,-Efg=u0a220:"com.hubmobile.app"
+284193-9,h,0,-Ehc=u0a220:"download"
+284194:9,h,4,+Efg=u0a220:"com.hubmobile.app"
+284195:9,h,3,-Etp=u0a220:"com.hubmobile.app"
+284196-9,h,0,+Chtp,+Etp=280
+284197-9,h,4,+Ehc=u0a220:"download"
+284198:9,h,1,-Chtp,-Efg=u0a220:"com.hubmobile.app"
+284199-9,h,0,-Ehc=u0a220:"download"
+284200:9,h,10,+Efg=u0a220:"com.hubmobile.app"
+284201-9,h,0,-Etp=280
+284202:9,h,0,+Etp=u0a220:"com.hubmobile.app"
+284203-9,h,2,+Chtp
+284204-9,h,6,+Ehc=u0a220:"download"
+284205:9,h,0,-Chtp,-Efg=u0a220:"com.hubmobile.app"
+284206-9,h,0,-Ehc=u0a220:"download"
+284207:9,h,6,+Efg=u0a220:"com.hubmobile.app"
+284208:9,h,3,-Etp=u0a220:"com.hubmobile.app"
+284209-9,h,0,+Chtp,+Etp=280
+284210-9,h,3,+Ehc=u0a220:"download"
+284211:9,h,0,-Chtp,-Efg=u0a220:"com.hubmobile.app"
+284212-9,h,0,-Ehc=u0a220:"download"
+284213:9,h,25,+Efg=u0a220:"com.hubmobile.app"
+284214-9,h,1,-Etp=280
+284215:9,h,0,+Etp=u0a220:"com.hubmobile.app"
+284216-9,h,6,+Chtp
+284217-9,h,12,+Ehc=u0a220:"download"
+284218:9,h,1,-Chtp,-Efg=u0a220:"com.hubmobile.app"
+284219-9,h,2,-Ehc=u0a220:"download"
+284220:9,h,2,+Efg=u0a220:"com.hubmobile.app"
+284221:9,h,4,-Etp=u0a220:"com.hubmobile.app"
+284222-9,h,0,+Chtp,+Etp=280
+284223:9,h,2,-Efg=u0a220:"com.hubmobile.app"
+284224-9,h,2,-Chtp,+Ehc=u0a220:"download"
+284225-9,h,2,-Ehc=u0a220:"download"
+284226:9,h,36,+Efg=u0a220:"com.hubmobile.app"
+284227-9,h,0,-Etp=280
+284228:9,h,0,+Etp=u0a220:"com.hubmobile.app"
+284229-9,h,15,+Chtp
+284230-9,h,0,+Ehc=u0a220:"download"
+284231:9,h,0,-Chtp,-Efg=u0a220:"com.hubmobile.app"
+284232-9,h,2,-Ehc=u0a220:"download"
+284233:9,h,0,+Efg=u0a220:"com.hubmobile.app"
+284234:9,h,3,-Etp=u0a220:"com.hubmobile.app"
+284235-9,h,0,+Chtp,+Etp=280
+284236-9,h,5,+Ehc=u0a220:"download"
+284237:9,h,1,-Chtp,-Efg=u0a220:"com.hubmobile.app"
+284238-9,h,2,-Ehc=u0a220:"download"
+
+########## logcat events ##########
+1851-10-29 00:30:08.737 22934 18083 I snet_event_log: [224869524,-1,-38]
+1852-10-29 05:00:01.671 27355 27355 I snet_event_log: [120484087,-1,]
+1853:10-29 05:13:03.135 30782 30782 I snet_event_log: [individual_permissions_requested,10220,com.hubmobile.app:com.hubmobile.app:;android.permission.POST_NOTIFICATIONS|false|768]
+1854:10-29 05:13:04.414 30782 30782 I snet_event_log: [individual_permissions_requested,10220,com.hubmobile.app:com.hubmobile.app:;android.permission.POST_NOTIFICATIONS|false|769]
+1855-10-29 05:28:55.871  8344  8344 I snet_event_log: [individual_permissions_requested,10222,org.fdroid.fdroid:org.fdroid.fdroid:;android.permission.POST_NOTIFICATIONS|false|768]
+1856-10-29 05:28:55.872  8344  8344 I snet_event_log: [individual_permissions_requested,10222,org.fdroid.fdroid:org.fdroid.fdroid:;android.permission.POST_NOTIFICATIONS|false|768]
+1857-10-29 05:30:29.314  8344  8344 I snet_event_log: [individual_permissions_requested,10222,org.fdroid.fdroid:org.fdroid.fdroid:;android.permission.POST_NOTIFICATIONS|false|769]
+1858-10-29 05:32:39.736  8344  8344 I snet_event_log: [individual_permissions_requested,10222,org.fdroid.fdroid:org.fdroid.fdroid:;android.permission.POST_NOTIFICATIONS|false|769]
+1859-10-29 05:32:44.229  8344  8344 I snet_event_log: [individual_permissions_requested,10222,org.fdroid.fdroid:org.fdroid.fdroid:;android.permission.POST_NOTIFICATIONS|false|769]
+1860-10-29 05:32:54.675  8344  8344 I snet_event_log: [individual_permissions_requested,10222,org.fdroid.fdroid:org.fdroid.fdroid:;android.permission.POST_NOTIFICATIONS|false|769]
+1861-10-29 05:33:18.086  8344  8344 I snet_event_log: [individual_permissions_requested,10222,org.fdroid.fdroid:org.fdroid.fdroid:;android.permission.POST_NOTIFICATIONS|false|769]
+1862-10-29 05:33:19.872  8344  8344 I snet_event_log: [individual_permissions_requested,10222,org.fdroid.fdroid:org.fdroid.fdroid:;android.permission.POST_NOTIFICATIONS|false|769]
+--
+1865-10-29 05:35:18.507 19024 19024 I snet_event_log: [120484087,-1,]
+1866-10-29 05:35:20.683 19024 19024 I snet_event_log: [120484087,-1,]
+1867:10-29 05:35:24.261 19194 19194 I snet_event_log: [individual_permissions_requested,10220,com.hubmobile.app:com.hubmobile.app:;android.permission.POST_NOTIFICATIONS|false|768]
+1868:10-29 05:35:25.218 19194 19194 I snet_event_log: [individual_permissions_requested,10220,com.hubmobile.app:com.hubmobile.app:;android.permission.POST_NOTIFICATIONS|false|769]
+1869-10-29 05:35:38.652 19194 19194 I snet_event_log: [individual_permissions_requested,10221,com.gh.dl:com.gh.dl:;android.permission.POST_NOTIFICATIONS|false|768]
+1870-10-29 05:35:59.107 19194 19194 I snet_event_log: [individual_permissions_requested,10222,org.fdroid.fdroid:org.fdroid.fdroid:;android.permission.POST_NOTIFICATIONS|false|769]
+1871:10-29 05:37:26.439 19194 19194 I snet_event_log: [individual_permissions_requested,10223,com.hubmobile.app:com.hubmobile.app:;android.permission.POST_NOTIFICATIONS|false|768]
+1872:10-29 05:37:27.513 19194 19194 I snet_event_log: [individual_permissions_requested,10223,com.hubmobile.app:com.hubmobile.app:;android.permission.POST_NOTIFICATIONS|false|769]
+1873-10-29 05:37:40.770 21646 21646 I snet_event_log: [120484087,-1,]
+1874-10-29 05:49:19.724 21724 21724 I snet_event_log: [individual_permissions_requested,10222,org.fdroid.fdroid:org.fdroid.fdroid:;android.permission.POST_NOTIFICATIONS|false|769]
+1875-10-29 05:50:27.894 21724 21724 I snet_event_log: [individual_permissions_requested,10222,org.fdroid.fdroid:org.fdroid.fdroid:;android.permission.POST_NOTIFICATIONS|false|769]
+1876-10-29 05:50:40.636 21724 21724 I snet_event_log: [individual_permissions_requested,10222,org.fdroid.fdroid:org.fdroid.fdroid:;android.permission.POST_NOTIFICATIONS|false|769]
+1877-10-29 05:50:44.288 21724 21724 I snet_event_log: [individual_permissions_requested,10222,org.fdroid.fdroid:org.fdroid.fdroid:;android.permission.POST_NOTIFICATIONS|false|769]
+1878-10-29 05:51:58.954 21724 21724 I snet_event_log: [individual_permissions_requested,10222,org.fdroid.fdroid:org.fdroid.fdroid:;android.permission.POST_NOTIFICATIONS|false|769]
+1879-10-29 05:52:54.094 21724 21724 I snet_event_log: [individual_permissions_requested,10222,org.fdroid.fdroid:org.fdroid.fdroid:;android.permission.POST_NOTIFICATIONS|false|769]
+1880-10-29 05:53:22.637 21724 21724 I snet_event_log: [individual_permissions_requested,10222,org.fdroid.fdroid:org.fdroid.fdroid:;android.permission.POST_NOTIFICATIONS|false|769]
+--
+1900-10-29 08:33:14.204 15553 28993 I snet_event_log: [224869524,-1,-38]
+1901-10-29 09:21:25.558  9676  9676 I snet_event_log: [120484087,-1,]
+1902:10-29 09:27:53.925 27949 27949 I snet_event_log: [individual_permissions_requested,10466,com.hubmobile.app:com.hubmobile.app:;android.permission.POST_NOTIFICATIONS|false|768]
+1903:10-29 09:27:54.702 27949 27949 I snet_event_log: [individual_permissions_requested,10466,com.hubmobile.app:com.hubmobile.app:;android.permission.POST_NOTIFICATIONS|false|769]
+1904-10-29 09:34:32.469 22032 29564 I snet_event_log: [224869524,-1,-38]
+1905-10-29 09:58:37.229 27100 27100 I snet_event_log: [120484087,-1,]
+1906-10-29 09:58:39.288 27100 27100 I snet_event_log: [120484087,-1,]
+1907-10-29 09:58:42.831 27100 27100 I snet_event_log: [120484087,-1,]
+1908-10-29 10:01:57.488 27100 27100 I snet_event_log: [120484087,-1,]
+1909-10-29 10:01:58.209 27100 27100 I snet_event_log: [120484087,-1,]
+1910-10-29 10:05:31.276 27100 27100 I snet_event_log: [120484087,-1,]
+1911-10-29 10:05:32.662 27100 27100 I snet_event_log: [120484087,-1,]
