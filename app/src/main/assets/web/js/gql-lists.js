@@ -87,6 +87,28 @@
 
   function invalidate() { cache = null; }
 
+  /* ---------- 自动同步 ----------
+     同步是双向的，所以「官网那头改了」这边也得跟着变。以前只在第一次
+     进收藏夹时拉一次（用 flag 卡住），之后官网再怎么改都看不见 ——
+     那不叫同步，叫一次性导入。
+
+     现在改成节流重拉：进收藏夹、从后台切回来、写完一次，都会拉。
+     20 秒内不重复拉，免得切个 tab 就打一串 GraphQL（写操作要预留配额）。 */
+  var lastSyncAt = 0;
+  var SYNC_MIN_GAP = 20000;
+
+  /**
+   * 需要就拉一次。
+   * @param {boolean} force true = 无视节流立刻拉（切回前台、写完之后用）
+   * @returns {Promise<Array|null>} 拉了就返回列表，跳过了返回 null
+   */
+  function syncIfStale(force) {
+    var now = Date.now();
+    if (!force && now - lastSyncAt < SYNC_MIN_GAP) return Promise.resolve(null);
+    lastSyncAt = now;
+    return fetchAll(true);
+  }
+
   /* ---------- 读 ---------- */
 
   /**
@@ -335,6 +357,7 @@
     setRepoLists: setRepoLists,
     toggleRepoInList: toggleRepoInList,
     listsOfRepo: listsOfRepo,
+    syncIfStale: syncIfStale,
     invalidate: invalidate
   };
 })();
