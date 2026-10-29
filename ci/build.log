@@ -27,8 +27,8 @@ Warning: SDK processing. This version only understands SDK XML versions up to 3 
 > Task :app:checkReleaseDuplicateClasses
 > Task :app:generateReleaseBuildConfig
 > Task :app:javaPreCompileRelease
-> Task :app:checkReleaseAarMetadata
 > Task :app:generateReleaseResValues
+> Task :app:checkReleaseAarMetadata
 > Task :app:mapReleaseSourceSetPaths
 > Task :app:generateReleaseResources
 > Task :app:packageReleaseResources
@@ -47,10 +47,10 @@ Warning: SDK processing. This version only understands SDK XML versions up to 3 
 > Task :app:mergeReleaseJavaResource
 > Task :app:mergeReleaseAssets
 > Task :app:processApplicationManifestReleaseForBundle
-> Task :app:collectReleaseDependencies
-> Task :app:bundleReleaseResources
 > Task :app:compressReleaseAssets
+> Task :app:collectReleaseDependencies
 > Task :app:sdkReleaseDependencyData
+> Task :app:bundleReleaseResources
 > Task :app:validateSigningRelease
 > Task :app:writeReleaseAppMetadata
 > Task :app:writeReleaseSigningConfigVersions
@@ -58,12 +58,15 @@ Warning: SDK processing. This version only understands SDK XML versions up to 3 
 > Task :app:processReleaseResources
 
 > Task :app:compileReleaseJavaWithJavac
-/home/runner/work/1/1/src/app/src/main/java/com/hubmobile/app/UploadService.java:271: error: local variables referenced from a lambda expression must be final or effectively final
-                            JSONObject hit = ledger.optJSONObject(full);
-                                             ^
+/home/runner/work/1/1/src/app/src/main/java/com/hubmobile/app/UploadLedger.java:86: error: local variables referenced from a lambda expression must be final or effectively final
+                paths.sort((a, b) -> Long.compare(out.optJSONObject(b).optLong("t", 0L),
+                                                  ^
+/home/runner/work/1/1/src/app/src/main/java/com/hubmobile/app/UploadLedger.java:87: error: local variables referenced from a lambda expression must be final or effectively final
+                        out.optJSONObject(a).optLong("t", 0L)));
+                        ^
 Note: Some input files use or override a deprecated API.
 Note: Recompile with -Xlint:deprecation for details.
-1 error
+2 errors
 
 > Task :app:compileReleaseJavaWithJavac FAILED
 
@@ -266,5 +269,5 @@ Caused by: org.gradle.api.internal.tasks.compile.CompilationFailedException: Com
 	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
 
 
-BUILD FAILED in 47s
+BUILD FAILED in 33s
 30 actionable tasks: 29 executed, 1 from cache
