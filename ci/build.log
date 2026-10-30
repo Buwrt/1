@@ -14,7 +14,7 @@ To honour the JVM settings for this build a single-use Daemon process will be fo
 Daemon will be stopped at the end of the build 
 
 > Configure project :app
-[版本锁定] versionName=1.2.17 versionCode=1002017（已与 version.lock 核对一致）
+[版本锁定] versionName=1.2.18 versionCode=1002018（已与 version.lock 核对一致）
 Warning: SDK processing. This version only understands SDK XML versions up to 3 but an SDK XML file of version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were released at different times.
 
 > Task :app:preBuild UP-TO-DATE
@@ -41,25 +41,25 @@ Warning: SDK processing. This version only understands SDK XML versions up to 3 
 > Task :app:extractProguardFiles
 > Task :app:mergeReleaseArtProfile
 > Task :app:processReleaseJavaRes NO-SOURCE
-> Task :app:processReleaseManifestForPackage
 > Task :app:mergeReleaseShaders FROM-CACHE
 > Task :app:compileReleaseShaders NO-SOURCE
 > Task :app:generateReleaseAssets UP-TO-DATE
 > Task :app:mergeReleaseJavaResource
-> Task :app:processReleaseResources
 > Task :app:mergeReleaseAssets
+> Task :app:processReleaseManifestForPackage
+> Task :app:processApplicationManifestReleaseForBundle
+> Task :app:compressReleaseAssets
+> Task :app:collectReleaseDependencies
+> Task :app:processReleaseResources
+> Task :app:sdkReleaseDependencyData
+> Task :app:bundleReleaseResources
 
 > Task :app:compileReleaseJavaWithJavac
 Note: Some input files use or override a deprecated API.
 Note: Recompile with -Xlint:deprecation for details.
 
 > Task :app:mergeReleaseGeneratedProguardFiles
-> Task :app:processApplicationManifestReleaseForBundle
-> Task :app:collectReleaseDependencies
-> Task :app:compressReleaseAssets
-> Task :app:sdkReleaseDependencyData
 > Task :app:validateSigningRelease
-> Task :app:bundleReleaseResources
 > Task :app:writeReleaseAppMetadata
 > Task :app:writeReleaseSigningConfigVersions
 > Task :app:minifyReleaseWithR8
@@ -70,5 +70,5 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :app:createReleaseApkListingFileRedirect
 > Task :app:assembleRelease
 
-BUILD SUCCESSFUL in 52s
+BUILD SUCCESSFUL in 56s
 37 actionable tasks: 36 executed, 1 from cache
