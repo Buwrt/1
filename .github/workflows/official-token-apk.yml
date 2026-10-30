@@ -1,0 +1,246 @@
+# 打包「内置令牌版」APK（免登录，打开即可用）
+#
+# 和 official-public-apk.yml 的区别只有一件事：
+# 在生成源码指纹**之前**把令牌写进 embedded-token.js。
+# 顺序不能反 —— 改了 js 之后 assets.sha 会变，先生成指纹再改文件，
+# 防护链第 3 环校验的前端哈希就对不上，装上会被自己拦下。
+#
+# 令牌来源二选一：
+#   · workflow_dispatch 的 token 输入（优先，可精确指定）
+#   · 仓库 Secret EMBEDDED_TOKEN（留空时兜底）
+# 用 secret 兜底是为了方便重跑：不用每次都手填一遍。
+#
+# 全程不打印令牌明文，只打印它属于哪个账号（构建日志里核对用）。
+
+name: Official Token APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      token:
+        description: '内置令牌（留空则用 Secret EMBEDDED_TOKEN）'
+        required: false
+        default: ''
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout 补丁仓库
+        uses: actions/checkout@v4
+        with:
+          path: patchrepo
+
+      - name: 取 githup 源码（本仓库源码包）
+        run: |
+          set -e
+          mkdir -p src
+          unzip -q patchrepo/public-source.zip -d src
+          if [ -d src/githup ]; then
+            mv src/githup/.[!.]* src/ 2>/dev/null || true
+            mv src/githup/* src/ 2>/dev/null || true
+            rmdir src/githup 2>/dev/null || true
+          fi
+          cd src
+          echo "--- version.lock ---"
+          grep -E "^version=|^versionCode=" version.lock
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 还原官方签名密钥
+        run: |
+          set -e
+          mkdir -p src/keystore
+          echo "$KEYSTORE_B64" | base64 -d > src/keystore/githup-release.jks
+          printf '%s' "$KEYSTORE_PASS" > src/keystore/pass.txt
+          keytool -list -keystore src/keystore/githup-release.jks \
+                  -storepass "$KEYSTORE_PASS" -alias "$KEY_ALIAS" | head -3
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+
+      - name: 注入内置令牌
+        run: |
+          set -e
+          cd src
+          TK="${{ github.event.inputs.token }}"
+          if [ -z "$TK" ]; then TK="$SECRET_TK"; fi
+          if [ -z "$TK" ]; then
+            echo "::error::没有令牌可用（input 与 Secret 都为空）"
+            exit 1
+          fi
+          F=app/src/main/assets/web/js/embedded-token.js
+          printf "window.EMBEDDED_TOKEN = '%s';\n" "$TK" > "$F"
+          echo "已写入 $F（长度 ${#TK}）"
+          python3 - <<'PYEOF'
+          import json, os, urllib.request
+          tk = open("app/src/main/assets/web/js/embedded-token.js", encoding="utf-8").read()
+          tk = tk.split("'")[1]
+          rq = urllib.request.Request("https://api.github.com/user", headers={
+              "Authorization": "Bearer " + tk, "User-Agent": "ci",
+              "Accept": "application/vnd.github+json"})
+          try:
+              with urllib.request.urlopen(rq, timeout=30) as z:
+                  d = json.loads(z.read().decode())
+              print("内置令牌账号:", d.get("login"), "| id:", d.get("id"))
+          except Exception as e:
+              print("::warning::令牌校验未通过:", e)
+          PYEOF
+        env:
+          SECRET_TK: ${{ secrets.EMBEDDED_TOKEN }}
+
+      - name: 生成源码指纹与防护链常量（顺序不能反）
+        run: |
+          set -e
+          cd src
+          python3 tools/gen-srcfingerprint.py .
+          python3 tools/gen-guard.py .
+          echo "--- assets.sha 条目数 ---"
+          wc -l app/src/main/assets/guard/assets.sha
+
+      - name: Build Release APK
+        id: b
+        continue-on-error: true
+        run: |
+          cd src
+          chmod +x ./gradlew
+          set +e
+          ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log
+          code=${PIPESTATUS[0]}
+          set -e
+          echo "exit=$code" >> "$GITHUB_OUTPUT"
+          echo "gradle exit=$code"
+
+      - name: Assert APK produced
+        id: assert
+        run: |
+          set -e
+          if [ "${{ steps.b.outputs.exit }}" != "0" ]; then
+            echo "::error::构建失败（gradlew 退出码 ${{ steps.b.outputs.exit }}）"
+            exit 1
+          fi
+          APK=$(ls src/app/build/outputs/apk/release/*.apk 2>/dev/null | head -1)
+          if [ -z "$APK" ]; then
+            echo "::error::构建报成功，但 release 目录下没有 APK"
+            exit 1
+          fi
+          SZ=$(stat -c%s "$APK")
+          echo "APK: $APK（$SZ 字节）"
+          if [ "$SZ" -lt 300000 ]; then
+            echo "::error::APK 大小异常（$SZ 字节）"
+            exit 1
+          fi
+
+      - name: 重命名并清理密钥
+        run: |
+          set -e
+          VER=$(grep -E '^version=' src/version.lock | cut -d= -f2 | tr -d '\r')
+          mkdir -p outtoken
+          cp src/app/build/outputs/apk/release/app-release.apk "outtoken/githup-v$VER.apk"
+          sha256sum "outtoken/githup-v$VER.apk" | awk '{print $1}' > "outtoken/githup-v$VER.apk.sha256"
+          rm -rf src/keystore
+          ls -la outtoken/
+
+      - name: 证书指纹核对
+        run: |
+          set -e
+          mkdir -p /tmp/ks
+          echo "$KEYSTORE_B64" | base64 -d > /tmp/ks/k.jks
+          keytool -exportcert -keystore /tmp/ks/k.jks \
+                  -storepass "$KEYSTORE_PASS" -alias "$KEY_ALIAS" -rfc \
+            | openssl x509 -noout -fingerprint -sha256
+          rm -rf /tmp/ks
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+
+      - name: 提交 APK 到仓库
+        if: steps.b.outputs.exit == '0'
+        run: |
+          set -e
+          python3 - <<'PYEOF'
+          import base64, glob, json, os, urllib.parse, urllib.request
+          TOKEN = os.environ["GH_TOKEN"]
+          OWNER, REPO, BRANCH = "Buwrt", "1", "main"
+          API = "https://api.github.com"
+          def put(path, data, msg):
+              body = {"message": msg, "branch": BRANCH,
+                      "content": base64.b64encode(data).decode()}
+              try:
+                  r = urllib.request.Request(
+                      f"{API}/repos/{OWNER}/{REPO}/contents/{urllib.parse.quote(path)}?ref={BRANCH}",
+                      headers={"Authorization": "Bearer " + TOKEN,
+                               "Accept": "application/vnd.github+json", "User-Agent": "ci"})
+                  with urllib.request.urlopen(r, timeout=60) as z:
+                      sha = json.loads(z.read().decode()).get("sha")
+                  if sha: body["sha"] = sha
+              except Exception: pass
+              req = urllib.request.Request(
+                  f"{API}/repos/{OWNER}/{REPO}/contents/{urllib.parse.quote(path)}",
+                  data=json.dumps(body).encode(), method="PUT",
+                  headers={"Authorization": "Bearer " + TOKEN,
+                           "Accept": "application/vnd.github+json",
+                           "Content-Type": "application/json", "User-Agent": "ci"})
+              with urllib.request.urlopen(req, timeout=240) as z:
+                  print("uploaded", path, len(data), "bytes")
+          for p in sorted(glob.glob("outtoken/*")):
+              put(p, open(p, "rb").read(), "ci: 内置令牌版 APK " + os.path.basename(p))
+          PYEOF
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: githup-token-apk
+          path: outtoken/*
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: 提交构建日志到仓库
+        if: always()
+        run: |
+          set -e
+          python3 - <<'PYEOF'
+          import base64, json, os, urllib.parse, urllib.request
+          TOKEN = os.environ["GH_TOKEN"]
+          OWNER, REPO, BRANCH = "Buwrt", "1", "main"
+          API = "https://api.github.com"
+          try:
+              raw = open("src/build.log", "rb").read()
+          except Exception as e:
+              print("no build.log:", e); raise SystemExit(0)
+          data = b"\n".join(raw.split(b"\n")[-400:])
+          path = "ci/build-token.log"
+          body = {"message": "ci: 内置令牌版构建日志", "branch": BRANCH,
+                  "content": base64.b64encode(data).decode()}
+          try:
+              r = urllib.request.Request(
+                  f"{API}/repos/{OWNER}/{REPO}/contents/{urllib.parse.quote(path)}?ref={BRANCH}",
+                  headers={"Authorization": "Bearer " + TOKEN,
+                           "Accept": "application/vnd.github+json", "User-Agent": "ci"})
+              with urllib.request.urlopen(r, timeout=60) as z:
+                  sha = json.loads(z.read().decode()).get("sha")
+              if sha: body["sha"] = sha
+          except Exception: pass
+          req = urllib.request.Request(
+              f"{API}/repos/{OWNER}/{REPO}/contents/{urllib.parse.quote(path)}",
+              data=json.dumps(body).encode(), method="PUT",
+              headers={"Authorization": "Bearer " + TOKEN,
+                       "Accept": "application/vnd.github+json",
+                       "Content-Type": "application/json", "User-Agent": "ci"})
+          with urllib.request.urlopen(req, timeout=240) as z:
+              print("uploaded build.log", len(data))
+          PYEOF
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
