@@ -18,7 +18,7 @@
   if (!(NB && typeof NB.downloadStatus === 'function')) {
     /* 没有原生层（浏览器 Demo）就不注册这个页面，点右上角图标进来给个说明 */
     P.downloads = {
-      title: '下载管理',
+      title: window.I18n.t('下载管理'),
       render: function (ctx, host) {
         host.innerHTML = '<div class="dl-empty">' + window.icon('download', 40) +
           '<p>当前环境没有原生下载能力</p></div>';
@@ -172,7 +172,7 @@
     var bits = [];
     if (r.bytes > 0) bits.push(U.bytes(r.bytes));
     bits.push(fmtTime(r.time));
-    bits.push(ok ? '已完成' : '失败');
+    bits.push(ok ? window.I18n.t('已完成') : window.I18n.t('失败'));
     var name = U.esc(r.name || '');
     /* dlId 是 DownloadManager 的下载 id。原生层「删除」要靠它定位真实文件 ——
      * 光有文件名的话，Android 10+ 分区存储下拼出来的路径删不到东西。 */
@@ -343,7 +343,7 @@
   /* ---------------- 页面 ---------------- */
 
   P.downloads = {
-    title: '下载管理',
+    title: window.I18n.t('下载管理'),
     render: function (ctx, host) {
       host.innerHTML =
         '<div class="dl-page" id="dl-page">' +
