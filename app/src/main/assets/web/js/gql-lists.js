@@ -118,7 +118,7 @@
   function fetchAll(force) {
     if (cache && !force) return Promise.resolve(cache);
     if (!window.API || typeof window.API.graphql !== 'function') {
-      return Promise.reject(new Error('当前版本不支持 GraphQL'));
+      return Promise.reject(new Error(window.I18n.t('当前版本不支持 GraphQL')));
     }
     return window.API.graphql(Q_LISTS, { n: 100 }).then(function (d) {
       var nodes = (d && d.viewer && d.viewer.lists && d.viewer.lists.nodes) || [];
@@ -153,11 +153,11 @@
   /** 仓库的 GraphQL Node ID（写操作必需，REST 的整数 ID 不行） */
   function repoNodeId(fullName) {
     var parts = String(fullName || '').split('/');
-    if (parts.length !== 2) return Promise.reject(new Error('仓库名不合法'));
+    if (parts.length !== 2) return Promise.reject(new Error(window.I18n.t('仓库名不合法')));
     return window.API.graphql(Q_REPO_ID, { o: parts[0], n: parts[1] })
       .then(function (d) {
         var id = d && d.repository && d.repository.id;
-        if (!id) throw new Error('取不到仓库 ID');
+        if (!id) throw new Error(window.I18n.t('取不到仓库 ID'));
         return id;
       });
   }
@@ -245,7 +245,7 @@
    */
   function probe() {
     if (!window.API || typeof window.API.graphql !== 'function') {
-      return Promise.resolve({ ok: false, reason: '当前版本不支持官网同步', needUserScope: false });
+      return Promise.resolve({ ok: false, reason: window.I18n.t('当前版本不支持官网同步'), needUserScope: false });
     }
     return fetchAll(true).then(function (lists) {
       return { ok: true, count: (lists || []).length, reason: '', needUserScope: false };
@@ -255,8 +255,8 @@
       return {
         ok: false,
         needUserScope: need,
-        reason: need ? '令牌缺少 user 权限'
-          : (/不支持/.test(msg) ? msg : (msg || '官网接口异常'))
+        reason: need ? window.I18n.t('令牌缺少 user 权限')
+          : (/不支持/.test(msg) ? msg : (msg || window.I18n.t('官网接口异常')))
       };
     });
   }
@@ -303,7 +303,7 @@
         '<p class="muted tiny" style="margin:6px 10px 0;line-height:1.6">' +
           '列表跟 GitHub 账号走：官网 <b>?tab=stars</b> 里建的 Lists，' +
           '在这里直接可见；在这里新建、改名、加删仓库，也同步回官网。' +
-          '换手机登录同一个号，列表还在。' +
+          window.I18n.t('换手机登录同一个号，列表还在。') +
         '</p>' +
         '<p class="muted tiny" style="margin:6px 10px 0;line-height:1.6">' +
           '这条路走的是 GitHub 的 GraphQL（Lists 没有 REST 接口），' +
@@ -317,7 +317,7 @@
     }
 
     UI.sheet({
-      title: '列表同步',
+      title: window.I18n.t('列表同步'),
       body: bodyHtml(),
       onMount: function (bodyEl, close) {
         function bind() {
@@ -326,7 +326,7 @@
             UI.loading(true);
             fetchAll(true).then(function (lists) {
               UI.loading(false);
-              UI.toast('已同步 ' + (lists || []).length + ' 个列表');
+              UI.toast(window.I18n.t('已同步 ') + (lists || []).length + window.I18n.t(' 个列表'));
               if (onDone) onDone();
             }).catch(function (e) {
               UI.loading(false);
@@ -334,7 +334,7 @@
               if (e && e.needUserScope) {
                 UI.toast('令牌缺少 user 权限，请重新登录并勾选它');
               } else {
-                UI.toast('同步失败：' + (msg || '官网接口异常'));
+                UI.toast(window.I18n.t('同步失败：') + (msg || window.I18n.t('官网接口异常')));
               }
             });
           };
