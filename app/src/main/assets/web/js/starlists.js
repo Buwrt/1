@@ -110,9 +110,9 @@
     if (e && e.needUserScope) {
       UI.toast('令牌缺少 user 权限，' + what + '失败。请重新登录并勾选它');
     } else if (/不支持 GraphQL/.test(msg)) {
-      UI.toast('当前版本不支持官网同步');
+      UI.toast(window.I18n.t('当前版本不支持官网同步'));
     } else {
-      UI.toast(what + '失败：' + (msg || '官网接口异常'));
+      UI.toast(what + '失败：' + (msg || window.I18n.t('官网接口异常')));
     }
   }
 
@@ -292,7 +292,7 @@
           if (t) { t.name = name; saveMirror(login || me(), m); }
           return t;
         }).catch(function (e) {
-          failTip(e, '重命名');
+          failTip(e, window.I18n.t('重命名'));
           return null;
         });
       }
@@ -315,7 +315,7 @@
           saveMirror(login || me(), m);
           return true;
         }).catch(function (e) {
-          failTip(e, '删除列表');
+          failTip(e, window.I18n.t('删除列表'));
           return false;
         });
       }
@@ -355,7 +355,7 @@
               delete l2.repos[repo.full_name];
               saveMirror(login || me(), m2);
             }
-            failTip(e, '加入列表');
+            failTip(e, window.I18n.t('加入列表'));
           });
         return true;
       }
@@ -442,7 +442,7 @@
         window.icon('pencil', 15) +
         '<input id="sl-name" placeholder="列表名称，比如：工具 / 追更 / 以后再看" maxlength="40"></div></div>' +
         (isNew ? '' : '<p class="muted tiny" style="text-align:center;margin:6px 0 0">重命名不影响列表里已加入的仓库</p>'),
-      foot: '<button class="btn primary block" id="sl-ok">' + (isNew ? '创建' : '保存') + '</button>',
+      foot: '<button class="btn primary block" id="sl-ok">' + (isNew ? window.I18n.t('创建') : window.I18n.t('保存')) + '</button>',
       onMount: function (body, close) {
         var input = document.getElementById('sl-name');
         if (isNew) setTimeout(function () { try { input.focus(); } catch (e) {} }, 120);
@@ -459,7 +459,7 @@
               return;
             }
             close();
-            UI.toast(isNew ? '列表「' + v.name + '」已创建' : '已重命名');
+            UI.toast(isNew ? '列表「' + v.name + '」已创建' : window.I18n.t('已重命名'));
             if (onDone) onDone(v);
           });
         };
