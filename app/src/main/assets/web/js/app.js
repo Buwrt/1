@@ -70,10 +70,10 @@
       var title = !unknown ? window.I18n.t('当前账号无法使用本应用')
         : (bad ? window.I18n.t('令牌无效或已过期') : window.I18n.t('需要联网完成一次验证'));
       var desc = !unknown
-        ? '该 GitHub 账号已被开发者限制访问。<br>如有疑问请联系开发者。'
+        ? window.I18n.t("该 GitHub 账号已被开发者限制访问。<br>如有疑问请联系开发者。")
         : (bad
-          ? '本机保存的令牌已失效，无法确认账号。<br>请退出后重新登录。'
-          : '本机无法确认当前账号状态。<br>若开着 VPN 或代理，先关掉再试；<br>联网验证一次之后，断网也能正常使用。');
+          ? window.I18n.t("本机保存的令牌已失效，无法确认账号。<br>请退出后重新登录。")
+          : window.I18n.t("本机无法确认当前账号状态。<br>若开着 VPN 或代理，先关掉再试；<br>联网验证一次之后，断网也能正常使用。"));
       host.innerHTML =
         '<div class="page"><div class="card" style="padding:28px 20px;text-align:center;margin-top:48px">' +
         '<div style="color:var(--danger);margin-bottom:14px">' + window.icon('x-circle-fill', 40) + '</div>' +
@@ -349,12 +349,12 @@
         icon: 'pulse',
         body:
           '<div class="ch-tip">面板开着就一直在测，下面的速度是此刻的实测值，' +
-          '每轮都会刷新。点「自动选择」用当前最快的；也可以自己指定一条。' +
-          '「不可用」只是这一轮没连上，不代表这条通道坏了 —— 下一轮可能就活了。' +
-          '标「待观察」的是 CI 测不出速度的，多半是海外 IP 被拒，' +
+          window.I18n.t("每轮都会刷新。点「自动选择」用当前最快的；也可以自己指定一条。") +
+          window.I18n.t("「不可用」只是这一轮没连上，不代表这条通道坏了 —— 下一轮可能就活了。") +
+          window.I18n.t("标「待观察」的是 CI 测不出速度的，多半是海外 IP 被拒，") +
           window.I18n.t('你这边未必 —— 测一下就知道。') +
-          '标「仅仓库文件」的只代理仓库里的文件，下载 Release 附件时会' +
-          '自动跳过它，改用别的通道。</div>' +
+          window.I18n.t("标「仅仓库文件」的只代理仓库里的文件，下载 Release 附件时会") +
+          window.I18n.t("自动跳过它，改用别的通道。</div>") +
           '<div class="list-row ch-row" id="ch-re">' +
           '<span class="ch-ico">' + window.icon('sync', 15) + '</span>' +
           '<span class="row-main"><span class="row-title">重新测速</span>' +
@@ -410,7 +410,7 @@
                 '<span class="row-desc">' + (stale ? window.I18n.t('上次实测，正在刷新…')
                   : (r.state === 'ok' && r.bps > 0 ? (window.I18n.t('实测 ') + fmtBps(r.bps))
                     : (r.scope && r.state === 'fail'
-                      ? '这条只代理仓库里的文件，Release 附件用不上'
+                      ? window.I18n.t("这条只代理仓库里的文件，Release 附件用不上")
                       : v))) + '</span>' +
                 '</span>' +
                 '<span class="row-acts ch-speed' +
