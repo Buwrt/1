@@ -1,0 +1,28 @@
+name: Tmp Probe YunX Mirror
+on:
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Sanity
+        run: curl -sS -o /dev/null -w "直连 HTTP %{http_code}\n" --max-time 20 -A githup -r 0-65535 "https://github.com/Buwrt/githup/releases/download/v1.2.15/githup-v1.2.15.apk" || echo "直连失败"
+      - name: Probe
+        run: python3 tools/_probe_yunx_tmp.py 2>&1 | tee /tmp/y.txt
+      - name: Commit results
+        run: |
+          mkdir -p ci
+          cp /tmp/y.txt ci/yunx-probe.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f ci/yunx-probe.txt
+          if git diff --cached --quiet; then echo "无变化"; else git commit -m "ci: YunX 镜像实测"; git push; fi
+      - name: Show
+        run: cat /tmp/y.txt

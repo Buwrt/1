@@ -1,0 +1,318 @@
+# 构建 githup 1.2.17 并替换 Release 里的安装包。
+#
+# 跟已有工作流的关系：
+#   build-release-apk.yml / official-release.yml —— 日常构建与官方发布
+#   本文件 —— 一条龙：构建 → 把 APK 提交进 apk/ → 更新 Release v1.2.17 的附件
+#
+# 用法：Actions 页面手动点「Run workflow」，或者打 v1.2.17 这个 tag。
+#
+# 两个库都能跑：
+#   githup-release（私库）—— keystore/ 在仓库里，直接用；
+#   githup（公开库）      —— keystore/ 被 .gitignore 排除，
+#                            从 secrets.KEYSTORE_BASE64 / KEYSTORE_PASSWORD 还原。
+#   两边逻辑一致：有 Secret 就用 Secret，没有就用仓库里的。
+name: 构建并发布安装包
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v1.2.17']
+
+permissions:
+  contents: write
+
+env:
+  OWNER: Buwrt
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 还原签名密钥
+        env:
+          KS_B64: ${{ secrets.KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          set -e
+          mkdir -p keystore
+          if [ -n "$KS_B64" ] && [ -n "$KS_PASS" ]; then
+            echo "$KS_B64" | base64 -d > keystore/githup-release.jks
+            printf '%s' "$KS_PASS" > keystore/pass.txt
+            echo "使用 Secrets 里的官方签名密钥"
+          elif [ -f keystore/githup-release.jks ] && [ -f keystore/pass.txt ]; then
+            echo "使用仓库内的签名密钥（私库路径）"
+          else
+            echo "::error::既没有 KEYSTORE_BASE64/KEYSTORE_PASSWORD，仓库里也没有 keystore/。"
+            echo "::error::没有官方密钥就签不出能覆盖安装的包，这里直接停下，不产出废包。"
+            exit 1
+          fi
+          keytool -list -keystore keystore/githup-release.jks \
+            -storepass "$(cat keystore/pass.txt)" | head -8
+
+      # 防护链常量必须重生成：改过前端文件（或版本变动）后，
+      # assets.sha 与包内版本对不上，App 一启动就会被自己的校验拦下。
+      - name: 重生成防护链常量
+        run: |
+          set -e
+          python3 tools/gen-guard.py .
+
+      - name: 同步证书指纹到 SignCheck
+        run: |
+          set -e
+          python3 - <<'PYEOF'
+          import re
+          GUARD = 'app/src/main/java/com/hubmobile/app/GuardKeys.java'
+          SIGN = 'app/src/main/java/com/hubmobile/app/SignCheck.java'
+          g = open(GUARD, encoding='utf-8').read()
+          m = re.search(r'CERT_SHA256\s*=\s*"([0-9a-f]{64})"', g)
+          if not m:
+              raise SystemExit('GuardKeys 里取不到 CERT_SHA256')
+          fp = m.group(1)
+          s = open(SIGN, encoding='utf-8').read()
+          new = re.sub(r'[0-9a-f]{64}', fp, s)
+          open(SIGN, 'w', encoding='utf-8').write(new)
+          print('证书指纹已同步:', fp)
+          PYEOF
+
+      - name: 构建 Release APK
+        run: |
+          set -o pipefail
+          chmod +x ./gradlew || true
+          ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log
+
+      - name: 重命名为对外发布用的文件名
+        run: |
+          set -e
+          VER=$(grep -E '^version=' version.lock | cut -d= -f2 | tr -d '\r')
+          echo "version.lock 版本: $VER"
+          mkdir -p apk
+          SRC=app/build/outputs/apk/release/app-release.apk
+          if [ ! -f "$SRC" ]; then
+            echo "找不到构建产物"; ls -la app/build/outputs/apk/release/ || true; exit 1
+          fi
+          # 名字必须跟 App 内更新检测拼的直链一致，对不上就 404
+          cp "$SRC" "apk/githup-v$VER.apk"
+          sha256sum "apk/githup-v$VER.apk" | awk '{print $1}' > "apk/githup-v$VER.apk.sha256"
+          echo "VER=$VER" >> "$GITHUB_ENV"
+          ls -la apk/
+
+      - name: 把 APK 提交进仓库 apk/ 目录
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.event.repository.name }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PYEOF'
+          import base64, glob, hashlib, json, os, urllib.parse, urllib.request
+
+          TOKEN = os.environ["GH_TOKEN"]
+          OWNER = os.environ["OWNER"]
+          REPO = os.environ["REPO"]
+          BRANCH = "main"
+          API = "https://api.github.com"
+
+          def api_put(path, data, msg):
+              body = {"message": msg, "branch": BRANCH,
+                      "content": base64.b64encode(data).decode()}
+              # 已存在的文件必须带 sha 才能覆盖
+              try:
+                  r = urllib.request.Request(
+                      f"{API}/repos/{OWNER}/{REPO}/contents/{urllib.parse.quote(path)}?ref={BRANCH}",
+                      headers={"Authorization": "Bearer " + TOKEN,
+                               "Accept": "application/vnd.github+json",
+                               "User-Agent": "ci-upload"})
+                  with urllib.request.urlopen(r, timeout=60) as z:
+                      body["sha"] = json.loads(z.read().decode()).get("sha")
+              except Exception:
+                  pass
+              req = urllib.request.Request(
+                  f"{API}/repos/{OWNER}/{REPO}/contents/{urllib.parse.quote(path)}",
+                  data=json.dumps(body).encode(), method="PUT",
+                  headers={"Authorization": "Bearer " + TOKEN,
+                           "Accept": "application/vnd.github+json",
+                           "Content-Type": "application/json",
+                           "User-Agent": "ci-upload"})
+              with urllib.request.urlopen(req, timeout=300) as z:
+                  print("已提交", path, len(data), "字节")
+
+          for p in glob.glob("apk/*.apk"):
+              data = open(p, "rb").read()
+              name = os.path.basename(p)
+              api_put(f"apk/{name}", data, f"ci: {name}")
+              api_put(f"apk/{name}.sha256",
+                      (hashlib.sha256(data).hexdigest() + "\n").encode(),
+                      f"ci: {name} sha256")
+          PYEOF
+
+      # 关键一步：Release 里那个同名附件必须先删掉再传，
+      # 否则 GitHub 会报 asset already exists，新包换不上去。
+      #
+      # 两个坑，都踩过：
+      #   1) 上传必须走 uploads.github.com —— 往 api.github.com 的同一个路径
+      #      POST 会直接回 404 Not Found，而且响应体里只有一个 message 字段，
+      #      看不出是域名用错了。
+      #   2) 用 curl 而不是 python urllib：上传时 GitHub 会回 302，urllib
+      #      跟重定向会把 POST 降级成 GET，上传静默失败（步骤还显示成功）。
+      #      curl 加 --post302 才会在重定向后保持 POST。
+      - name: 更新 Release 附件
+        id: upload
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.event.repository.name }}
+        run: |
+          set +e
+          {
+          OWNER=Buwrt
+          TAG="v$VER"
+          AUTH=(-H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json")
+
+          # 1) 找 release，没有就建
+          RID=$(curl -sS "${AUTH[@]}" \
+            "https://api.github.com/repos/$OWNER/$REPO/releases/tags/$TAG" \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('id',''))")
+          if [ -z "$RID" ]; then
+            echo "Release $TAG 不存在，先创建"
+            RID=$(curl -sS -X POST "${AUTH[@]}" \
+              -d "{\"tag_name\":\"$TAG\",\"name\":\"githup $VER\",\"draft\":false,\"prerelease\":false}" \
+              "https://api.github.com/repos/$OWNER/$REPO/releases" \
+              | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
+          fi
+          echo "Release id = $RID"
+
+          # 2) 删掉同名旧附件
+          for AID in $(curl -sS "${AUTH[@]}" \
+              "https://api.github.com/repos/$OWNER/$REPO/releases/$RID/assets" \
+              | python3 -c "
+          import json,sys
+          for a in json.load(sys.stdin):
+              if a['name'].endswith('.apk') or a['name'].endswith('.sha256'):
+                  print(a['id'])
+          "); do
+            curl -sS -X DELETE "${AUTH[@]}" \
+              "https://api.github.com/repos/$OWNER/$REPO/releases/assets/$AID" > /dev/null
+            echo "已删除旧附件 $AID"
+          done
+
+          # 3) 传新的
+          for f in apk/*.apk apk/*.sha256; do
+            [ -f "$f" ] || continue
+            name=$(basename "$f")
+            ct="application/vnd.android.package-archive"
+            case "$name" in *.sha256) ct="text/plain";; esac
+            echo "上传 $name ($(stat -c%s "$f") 字节)"
+            curl -sS -L --post302 -X POST "${AUTH[@]}" \
+              -H "Content-Type: $ct" \
+              --data-binary @"$f" \
+              "https://uploads.github.com/repos/$OWNER/$REPO/releases/$RID/assets?name=$name" \
+              | python3 -c "
+          import json,sys
+          try:
+              d=json.load(sys.stdin)
+              print('  结果:', d.get('name') or d.get('message'), '|', d.get('size'), 'B')
+          except Exception as e:
+              print('  解析响应失败', e)
+          "
+          done
+
+          echo "--- 复查附件列表 ---"
+          curl -sS "${AUTH[@]}" \
+            "https://api.github.com/repos/$OWNER/$REPO/releases/$RID/assets" \
+            | python3 -c "
+          import json,sys
+          xs=json.load(sys.stdin)
+          print('  附件数:', len(xs))
+          for a in xs: print('   -', a['name'], a['size'], 'B')
+          if not xs: raise SystemExit('附件为空，上传没生效')
+          "
+          } 2>&1 | tee upload.log
+          # PIPESTATUS 会被下一条命令冲掉，必须在管道之后立刻存下来。
+          RC=${PIPESTATUS[0]}
+          grep -q "附件数: 0" upload.log && RC=1
+          echo "退出码 = $RC"
+          exit $RC
+
+      # 构建失败时把关键错误段提交进仓库。
+      # 为什么这么做：Actions 的日志和 artifact 都托管在别的域名上，
+      # 很多网络环境下取不到，只剩一个「构建失败」的空结论，没法排查。
+      # 提交成文件后，任何能访问 api.github.com 的地方都能读到。
+      - name: 回传构建日志（供排查）
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.event.repository.name }}
+        run: |
+          python3 - <<'PYEOF'
+          import base64, json, os, re, urllib.parse, urllib.request
+
+          TOKEN = os.environ["GH_TOKEN"]
+          OWNER, REPO, BRANCH = os.environ["OWNER"], os.environ["REPO"], "main"
+          API = "https://api.github.com"
+
+          try:
+              log = open("build.log", encoding="utf-8", errors="replace").read()
+          except Exception as e:
+              log = "读不到 build.log: %s" % e
+
+          lines = log.split("\n")
+          marks = set()
+          for i, s in enumerate(lines):
+              if re.search(r'error:|\bFAILED\b|What went wrong|Execution failed|错误|error ', s):
+                  for k in range(max(0, i - 4), min(len(lines), i + 5)):
+                      marks.add(k)
+          out, last = [], -2
+          for k in sorted(marks):
+              if k != last + 1:
+                  out.append("......")
+              out.append(lines[k])
+              last = k
+          body = "\n".join(out) if out else (log[-8000:] if log else "空日志")
+          body = body[:20000]
+
+          def api_put(path, data, msg):
+              b = {"message": msg, "branch": BRANCH,
+                   "content": base64.b64encode(data).decode()}
+              try:
+                  r = urllib.request.Request(
+                      f"{API}/repos/{OWNER}/{REPO}/contents/{urllib.parse.quote(path)}?ref={BRANCH}",
+                      headers={"Authorization": "Bearer " + TOKEN,
+                               "Accept": "application/vnd.github+json",
+                               "User-Agent": "ci-err"})
+                  with urllib.request.urlopen(r, timeout=60) as z:
+                      b["sha"] = json.loads(z.read().decode()).get("sha")
+              except Exception:
+                  pass
+              req = urllib.request.Request(
+                  f"{API}/repos/{OWNER}/{REPO}/contents/{urllib.parse.quote(path)}",
+                  data=json.dumps(b).encode(), method="PUT",
+                  headers={"Authorization": "Bearer " + TOKEN,
+                           "Accept": "application/vnd.github+json",
+                           "Content-Type": "application/json",
+                           "User-Agent": "ci-err"})
+              with urllib.request.urlopen(req, timeout=180) as z:
+                  print("已写入", path, len(data))
+
+          api_put("ci/build-error.log", body.encode(), "ci: 构建错误摘要")
+          try:
+              up = open("upload.log", encoding="utf-8", errors="replace").read()
+              api_put("ci/upload.log", up[:20000].encode(), "ci: 附件上传日志")
+          except Exception as e:
+              print("upload.log 跳过:", e)
+          PYEOF
+
+      - name: 上传构建日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: warn

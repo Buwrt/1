@@ -1,0 +1,11 @@
+{
+  "version": "1.2.18",
+  "apk": "https://github.com/Buwrt/githup/releases/download/v1.2.18/githup-v1.2.18.apk",
+  "name": "githup v1.2.18",
+  "published": "2026-10-29",
+  "size": 1174931,
+  "sha256": "d7da59f6ecd933597687281fb4eae0336d31bb6647208018558bdb2e7cf3ecff",
+  "src_sha256": "872b92ab94ac5124d29ad4d5247698ee07d42a97eb48887602d0f182d7c2c359",
+  "notes": "新增应用库（本机应用与 GitHub 仓库/Release 关联，跟踪更新、一键下载安装）与数据概览（Star/语言分布环形图、Star 趋势）。修一批使用中的实际问题：卸载后残留、安装器取消丢角标、下载即自动关联、下载历史与本地文件同步、更新后仍提示更新、全部标为已读后角标迟不消失、仓库单文件下载慢。",
+  "_说明": "更新检测的数据来源。App 会先查仓库的 Release，没有 Release 或取不到 APK 附件时读这个文件。apk 字段写 Release 附件直链（安装包不提交进仓库）。发新版本时改 version / apk / notes / size / sha256 / src_sha256 即可 —— 每次都必须是新包自己的值。历史上这里漏改过（版本号没变、值却是上一个包的），用户点「检查更新」会看到「你已是最新版本」，所以 size / sha256 一经改动就必须跟着重新对一遍。"
+}

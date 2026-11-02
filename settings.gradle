@@ -1,0 +1,27 @@
+pluginManagement {
+    repositories {
+        /* 只用官方源。
+         *
+         * 以前挂的是阿里云镜像（图国内快），但它**整站 502** 过：
+         * 一天之内连着两次，报的是 `Could not GET ...grpc-stub... 502`，
+         * 看着像依赖坏了，其实是镜像挂了。更麻烦的是 Gradle 碰到 502
+         * 会直接失败，并不会「换下一个源再试」—— 所以后来加了官方源兜底
+         * 也没用，排在后面的源根本轮不上。
+         *
+         * 打包是在 GitHub 的 runner 上跑的（境外），官方源本来就是最近的；
+         * 镜像在这里既慢又多一个故障点。直接去掉。 */
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+rootProject.name = "HubMobile"
+include ':app'
