@@ -76,12 +76,12 @@
     logTrouble: function (msg) {
       try {
         if (!msg || typeof msg !== 'string') return false;
-        var TROUBLE_WORDS = [window.I18n.t('不可用'), window.I18n.t('失败'), '出错', '错误', '卡住', '超时',
-                             '无法', '没能', '没成功', '异常', '中断', '拒绝',
-                             '不存在', '找不到', '已停止', '拦截', '阻止',
+        var TROUBLE_WORDS = [window.I18n.t('不可用'), window.I18n.t('失败'), window.I18n.t("出错"), window.I18n.t("错误"), window.I18n.t("卡住"), window.I18n.t("超时"),
+                             window.I18n.t("无法"), window.I18n.t("没能"), window.I18n.t("没成功"), window.I18n.t("异常"), window.I18n.t("中断"), window.I18n.t("拒绝"),
+                             window.I18n.t("不存在"), window.I18n.t("找不到"), window.I18n.t("已停止"), window.I18n.t("拦截"), window.I18n.t("阻止"),
                              /* 补：这些说法不含上面任何一个词，以前全被漏掉 */
-                             '连不上', '没反应', '被限制', '已过期', '不完整',
-                             '超时了', window.I18n.t('已取消'), '403', '404', '500'];
+                             window.I18n.t("连不上"), window.I18n.t("没反应"), window.I18n.t("被限制"), window.I18n.t("已过期"), window.I18n.t("不完整"),
+                             window.I18n.t("超时了"), window.I18n.t('已取消'), '403', '404', '500'];
         var hit = false;
         for (var i = 0; i < TROUBLE_WORDS.length; i++) {
           if (msg.indexOf(TROUBLE_WORDS[i]) >= 0) { hit = true; break; }
@@ -90,7 +90,7 @@
         if (_troubleSeen[msg]) return false;
         _troubleSeen[msg] = 1;
         if (window.API && typeof window.API.logError === 'function') {
-          window.API.logError('界面提示：' + msg);
+          window.API.logError(window.I18n.t("界面提示：") + msg);
           return true;
         }
       } catch (e) { /* 采集失败绝不影响主流程 */ }
@@ -149,7 +149,7 @@
       var ta = document.createElement('textarea');
       ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
       document.body.appendChild(ta); ta.select();
-      try { document.execCommand('copy'); done(); } catch (e) { UI.toast('复制失败'); }
+      try { document.execCommand('copy'); done(); } catch (e) { UI.toast(window.I18n.t("复制失败")); }
       ta.remove();
     },
 
@@ -163,7 +163,7 @@
       var html = '<div class="sheet-mask"' + (lock ? '' : ' data-close="1"') + '></div>' +
         '<div class="sheet' + full + '" role="dialog">' +
         (opt.title !== undefined ? '<div class="sheet-head">' + (opt.icon ? '<span>' + window.icon(opt.icon, 20) + '</span>' : '') +
-          '<h3>' + U.esc(opt.title) + '</h3>' + (lock ? '' : '<button class="icon-btn" data-close="1" aria-label="关闭">' + window.icon('x', 18) + '</button>') + '</div>' : '') +
+          '<h3>' + U.esc(opt.title) + '</h3>' + (lock ? '' : '<button class="icon-btn" data-close="1" aria-label=window.I18n.t("关闭")>' + window.icon('x', 18) + '</button>') + '</div>' : '') +
         '<div class="sheet-body">' + (opt.body || '') + '</div>' +
         (opt.foot ? '<div class="sheet-foot">' + opt.foot + '</div>' : '') +
         '</div>';
@@ -350,7 +350,7 @@
       if (it.state === 'closed' || it.state_reason) {
         return '<span class="state ' + (it.state_reason === 'completed' ? 'merged' : 'closed') + '">' +
           window.icon(it.state_reason === 'completed' ? 'issue-closed' : 'skip', 14) +
-          (it.state_reason === 'not_planned' ? ' 未计划' : ' 已关闭') + '</span>';
+          (it.state_reason === 'not_planned' ? window.I18n.t(" 未计划") : window.I18n.t(" 已关闭")) + '</span>';
       }
       return '<span class="state open">' + window.icon('issue-opened', 14) + ' 待处理</span>';
     },
@@ -392,7 +392,7 @@
        * 点空白处关闭，点按钮保存图片到相册，互不干扰。 */
       root.innerHTML =
         '<img src="' + U.esc(src) + '" alt="">' +
-        '<button class="viewer-save" aria-label="保存到相册" title="保存到相册">' +
+        '<button class="viewer-save" aria-label=window.I18n.t("保存到相册") title=window.I18n.t("保存到相册")>' +
           window.icon('download', 22) +
         '</button>';
       root.classList.add('show');
@@ -487,11 +487,11 @@
       var left = seconds;
       root.innerHTML =
         '<div class="boost-card" role="status">' +
-          '<button class="boost-x" aria-label="关闭">' + window.icon('x', 16) + '</button>' +
+          '<button class="boost-x" aria-label=window.I18n.t("关闭")>' + window.icon('x', 16) + '</button>' +
           '<div class="boost-head">' + window.icon('zap', 15) + '<span>这次下载限速中</span></div>' +
           '<div class="boost-body">' +
-            '这份文件正在以较慢的速度下载，<b>不会中断，也不会失败</b>，只是要多等一会儿。' +
-            '<br>给 <b>' + U.esc(full) + '</b> 点一个 Star，之后下载<b>任何文件</b>都是全速通道。' +
+            window.I18n.t("这份文件正在以较慢的速度下载，<b>不会中断，也不会失败</b>，只是要多等一会儿。") +
+            window.I18n.t("<br>给 <b>") + U.esc(full) + window.I18n.t("</b> 点一个 Star，之后下载<b>任何文件</b>都是全速通道。") +
           '</div>' +
           '<div class="boost-foot">' +
             '<span class="boost-tip">此提示 <b class="boost-sec">' + left + '</b> 秒后自动收起</span>' +
@@ -613,9 +613,9 @@
         if (!allowed(sig)) return;
 
         var why = firstLine(err && err.stack ? err.stack : '');
-        if (where) why = '位置 ' + where + (ev.lineno ? ':' + ev.lineno : '') +
+        if (where) why = window.I18n.t("位置 ") + where + (ev.lineno ? ':' + ev.lineno : '') +
           (why ? '；' + why : '');
-        report('页面脚本出错：' + text, why);
+        report(window.I18n.t("页面脚本出错：") + text, why);
       } catch (e) {}
     }, true);
 
@@ -627,7 +627,7 @@
         var text = (r && r.message) ? r.message : String(r);
         var sig = 'unhandled|' + text;
         if (!allowed(sig)) return;
-        report('有个操作没正常完成：' + text, firstLine(r && r.stack ? r.stack : ''));
+        report(window.I18n.t("有个操作没正常完成：") + text, firstLine(r && r.stack ? r.stack : ''));
       } catch (e) {}
     }, true);
 
@@ -648,7 +648,7 @@
             var text = parts.join(' ').slice(0, 300);
             var sig = 'console|' + text.slice(0, 160);
             if (!allowed(sig)) return;
-            report('程序内部报错：' + text, '');
+            report(window.I18n.t("程序内部报错：") + text, '');
           } catch (e) {}
         };
       }
