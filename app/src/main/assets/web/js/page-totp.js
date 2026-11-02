@@ -200,7 +200,7 @@
       }
     } catch (e) {}
     if (!done) { try { UI.copy(text); done = true; } catch (e) {} }
-    if (done && idx) UI.toast('已复制第 ' + idx + ' 条，共 ' + total + window.I18n.t(' 条'));
+    if (done && idx) UI.toast(window.I18n.t("已复制第 ") + idx + window.I18n.t(" 条，共 ") + total + window.I18n.t(' 条'));
     else if (done) UI.toast(window.I18n.t('已复制'));
     else UI.toast(window.I18n.t('复制失败，请长按选择'));
   }
@@ -220,19 +220,19 @@
       Native.pickFile('*/*').then(function (file) {
         if (!file || !file.uri) return;
         return window.Native.readFileBase64(file.uri, 1024 * 1024).then(function (b64) {
-          if (!b64) { UI.toast('读不出文件内容'); return; }
+          if (!b64) { UI.toast(window.I18n.t("读不出文件内容")); return; }
           var codes = parseRecoveryTxt(b64ToText(b64));
-          if (!codes.length) { UI.toast('这个文件里没识别到恢复密钥'); return; }
+          if (!codes.length) { UI.toast(window.I18n.t("这个文件里没识别到恢复密钥")); return; }
           var list = load();
           for (var i = 0; i < list.length; i++) {
             if (list[i].id === id) { list[i].recovery = codes; break; }
           }
-          if (!save(list)) { UI.toast('保存失败，本机存储不可用'); return; }
-          UI.toast('已导入 ' + codes.length + ' 条恢复密钥');
+          if (!save(list)) { UI.toast(window.I18n.t("保存失败，本机存储不可用")); return; }
+          UI.toast(window.I18n.t("已导入 ") + codes.length + window.I18n.t(" 条恢复密钥"));
           showRecoveryOnce(id);
         });
       }).catch(function () {
-        UI.toast('导入没完成');
+        UI.toast(window.I18n.t("导入没完成"));
       });
     } catch (e) {}
   }
@@ -367,7 +367,7 @@
       '<div class="totp-form">' +
         '<label class="totp-field"><span class="lb">密钥 / otpauth 链接</span>' +
           '<textarea id="tp-secret" rows="3" spellcheck="false" ' +
-            'placeholder="粘贴 Base32 密钥，或 otpauth:// 链接&#10;支持 Google Authenticator 导出链接"></textarea></label>' +
+            'placeholder=window.I18n.t("粘贴 Base32 密钥，或 otpauth:// 链接&#10;支持 Google Authenticator 导出链接")></textarea></label>' +
         '<div class="totp-hint" id="tp-hint">密钥就是网站上那一串字母数字，通常在二维码下面。</div>' +
         '<button class="btn block" id="tp-live" style="margin-top:8px">' +
           '<span class="tp-scan-ico">⛶</span> 扫一扫（对准二维码）</button>' +
@@ -378,9 +378,9 @@
         '<button class="btn block" id="tp-help2" style="margin-top:8px">怎么找到密钥？</button>' +
         '<div class="totp-row2">' +
           '<label class="totp-field"><span class="lb">发行方</span>' +
-            '<input id="tp-issuer" type="text" placeholder="如 GitHub" value="' + U.esc(a.issuer) + '"></label>' +
+            '<input id="tp-issuer" type="text" placeholder=window.I18n.t("如 GitHub") value="' + U.esc(a.issuer) + '"></label>' +
           '<label class="totp-field"><span class="lb">账户</span>' +
-            '<input id="tp-name" type="text" placeholder="如 alice@mail" value="' + U.esc(a.name) + '"></label>' +
+            '<input id="tp-name" type="text" placeholder=window.I18n.t("如 alice@mail") value="' + U.esc(a.name) + '"></label>' +
         '</div>' +
         '<div class="totp-row2">' +
           '<label class="totp-field"><span class="lb">位数</span>' +
@@ -405,7 +405,7 @@
     var pvTimer = null;
 
     UI.sheet({
-      title: isNew ? '添加两步验证账户' : '编辑账户',
+      title: isNew ? window.I18n.t("添加两步验证账户") : window.I18n.t("编辑账户"),
       body: body,
       foot: foot,
       onMount: function (root, close) {
@@ -422,11 +422,11 @@
            不用先保存再回来确认「有没有填对」。 */
         function preview() {
           var v = $secret.value.trim();
-          if (!v) { $pv.textContent = '------'; $hint.textContent = '密钥就是网站上那一串字母数字，通常在二维码下面。'; return; }
+          if (!v) { $pv.textContent = '------'; $hint.textContent = window.I18n.t("密钥就是网站上那一串字母数字，通常在二维码下面。"); return; }
           var parsed = window.TOTP.parseAny(v);
           if (!parsed || !parsed.length) {
-            $pv.textContent = '无效';
-            $hint.textContent = '这串内容看起来不是有效的密钥或链接，请核对后再试。';
+            $pv.textContent = window.I18n.t("无效");
+            $hint.textContent = window.I18n.t("这串内容看起来不是有效的密钥或链接，请核对后再试。");
             return;
           }
           var first = parsed[0];
@@ -438,8 +438,8 @@
           var c = window.TOTP.code(first);
           $pv.textContent = c ? window.TOTP.group(c) : '——';
           $hint.textContent = parsed.length > 1
-            ? ('识别出 ' + parsed.length + ' 个账户，保存后会一起添加。')
-            : '密钥有效，上面是实时动态码。';
+            ? (window.I18n.t("识别出 ") + parsed.length + window.I18n.t(" 个账户，保存后会一起添加。"))
+            : window.I18n.t("密钥有效，上面是实时动态码。");
         }
 
         $secret.addEventListener('input', preview);
@@ -454,14 +454,14 @@
                把原文塞进输入框，让用户自己看一眼。 */
             $secret.value = text;
             preview();
-            UI.toast('读到了二维码，但内容不是两步验证密钥');
+            UI.toast(window.I18n.t("读到了二维码，但内容不是两步验证密钥"));
             return;
           }
           $secret.value = text;
           preview();
           UI.toast(parsed.length > 1
-            ? ('识别成功，共 ' + parsed.length + window.I18n.t(' 个账户'))
-            : '识别成功');
+            ? (window.I18n.t("识别成功，共 ") + parsed.length + window.I18n.t(' 个账户'))
+            : window.I18n.t("识别成功"));
         }
 
         /* ---- 扫一扫：开后置摄像头对准二维码，解出自动填入。
@@ -494,12 +494,12 @@
               if ($scan._busy) return;
               $scan._busy = true;
               var old = $scan.textContent;
-              $scan.textContent = '正在识别…';
+              $scan.textContent = window.I18n.t("正在识别…");
               window.QRScan.scanFromGallery().then(function (res) {
                 $scan._busy = false;
                 $scan.innerHTML = old;
                 if (!res) {
-                  UI.toast('没认出二维码，试试图片更清晰、二维码更完整的');
+                  UI.toast(window.I18n.t("没认出二维码，试试图片更清晰、二维码更完整的"));
                   return;
                 }
                 applyScanText(res.text);
@@ -515,7 +515,7 @@
               text = NativeBridge.getClipboard() || '';
             }
           } catch (e) {}
-          if (!text) text = window.prompt('粘贴密钥或 otpauth 链接：') || '';
+          if (!text) text = window.prompt(window.I18n.t("粘贴密钥或 otpauth 链接：")) || '';
           if (!text) return;
           $secret.value = text.trim();
           preview();
@@ -530,12 +530,12 @@
 
         /* 删除/保存按钮在 sheet-foot 里，是 .sheet-body 的兄弟节点 ——
            用 onMount 传入的 root（=.sheet-body）永远查不到，返回 null，
-           null.onclick 直接抛 TypeError、绑定中断，按钮就"点了没反应"。
+           null.onclick 直接抛 TypeError、绑定中断，按钮就window.I18n.t("点了没反应")。
            全项目其他弹层绑 foot 按钮用的都是 #sheet-root，这里对齐。 */
         var sheetAll = document.getElementById('sheet-root');
         if (!isNew) {
           UI.$('#tp-del', sheetAll).onclick = function () {
-            UI.confirm('删除账户', '删除后这串密钥就不在本机了，需要重新从网站获取。', window.I18n.t('删除'))
+            UI.confirm(window.I18n.t("删除账户"), window.I18n.t("删除后这串密钥就不在本机了，需要重新从网站获取。"), window.I18n.t('删除'))
               .then(function (ok) {
                 if (!ok) return;
                 save(load().filter(function (x) { return x.id !== a.id; }));
@@ -547,9 +547,9 @@
 
         UI.$('#tp-save', sheetAll).onclick = function () {
           var v = $secret.value.trim();
-          if (!v) { UI.toast('请填写密钥'); return; }
+          if (!v) { UI.toast(window.I18n.t("请填写密钥")); return; }
           var parsed = window.TOTP.parseAny(v);
-          if (!parsed || !parsed.length) { UI.toast('密钥无效，请检查'); return; }
+          if (!parsed || !parsed.length) { UI.toast(window.I18n.t("密钥无效，请检查")); return; }
 
           var list = load();
           var added = 0;
@@ -604,9 +604,9 @@
           /* 编辑改名后可能和另一条撞成一样，收尾时统一清一遍 */
           list = dedupe(list);
 
-          if (!edited && !added) { UI.toast('这个账户已经在列表里了'); return; }
-          if (!save(list)) { UI.toast('保存失败，本机存储不可用'); return; }
-          UI.toast(parsed.length > 1 ? ('已添加 ' + added + window.I18n.t(' 个账户')) : window.I18n.t('已保存'));
+          if (!edited && !added) { UI.toast(window.I18n.t("这个账户已经在列表里了")); return; }
+          if (!save(list)) { UI.toast(window.I18n.t("保存失败，本机存储不可用")); return; }
+          UI.toast(parsed.length > 1 ? (window.I18n.t("已添加 ") + added + window.I18n.t(' 个账户')) : window.I18n.t('已保存'));
           close();
           onDone();
         };
@@ -623,7 +623,7 @@
     title: window.I18n.t('两步验证器'),
     menu: function () {
       return [
-        { icon: 'plus', label: '添加账户', key: 'add' },
+        { icon: 'plus', label: window.I18n.t("添加账户"), key: 'add' },
         { icon: 'info', label: window.I18n.t('使用说明'), key: 'help' }
       ];
     },
@@ -641,23 +641,23 @@
         title: window.I18n.t('使用说明'),
         body:
           '<div class="totp-help">' +
-          '<p><b>它是什么</b><br>两步验证（2FA）会在密码之外再加一道动态码，' +
-          '每 30 秒变一次。这个页面就是用来生成那个码的，跟 Google Authenticator 是同一套算法。</p>' +
-          '<p><b>怎么添加</b><br>在网站的安全设置里开启两步验证，会看到一个二维码，' +
-          '二维码下面通常有一行「密钥」或「手动输入」的字母数字 —— 把那串复制过来粘进去就行。</p>' +
-          '<p><b>要联网吗</b><br>不用。密钥存在你手机上，码是本地算出来的，飞机上、断网时照样出码。</p>' +
-          '<p><b>删了会怎样</b><br>密钥只存在这台设备上，卸载或清除数据后就没了。' +
-          '重要账户建议同时在网站保存一份恢复码，免得手机丢了进不去。</p>' +
-          '<p><b>恢复密钥</b><br>先去 GitHub 把恢复码存成文件：网页端 Settings → ' +
-          'Password and authentication → Recovery codes → 下载（得到 ' +
-          'github-recovery-codes.txt，一行一条）。然后在这个页面<b>长按对应的账户</b>，' +
-          '选中那个 txt 文件导入。平时账户卡片上不会显示恢复密钥；' +
-          '导入后<b>长按账户</b>，会随机闪出其中一条并自动复制，' +
-          '约 10 秒后自动收起、回到原样（登录验证时用哪一条都行）；' +
-          '闪出时点一下那条也能再复制一次。要换一批，进「编辑账户」点' +
-          '「导入恢复密钥」重新选文件，导入后整批替换。</p>' +
-          '<p><b>后台也能看</b><br>App 退到后台时，通知栏会自动常驻一个实时刷新的动态码；' +
-          '回到 App 里时通知会自动收起，不打扰你。没有账户时不显示。</p>' +
+          window.I18n.t("<p><b>它是什么</b><br>两步验证（2FA）会在密码之外再加一道动态码，") +
+          window.I18n.t("每 30 秒变一次。这个页面就是用来生成那个码的，跟 Google Authenticator 是同一套算法。</p>") +
+          window.I18n.t("<p><b>怎么添加</b><br>在网站的安全设置里开启两步验证，会看到一个二维码，") +
+          window.I18n.t("二维码下面通常有一行「密钥」或「手动输入」的字母数字 —— 把那串复制过来粘进去就行。</p>") +
+          window.I18n.t("<p><b>要联网吗</b><br>不用。密钥存在你手机上，码是本地算出来的，飞机上、断网时照样出码。</p>") +
+          window.I18n.t("<p><b>删了会怎样</b><br>密钥只存在这台设备上，卸载或清除数据后就没了。") +
+          window.I18n.t("重要账户建议同时在网站保存一份恢复码，免得手机丢了进不去。</p>") +
+          window.I18n.t("<p><b>恢复密钥</b><br>先去 GitHub 把恢复码存成文件：网页端 Settings → ") +
+          window.I18n.t("Password and authentication → Recovery codes → 下载（得到 ") +
+          window.I18n.t("github-recovery-codes.txt，一行一条）。然后在这个页面<b>长按对应的账户</b>，") +
+          window.I18n.t("选中那个 txt 文件导入。平时账户卡片上不会显示恢复密钥；") +
+          window.I18n.t("导入后<b>长按账户</b>，会随机闪出其中一条并自动复制，") +
+          window.I18n.t("约 10 秒后自动收起、回到原样（登录验证时用哪一条都行）；") +
+          window.I18n.t("闪出时点一下那条也能再复制一次。要换一批，进「编辑账户」点") +
+          window.I18n.t("「导入恢复密钥」重新选文件，导入后整批替换。</p>") +
+          window.I18n.t("<p><b>后台也能看</b><br>App 退到后台时，通知栏会自动常驻一个实时刷新的动态码；") +
+          window.I18n.t("回到 App 里时通知会自动收起，不打扰你。没有账户时不显示。</p>") +
           '</div>',
         foot: '<button class="btn primary" data-close="1">知道了</button>'
       });
@@ -668,7 +668,7 @@
 
       var head =
         '<div class="totp-tip">' + window.icon('shield-check', 16) +
-        '<span>密钥只保存在本机，不联网、不需要登录 GitHub。</span></div>';
+        window.I18n.t("<span>密钥只保存在本机，不联网、不需要登录 GitHub。</span></div>");
 
       if (!list.length) {
         host.innerHTML =
