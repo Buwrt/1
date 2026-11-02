@@ -8,7 +8,7 @@
   /* ================= 登录 ================= */
   P.login = {
     noTab: true,
-    title: '登录',
+    title: window.I18n.t('登录'),
     render: function (ctx, host) {
       var redirect = ctx.query.redirect || '/';
       host.innerHTML =
@@ -43,15 +43,15 @@
         var forget = document.createElement('button');
         forget.className = 'btn block mt12';
         forget.id = 'forget';
-        forget.textContent = '忘记此令牌';
+        forget.textContent = window.I18n.t('忘记此令牌');
         UI.$('#create', host).parentNode.insertBefore(forget, UI.$('#create', host));
         forget.onclick = function () {
-          UI.confirm('忘记此令牌', '将删除本机保存的令牌。下次登录需要重新粘贴。', '删除', true).then(function (ok) {
+          UI.confirm(window.I18n.t('忘记此令牌'), '将删除本机保存的令牌。下次登录需要重新粘贴。', window.I18n.t('删除'), true).then(function (ok) {
             if (!ok) return;
             window.Session.forget();
             UI.toast('已清除保存的令牌');
             UI.$('#tk', host).value = '';
-            UI.$('#go', host).textContent = '登录';
+            UI.$('#go', host).textContent = window.I18n.t('登录');
             var f = UI.$('#forget', host);
             if (f) f.remove();
           });
@@ -75,6 +75,8 @@
         if (!t) return UI.toast('请输入令牌');
         UI.loading(true);
         window.Session.setToken(t);
+        /* 换账号了，上一个账号的访问判定不该继承过来 */
+        try { if (window.Blocklist) window.Blocklist.reset(); } catch (e) {}
         window.API.me().then(function (r) {
           UI.loading(false);
           if (!r.data || !r.data.login) throw new Error('bad');
@@ -82,7 +84,21 @@
           window.Store.set('lastUser', r.data.login);
           /* 登记进账号串，供「切换账号」列出 */
           try { window.Session.register(r.data); } catch (e) {}
-          UI.toast('欢迎回来，' + r.data.login);
+          /* 登录也要判一次。
+             启动时那次可能因为断网走了「记住的 ID」，现在身份明确了，
+             按真实 ID 再判一遍 —— 换号登录不该沿用上一个账号的结论。 */
+          if (window.Blocklist) {
+            window.Blocklist.check(r.data.id).then(function (v) {
+              if (v >= 2) { window.Router.replace('/'); App.lockView(); }
+              else {
+                window.App._lockReason = '';
+                UI.toast(window.I18n.t('欢迎回来，') + r.data.login);
+                window.Router.replace(redirect);
+              }
+            }).catch(function () { window.Router.replace(redirect); });
+            return;
+          }
+          UI.toast(window.I18n.t('欢迎回来，') + r.data.login);
           window.Router.replace(redirect);
         }).catch(function (e) {
           UI.loading(false);
@@ -90,12 +106,50 @@
              clear 会「记住」这份令牌，可它刚被证明是坏的（401/无效），
              记住它等于下次一进来就回填一个登不进去的令牌。 */
           window.Session.forget();
-          UI.toast(e.status === 401 ? '令牌无效或已过期' : ('登录失败：' + e.message));
+
+          /*
+            登录时就断网这条路径以前完全没判定 —— me() 失败直接落到
+            这里，令牌清掉、弹个「登录失败」，人就留在登录页随便逛了。
+            这是「登录同时断网」的绕过点。
+
+            现在补一次判定：身份拿不到就用记住的 ID 判，那个命中了照样拦。
+            注意 forget() 已经把令牌清了，本机仍有使用痕迹（缓存名单），
+            所以 strict 传 true —— 查不出来就按拦处理。
+          */
+          if (window.Blocklist) {
+            window.Blocklist.reset();
+            /*
+              strict 只在「失败原因是网络」时才传 true。
+
+              401（令牌无效/过期）不能拦：令牌已经作废、身份也查不出来，
+              这时拦在「需要联网验证」那页没有任何意义 —— 联网也救不回来，
+              只会让人永远出不去。放他回登录页重新粘贴令牌才是对的。
+
+              网络类失败（status 0 / 超时）才 fail-closed：等联网后
+              reverify 跑通就自动放行。
+            */
+            /*
+              跟启动时用同一套判据（App.isOfflineFail）：
+              401 和 403 都是服务器明确拒绝这张凭据，拦着没意义。
+              实测失效令牌返回的是 403，不是 401 —— 只认 401 会把人
+              卡在「需要联网验证」那页。
+            */
+            var offline = (window.App && window.App.isOfflineFail)
+              ? window.App.isOfflineFail(e) : true;
+            window.Blocklist.check(0, offline).then(function (v) {
+              if (v >= 2) { window.Router.replace('/'); window.App.lockView(); return; }
+              UI.toast(App.isOfflineFail(e) ? (window.I18n.t('登录失败：') + (e.message || window.I18n.t('网络不可用'))) : window.I18n.t('令牌无效或已过期'));
+            }).catch(function () {
+              UI.toast(App.isOfflineFail(e) ? (window.I18n.t('登录失败：') + (e.message || window.I18n.t('网络不可用'))) : window.I18n.t('令牌无效或已过期'));
+            });
+            return;
+          }
+          UI.toast(e.status === 401 ? window.I18n.t('令牌无效或已过期') : (window.I18n.t('登录失败：') + e.message));
         });
       };
       UI.$('#create', host).onclick = function () {
         UI.sheet({
-          title: '创建访问令牌',
+          title: window.I18n.t('创建访问令牌'),
           icon: 'key',
           body: '<div style="font-size:14px;line-height:1.75">' +
             '<p>将在<b>应用内置浏览器</b>中打开 GitHub 的令牌创建页，按下面步骤操作：</p>' +
@@ -114,7 +168,7 @@
               // GitHub 官方令牌创建页：默认带好 note 与所需 scope，减少手填
               var scopes = 'repo,workflow,read:org,gist,user,notifications';
               var url = 'https://github.com/settings/tokens/new?description=githup&scopes=' + encodeURIComponent(scopes);
-              window.Native.openInApp(url, '创建访问令牌');
+              window.Native.openInApp(url, window.I18n.t('创建访问令牌'));
               UI.toast('创建完成后复制令牌，回到这里粘贴');
             };
           }
@@ -139,7 +193,7 @@
             };
             UI.$('#openin').onclick = function () {
               UI.closeSheet();
-              window.Native.openInApp(target, '创建访问令牌');
+              window.Native.openInApp(target, window.I18n.t('创建访问令牌'));
             };
           }
         });
@@ -171,10 +225,18 @@
             .then(function (r) {
               if (!r.access_token) throw new Error(JSON.stringify(r));
               window.Session.setToken(r.access_token);
+              try { if (window.Blocklist) window.Blocklist.reset(); } catch (e) {}
               UI.closeSheet();
               window.API.me().then(function (m) {
                 window.Session.user = m.data; window.Store.set('lastUser', m.data.login);
-                UI.toast('登录成功'); window.Router.replace(redirect);
+                if (window.Blocklist) {
+                  window.Blocklist.check(m.data.id).then(function (v) {
+                    if (v >= 2) { window.Router.replace('/'); App.lockView(); }
+                    else { UI.toast(window.I18n.t('登录成功')); window.Router.replace(redirect); }
+                  }).catch(function () { window.Router.replace(redirect); });
+                  return;
+                }
+                UI.toast(window.I18n.t('登录成功')); window.Router.replace(redirect);
               }).catch(function () { window.Router.replace(redirect); });
             })
             .catch(function (e) {
@@ -209,9 +271,9 @@
     title: '首页',
     menu: function () {
       return [
-        { icon: 'sync', label: '刷新', key: 'refresh' },
+        { icon: 'sync', label: window.I18n.t('刷新'), key: 'refresh' },
         { icon: 'person', label: '我的主页', key: 'me' },
-        { icon: 'gear', label: '设置', key: 'settings' }
+        { icon: 'gear', label: window.I18n.t('设置'), key: 'settings' }
       ];
     },
     onMenu: function (key) {
@@ -234,12 +296,29 @@
       // 登录态：只展示「我的仓库」，不出现关注动态、不出现热门仓库
       return Promise.all([
         window.API.get('/user', null, { cache: 60000 }),
-        window.API.get('/user/repos', { sort: 'updated', per_page: 30 }, { cache: 30000 }).catch(function () { return { data: [] }; })
+        /*
+          per_page 以前是 30。仓库数超过 30 时首页就只显示前 30 个，
+          而「我的仓库」这一节没有任何「还有更多」的提示 ——
+          用户数着数着发现少了，只会以为 App 漏了仓库。
+
+          GitHub 单页上限是 100，直接按上限取。再多的话靠「全部」
+          （/login?tab=repos，那页是完整分页列表）兜住。
+        */
+        window.API.get('/user/repos', { sort: 'updated', per_page: 100 }, { cache: 30000 }).catch(function () { return { data: [] }; })
       ]).then(function (rs) {
         if (epoch !== window.Router.viewEpoch) return;
         var me = rs[0] && rs[0].data;
-        var myRepos = ((rs[1] && rs[1].data) || []).filter(function (r) { return !r.fork; });
-        if (!myRepos.length) myRepos = (rs[1] && rs[1].data) || [];
+        /*
+          ⚠️ 这里以前是 .filter(function (r) { return !r.fork; })。
+
+          后果：fork 来的仓库在首页「我的仓库」里永远不出现。
+          用户 fork 完看到「Fork 成功」，回首页却找不到刚 fork 的仓库 ——
+          实测 Buwrt 账号下 15 个仓库里有 5 个是 fork 的，全被这条过滤藏掉了。
+
+          现在原样展示（fork 的由 repoRow 标出「Fork」chip），
+          「全部」里本来就有完整列表，两处不一致最容易让人以为 fork 丢了。
+        */
+        var myRepos = (rs[1] && rs[1].data) || [];
         /*
          * /user 的响应体必须拿到才往下渲染 —— 这个页面每一处都在读 me.login。
          *
@@ -254,7 +333,7 @@
           if (user && user.login) {
             me = user;
           } else {
-            host.innerHTML = UI.errorBox(new Error('用户信息读取失败'));
+            host.innerHTML = UI.errorBox(new Error(window.I18n.t('用户信息读取失败')));
             return;
           }
         }
@@ -270,7 +349,13 @@
           '<button class="btn sm" id="tome">' + window.icon('chevron-right', 14) + '</button></div>' +
           quickGrid(me) +
           '</div>' +
+          /*
+            标题带上条数。以前只有「我的仓库」四个字，用户只能自己数，
+            数出来跟 GitHub 网页上对不上（少了 fork 的那批）就觉得是
+            App 把仓库弄丢了 —— 写清楚一共几个，一眼就能比对。
+          */
           '<div class="section-title">' + window.icon('repo', 14) + ' 我的仓库' +
+          (myRepos.length ? '<span class="chip" style="padding:0 6px;margin-left:6px">' + myRepos.length + '</span>' : '') +
           '<span style="margin-left:auto;display:flex;gap:6px">' +
           '<button class="btn sm" id="newrepo">' + window.icon('plus', 13) + ' 新建</button>' +
           '<button class="btn sm" data-go="/' + U.esc(me.login) + '?tab=repos">全部</button></span></div>' +
@@ -293,10 +378,10 @@
     var items = [
       { icon: 'repo', label: '我的仓库', path: '/' + me.login + '?tab=repos' },
       { icon: 'star', label: '我的 Star', path: '/' + me.login + '?tab=stars' },
-      { icon: 'issue-opened', label: '我的议题', path: '/issues/mine' },
+      { icon: 'issue-opened', label: window.I18n.t('我的议题'), path: '/issues/mine' },
       { icon: 'git-pull-request', label: '我的 PR', path: '/pulls/mine' },
-      { icon: 'code-square', label: '我的 Gist', path: '/gists' },
-      { icon: 'organization', label: '组织', path: '/' + me.login + '?tab=orgs' }
+      { icon: 'code-square', label: window.I18n.t('我的 Gist'), path: '/gists' },
+      { icon: 'organization', label: window.I18n.t('组织'), path: '/' + me.login + '?tab=orgs' }
     ];
     return '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid var(--border-muted)">' +
       items.map(function (it) {
@@ -358,7 +443,7 @@
       case 'PushEvent':
         iconName = 'git-commit';
         var branch = (p.ref || '').replace('refs/heads/', '');
-        head = whoHtml + ' 推送了 ' + p.size + ' 个提交到 ' + repoHtml + ' 的 <span class="mono">' + U.esc(branch) + '</span>';
+        head = whoHtml + ' 推送了 ' + p.size + window.I18n.t(' 个提交到 ') + repoHtml + ' 的 <span class="mono">' + U.esc(branch) + '</span>';
         extra = (p.commits || []).slice(0, 4).map(function (c) {
           return '<div class="event-commit">' + U.esc((c.sha || '').substring(0, 7)) + ' ' + U.esc((c.message || '').split('\n')[0]) + '</div>';
         }).join('');
@@ -368,11 +453,11 @@
       case 'ForkEvent': iconName = 'repo-forked';
         head = whoHtml + ' fork 了 ' + repoHtml + (p.forkee ? ' 到 <a href="#/' + U.esc(p.forkee.full_name) + '">' + U.esc(p.forkee.full_name) + '</a>' : ''); break;
       case 'CreateEvent': iconName = p.ref_type === 'repository' ? 'repo' : 'git-branch';
-        head = whoHtml + ' 创建了 ' + (p.ref_type === 'repository' ? '仓库' : (p.ref_type === 'tag' ? '标签' : '分支')) +
-          ' ' + (p.ref_type === 'repository' ? repoHtml : '<span class="mono">' + U.esc(p.ref || '') + '</span>' + ' 于 ' + repoHtml); break;
+        head = whoHtml + ' 创建了 ' + (p.ref_type === 'repository' ? window.I18n.t('仓库') : (p.ref_type === 'tag' ? window.I18n.t('标签') : window.I18n.t('分支'))) +
+          ' ' + (p.ref_type === 'repository' ? repoHtml : '<span class="mono">' + U.esc(p.ref || '') + '</span>' + window.I18n.t(' 于 ') + repoHtml); break;
       case 'DeleteEvent': iconName = 'trash'; head = whoHtml + ' 删除了 ' + U.esc(p.ref_type || '') + ' <span class="mono">' + U.esc(p.ref || '') + '</span> 于 ' + repoHtml; break;
       case 'IssuesEvent': iconName = 'issue-opened';
-        head = whoHtml + ' ' + (p.action === 'closed' ? '关闭' : p.action === 'reopened' ? '重新打开' : '创建') + ' 议题 ' +
+        head = whoHtml + ' ' + (p.action === 'closed' ? window.I18n.t('关闭') : p.action === 'reopened' ? window.I18n.t('重新打开') : window.I18n.t('创建')) + ' 议题 ' +
           '<a href="#/' + U.esc(repo) + '/issues/' + (p.issue && p.issue.number) + '">#' + (p.issue && p.issue.number) + '</a> 于 ' + repoHtml;
         if (p.issue) extra = '<div class="muted" style="margin-top:4px">' + U.esc(U.excerpt ? window.MD.excerpt(p.issue.title, 90) : p.issue.title) + '</div>';
         break;
@@ -383,13 +468,13 @@
       case 'PullRequestEvent': iconName = p.payload ? 'git-pull-request' : 'git-pull-request';
         var pr = p.pull_request || {};
         iconName = pr.merged ? 'git-merge' : p.action === 'closed' ? 'git-pull-request' : 'git-pull-request';
-        head = whoHtml + ' ' + (p.action === 'closed' ? (pr.merged ? '合并' : '关闭') : p.action === 'opened' ? '创建' : '更新') + ' PR ' +
+        head = whoHtml + ' ' + (p.action === 'closed' ? (pr.merged ? window.I18n.t('合并') : window.I18n.t('关闭')) : p.action === 'opened' ? window.I18n.t('创建') : '更新') + ' PR ' +
           '<a href="#/' + U.esc(repo) + '/pull/' + pr.number + '">#' + pr.number + '</a> 于 ' + repoHtml;
         if (pr.title) extra = '<div class="muted" style="margin-top:4px">' + U.esc(window.MD.excerpt(pr.title, 90)) + '</div>';
         break;
       case 'PullRequestReviewEvent': iconName = 'check'; head = whoHtml + ' 评审了 PR <a href="#/' + U.esc(repo) + '/pull/' + (p.pull_request && p.pull_request.number) + '">#' + (p.pull_request && p.pull_request.number) + '</a> 于 ' + repoHtml; break;
       case 'PullRequestReviewCommentEvent': iconName = 'comment'; head = whoHtml + ' 评论了 PR 代码 于 ' + repoHtml; break;
-      case 'ReleaseEvent': iconName = 'tag'; head = whoHtml + ' 发布了 ' + U.esc((p.release && p.release.tag_name) || '新版本') + ' 于 ' + repoHtml; break;
+      case 'ReleaseEvent': iconName = 'tag'; head = whoHtml + ' 发布了 ' + U.esc((p.release && p.release.tag_name) || '新版本') + window.I18n.t(' 于 ') + repoHtml; break;
       case 'FollowEvent': iconName = 'person'; head = whoHtml + ' 关注了 <a href="#/' + U.esc(p.target && p.target.login) + '">' + U.esc(p.target && p.target.login) + '</a>'; break;
       case 'MemberEvent': iconName = 'people'; head = whoHtml + ' 将 <a href="#/' + U.esc(p.member && p.member.login) + '">' + U.esc(p.member && p.member.login) + '</a> 添加为 ' + repoHtml + ' 的协作者'; break;
       case 'ForkEvent2': break;
@@ -400,7 +485,7 @@
       case 'OrgBlockEvent': iconName = 'blocked'; head = whoHtml + ' 更新了组织屏蔽设置'; break;
       default:
         iconName = 'dot-fill';
-        head = whoHtml + ' · ' + U.esc(String(e.type).replace(/Event$/, '')) + ' 于 ' + repoHtml;
+        head = whoHtml + ' · ' + U.esc(String(e.type).replace(/Event$/, '')) + window.I18n.t(' 于 ') + repoHtml;
     }
     return '<div class="event"><div class="event-ico">' + window.icon(iconName, 16) + '</div>' +
       '<div class="event-body"><div>' + head + '</div>' + extra +
@@ -499,10 +584,10 @@
     title: '通知',
     menu: function () {
       return [
-        { icon: 'check', label: '全部标为已读', key: 'readall' },
+        { icon: 'check', label: window.I18n.t('全部标为已读'), key: 'readall' },
         { icon: 'trash', label: '清空已读', key: 'clearread' },
         { icon: 'tasklist', label: '批量选择', key: 'multi' },
-        { icon: 'sync', label: '刷新', key: 'refresh' },
+        { icon: 'sync', label: window.I18n.t('刷新'), key: 'refresh' },
         { icon: 'eye', label: '只看未读', key: 'unread' }
       ];
     },
@@ -516,7 +601,7 @@
         return UI.toast('已进入多选，点条目可勾选');
       }
       if (key === 'readall') {
-        UI.confirm('全部标为已读', '将把所有通知标记为已读，确定继续？', '标记').then(function (ok) {
+        UI.confirm(window.I18n.t('全部标为已读'), '将把所有通知标记为已读，确定继续？', window.I18n.t('标记')).then(function (ok) {
           if (!ok) return;
           window.API.put('/notifications', {}).then(function () {
             UI.toast('已全部标为已读');
@@ -533,7 +618,7 @@
             setTimeout(function () {
               try { window.App.refreshBadge(); } catch (e) { }
             }, 1500);
-          }).catch(function (e) { UI.toast('操作失败：' + e.message); });
+          }).catch(function (e) { UI.toast(window.I18n.t('操作失败：') + e.message); });
         });
       }
       /**
@@ -547,7 +632,7 @@
       if (key === 'clearread') {
         UI.confirm('清空已读通知',
           '将把所有「已读」通知标记为「已完成」（Done），从收件箱彻底消失（和网页版点 Done 效果相同）。未读通知不受影响。',
-          '清空', true).then(function (ok) {
+          window.I18n.t('清空'), true).then(function (ok) {
           if (!ok) return;
           UI.loading(true);
           /*
@@ -562,7 +647,7 @@
 
           window.API.paged('/notifications', { all: 'true', per_page: 100 }, 5).then(function (r) {
             var reads = (r.data || []).filter(function (n) { return !n.unread; });
-            if (!reads.length) { UI.loading(false); UI.toast('没有已读通知'); return; }
+            if (!reads.length) { UI.loading(false); UI.toast(window.I18n.t('没有已读通知')); return; }
             return Promise.all(reads.map(function (n) {
               return window.API.del('/notifications/threads/' + n.id).then(function () { return String(n.id); })
                 .catch(function (e) { return (e && (e.status === 404 || e.notFound)) ? String(n.id) : null; });
@@ -573,17 +658,17 @@
               window.App.refreshBadge();
               window.Router.reload();
               UI.toast(failed
-                ? ('已清除 ' + (reads.length - failed) + ' 条，' + failed + ' 条失败')
-                : ('已清除 ' + reads.length + ' 条已读通知'));
+                ? (window.I18n.t('已清除 ') + (reads.length - failed) + window.I18n.t(' 条，') + failed + window.I18n.t(' 条失败'))
+                : (window.I18n.t('已清除 ') + reads.length + window.I18n.t(' 条已读通知')));
             });
-          }).catch(function (e) { UI.loading(false); UI.toast('操作失败：' + e.message); });
+          }).catch(function (e) { UI.loading(false); UI.toast(window.I18n.t('操作失败：') + e.message); });
         });
       }
     },
     render: function (ctx, host) {
       var mode = ctx.query.read === '1' ? 'read' : (ctx.query.all === '1' ? 'all' : 'unread');
       host.innerHTML = '<div class="seg-wrap" style="padding:10px 12px">' +
-        UI.seg('nseg', [{ key: 'unread', label: '未读' }, { key: 'read', label: '已读' }, { key: 'all', label: '全部' }], mode) +
+        UI.seg('nseg', [{ key: 'unread', label: '未读' }, { key: 'read', label: '已读' }, { key: 'all', label: window.I18n.t('全部') }], mode) +
         '</div><div id="nlist">' + UI.skeleton(4) + '</div>';
       UI.$$('#nseg button', host).forEach(function (b) {
         b.onclick = function () {
@@ -606,7 +691,7 @@
         if (!box) return;
         if (!list.length) {
           box.innerHTML = mode === 'read'
-            ? UI.empty('check', '没有已读通知', '读过的通知会归档到这里')
+            ? UI.empty('check', window.I18n.t('没有已读通知'), '读过的通知会归档到这里')
             : UI.empty('bell', '没有通知', '有新消息时会显示在这里');
           return;
         }
@@ -635,7 +720,7 @@
           var bar = UI.$('#nselbar', box);
           if (bar) bar.hidden = !notifSel.on;
           var c = UI.$('#nselcount', box);
-          if (c) c.textContent = '已选 ' + notifSelCount() + ' 条';
+          if (c) c.textContent = '已选 ' + notifSelCount() + window.I18n.t(' 条');
           var rows = UI.$$('.notif', box);
           rows.forEach(function (b) {
             b.classList.toggle('picking', notifSel.on);
@@ -675,10 +760,10 @@
         function removeSelected() {
           var ids = Object.keys(notifSel.ids).filter(function (k) { return notifSel.ids[k]; });
           if (!ids.length) return UI.toast('还没有勾选通知');
-          UI.confirm('删除 ' + ids.length + ' 条通知',
+          UI.confirm(window.I18n.t('删除 ') + ids.length + window.I18n.t(' 条通知'),
             '会把这些通知标记为「已完成」（Done）—— 从通知收件箱里彻底消失，' +
             '下次打开不会再出现（和网页版点 Done 效果相同）。',
-            '删除', true).then(function (ok) {
+            window.I18n.t('删除'), true).then(function (ok) {
             if (!ok) return;
             UI.loading(true);
             Promise.all(ids.map(function (id) {
@@ -706,7 +791,7 @@
                 sync();
               }
               window.App.refreshBadge();
-              UI.toast(failed ? ('已移除 ' + (ids.length - failed) + ' 条，' + failed + ' 条失败') : ('已移除 ' + ids.length + ' 条通知'));
+              UI.toast(failed ? (window.I18n.t('已移除 ') + (ids.length - failed) + window.I18n.t(' 条，') + failed + window.I18n.t(' 条失败')) : (window.I18n.t('已移除 ') + ids.length + window.I18n.t(' 条通知')));
             });
           });
         }
@@ -778,11 +863,11 @@
 
   /* ================= 搜索 ================= */
   var SEARCH_TABS = [
-    { key: 'repositories', label: '仓库', ep: '/search/repositories' },
-    { key: 'users', label: '用户', ep: '/search/users' },
-    { key: 'issues', label: '议题', ep: '/search/issues' },
-    { key: 'code', label: '代码', ep: '/search/code' },
-    { key: 'commits', label: '提交', ep: '/search/commits' },
+    { key: 'repositories', label: window.I18n.t('仓库'), ep: '/search/repositories' },
+    { key: 'users', label: window.I18n.t('用户'), ep: '/search/users' },
+    { key: 'issues', label: window.I18n.t('议题'), ep: '/search/issues' },
+    { key: 'code', label: window.I18n.t('代码'), ep: '/search/code' },
+    { key: 'commits', label: window.I18n.t('提交'), ep: '/search/commits' },
     { key: 'topics', label: '话题', ep: '/search/topics' }
   ];
 
@@ -895,27 +980,27 @@
    * ---------------------------------------------------------------- */
   var SORT_OPTIONS = {
     repositories: [
-      { key: '', label: '最佳匹配' },
+      { key: '', label: window.I18n.t('最佳匹配') },
       { key: 'stars-desc', label: 'Star 最多' },
       { key: 'stars-asc', label: 'Star 最少' },
       { key: 'forks-desc', label: 'Fork 最多' },
       { key: 'forks-asc', label: 'Fork 最少' },
-      { key: 'updated-desc', label: '最近更新' },
+      { key: 'updated-desc', label: window.I18n.t('最近更新') },
       { key: 'updated-asc', label: '最久未更新' },
       { key: 'help-wanted-issues-desc', label: '最需要帮助' }
     ],
     issues: [
-      { key: '', label: '最佳匹配' },
-      { key: 'created-desc', label: '最新创建' },
+      { key: '', label: window.I18n.t('最佳匹配') },
+      { key: 'created-desc', label: window.I18n.t('最新创建') },
       { key: 'created-asc', label: '最早创建' },
-      { key: 'updated-desc', label: '最近更新' },
-      { key: 'comments-desc', label: '评论最多' },
+      { key: 'updated-desc', label: window.I18n.t('最近更新') },
+      { key: 'comments-desc', label: window.I18n.t('评论最多') },
       { key: 'reactions-desc', label: '点赞最多' },
       { key: 'reactions-+1-desc', label: '👍 最多' },
       { key: 'interactions-desc', label: '互动最多' }
     ],
     commits: [
-      { key: '', label: '最佳匹配' },
+      { key: '', label: window.I18n.t('最佳匹配') },
       { key: 'committer-date-desc', label: '最新提交' },
       { key: 'committer-date-asc', label: '最早提交' }
     ]
@@ -1105,7 +1190,7 @@
         '<div class="chips" id="sflt"' + (q ? '' : ' hidden') + '>' +
         (sorts ? '<span class="chip' + (f.sort ? ' active' : '') + '" id="f-sort">' +
           window.icon('filter', 13) + '<span id="f-sorttext">' +
-          U.esc(f.sort ? sortLabel(type, f.sort) : (type === 'repositories' ? '最佳匹配' : '排序')) +
+          U.esc(f.sort ? sortLabel(type, f.sort) : (type === 'repositories' ? window.I18n.t('最佳匹配') : window.I18n.t('排序'))) +
           '</span></span>' : '') +
         '<span class="chip' + (filterCount(f) ? ' active' : '') + '" id="f-open">' +
         window.icon('three-bars', 13) + '筛选' +
@@ -1150,7 +1235,7 @@
         var t = UI.$('#f-sorttext', host);
         if (!t) return;
         t.textContent = f.sort ? sortLabel(type, f.sort)
-          : (type === 'repositories' ? '最佳匹配' : '排序');
+          : (type === 'repositories' ? window.I18n.t('最佳匹配') : window.I18n.t('排序'));
       }
 
       /** 刷新两条说明文字（排序 / 实际搜索式）的显隐与内容 */
@@ -1217,7 +1302,7 @@
           if (k === 'code' && !window.Session.isLogin) {
             return UI.confirm('代码搜索需要登录',
               'GitHub 的代码搜索接口只对已登录用户开放，匿名调用会被拒绝。\n\n登录之后就能直接搜别人仓库里的代码。',
-              '去登录').then(function (ok) { if (ok) window.Router.go('/login'); });
+              window.I18n.t('去登录')).then(function (ok) { if (ok) window.Router.go('/login'); });
           }
           /* 换页签 = 换一套搜索语法：先按新类型裁一遍筛选与排序，
              不然会把上一个类型才认得的条件带过去（见 pruneFilters 的注释）。 */
@@ -1292,7 +1377,7 @@
            认证头照带上 —— 私有仓库的附件、API 给出的直链都需要它。 */
         if (hit.kind === 'download' && window.Native && window.Native.download) {
           var ok = window.Native.download(hit.url, hit.name, window.Native.authHeaders());
-          UI.toast(ok ? '开始下载 ' + hit.name : '下载未能发起');
+          UI.toast(ok ? window.I18n.t('开始下载 ') + hit.name : '下载未能发起');
         }
       }
 
@@ -1397,7 +1482,7 @@
           text = text.trim();
           var st = SEARCH_STATE[cacheKey(type, composeQuery(text, f), f.sort)];
           btn.disabled = true;
-          btn.textContent = '加载中…';
+          btn.textContent = window.I18n.t('加载中…');
           loadPage(text, (st ? st.page : 0) + 1, false);
         };
       }
@@ -1437,7 +1522,7 @@
     var fs = UI.$('#f-sort', host);
     if (fs) fs.onclick = function () {
       var list = sortOptionsFor(type) || [];
-      UI.menu('排序方式', list.map(function (x) {
+      UI.menu(window.I18n.t('排序方式'), list.map(function (x) {
         return { icon: x.key === (f.sort || '') ? 'check' : 'filter', label: x.label, key: x.key };
       })).then(function (k) {
         if (k === null) return;
@@ -1476,13 +1561,13 @@
       // 只看仓库类才给星级/Fork/语言/许可证 —— 搜用户时这些毫无意义
       (type === 'repositories' ?
         chipRow('g-lang', '语言', TOP_LANGS.map(function (l) { return { key: l, label: l }; }), draft.lang) +
-        chipRow('g-stars', 'Star 数', STAR_RANGES, draft.stars) +
+        chipRow('g-stars', window.I18n.t('Star 数'), STAR_RANGES, draft.stars) +
         chipRow('g-forks', 'Fork 数', FORK_RANGES, draft.forks) +
         chipRow('g-pushed', '更新时间', PUSH_RANGES, draft.pushed) +
         chipRow('g-license', '许可证', LICENSE_OPTIONS, draft.license) +
-        chipRow('g-arch', '归档状态', [{ key: 'exclude', label: '排除已归档' }, { key: 'only', label: '只看已归档' }], draft.archived)
+        chipRow('g-arch', window.I18n.t('归档状态'), [{ key: 'exclude', label: window.I18n.t('排除已归档') }, { key: 'only', label: window.I18n.t('只看已归档') }], draft.archived)
         :
-        chipRow('g-arch', '归档状态', [{ key: 'exclude', label: '排除已归档' }, { key: 'only', label: '只看已归档' }], draft.archived)
+        chipRow('g-arch', window.I18n.t('归档状态'), [{ key: 'exclude', label: window.I18n.t('排除已归档') }, { key: 'only', label: window.I18n.t('只看已归档') }], draft.archived)
       ) +
       '<div class="fnote" id="g-preview"></div>';
 
@@ -1538,7 +1623,7 @@
   function bindHistory(host, input, type) {
     var clr = UI.$('#clrh', host);
     if (clr) clr.onclick = function () {
-      UI.confirm('清空搜索历史', '将删除全部本地搜索记录，确定继续？', '清空').then(function (ok) {
+      UI.confirm('清空搜索历史', '将删除全部本地搜索记录，确定继续？', window.I18n.t('清空')).then(function (ok) {
         if (!ok) return;
         window.Store.setJSON('gh_search_hist', []);
         var box = UI.$('#sres', host);
@@ -1562,7 +1647,7 @@
       return '<div class="list">' + items.map(function (u) {
         return '<button class="list-row" data-go="/' + U.esc(u.login) + '">' + UI.avatar(u.login, u.avatar_url, 40) +
           '<span class="row-main"><span class="row-title">' + U.esc(u.login) + '</span>' +
-          (u.type ? '<span class="row-desc">' + U.esc(u.type === 'Organization' ? '组织' : '用户') + '</span>' : '') + '</span></button>';
+          (u.type ? '<span class="row-desc">' + U.esc(u.type === 'Organization' ? window.I18n.t('组织') : window.I18n.t('用户')) + '</span>' : '') + '</span></button>';
       }).join('') + '</div>';
     }
     if (type === 'topics') {
@@ -1601,7 +1686,7 @@
 
   function renderResults(type, st, q) {
     var items = st.items || [];
-    if (!items.length) return UI.empty('search', '没有结果', '换个关键词试试');
+    if (!items.length) return UI.empty('search', '没有结果', window.I18n.t('换个关键词试试'));
     var total = st.total;
     var head = '';
     if (total) {
@@ -1646,7 +1731,11 @@
     opt = opt || {};
     return '<button class="list-row" data-go="/' + U.esc(r.full_name) + '">' +
       '<span class="row-main">' +
-      '<span class="row-title">' + U.esc(r.full_name) + (r.private ? ' <span class="chip" style="padding:0 6px">私有</span>' : '') + '</span>' +
+      '<span class="row-title">' + U.esc(r.full_name) +
+      (r.private ? ' <span class="chip" style="padding:0 6px">私有</span>' : '') +
+      /* fork 来的仓库标一下，否则跟自己建的混在一起分不清 */
+      (r.fork ? ' <span class="chip" style="padding:0 6px">Fork</span>' : '') +
+      '</span>' +
       (r.description ? '<span class="row-desc">' + U.esc(r.description) + '</span>' : '') +
       '<span class="row-meta">' +
       (r.language ? '<span><i style="width:8px;height:8px;border-radius:50%;background:' + U.langColor(r.language) + ';display:inline-block"></i>' + U.esc(r.language) + '</span>' : '') +
@@ -1873,12 +1962,12 @@
   /* ================= 我的议题 / PR（搜索视图） ================= */
   function mineView(kind) {
     return {
-      title: kind === 'pr' ? '我的拉取请求' : '我的议题',
+      title: kind === 'pr' ? '我的拉取请求' : window.I18n.t('我的议题'),
       render: function (ctx, host) {
         if (!window.Session.isLogin) return needLogin(host);
         var state = ctx.query.state || 'open';
         host.innerHTML = '<div class="seg-wrap" style="padding:10px 12px">' +
-          UI.seg('mseg', [{ key: 'open', label: '待处理' }, { key: 'closed', label: '已完成' }, { key: 'all', label: '全部' }], state) +
+          UI.seg('mseg', [{ key: 'open', label: window.I18n.t('待处理') }, { key: 'closed', label: window.I18n.t('已完成') }, { key: 'all', label: window.I18n.t('全部') }], state) +
           '</div><div id="mlist">' + UI.skeleton(4) + '</div>';
         UI.$$('#mseg button', host).forEach(function (b) {
           b.onclick = function () { window.Router.go((kind === 'pr' ? '/pulls/mine' : '/issues/mine') + '?state=' + b.getAttribute('data-v')); };
