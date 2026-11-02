@@ -99,7 +99,7 @@
   function currentCategory() {
     var r = window.Router && Router.route;
     var name = r && r.name;
-    if (name === 'issue') return '议题';
+    if (name === 'issue') return window.I18n.t('议题');
     if (name === 'release') return 'release';
     return '';
   }
@@ -161,7 +161,7 @@
     var md;
     if (kind === 'image') md = '![' + (file.name || '图片') + '](' + url + ')';
     else if (kind === 'video') md = url;      // GitHub 会自己渲染成播放器
-    else md = '[' + (file.name || '附件') + '](' + url + ')';
+    else md = '[' + (file.name || window.I18n.t('附件')) + '](' + url + ')';
     return { url: url, markdown: md, kind: kind, name: file.name, size: file.size };
   }
 
@@ -182,7 +182,7 @@
 
   /** 把常见状态码翻成中文，别让用户对着 422 发呆 */
   function httpHint(code, msg) {
-    if (code === 401) return '登录状态已失效，请重新登录';
+    if (code === 401) return window.I18n.t('登录状态已失效，请重新登录');
     if (code === 403) return '没有该仓库的权限，或已触发速率限制';
     if (code === 404) return '上传接口不可用（404），可能是仓库 id 失效或仓库不可见';
     if (code === 422) return msg || '文件类型或大小不被接受（422）';
@@ -417,7 +417,7 @@
         var packed = pack(u, file);
         if (packed.kind !== 'file') {
           packed.kind = 'file';
-          packed.markdown = '[' + (file.name || '附件') + '](' + u + ')';
+          packed.markdown = '[' + (file.name || window.I18n.t('附件')) + '](' + u + ')';
         }
         return packed;
       });
@@ -477,10 +477,10 @@
   function pickAndUpload(opt) {
     opt = opt || {};
     if (!window.Session || !window.Session.isLogin) {
-      return Promise.reject(new Error('请先登录'));
+      return Promise.reject(new Error(window.I18n.t('请先登录')));
     }
     if (!canUpload()) {
-      return Promise.reject(new Error('当前环境不支持选择文件'));
+      return Promise.reject(new Error(window.I18n.t('当前环境不支持选择文件')));
     }
 
     var accept = opt.accept || 'image/*,video/*';
@@ -513,7 +513,7 @@
         if (!out.length && failed.length) {
           throw new Error(failed.length === 1
             ? failed[0].message
-            : (failed.length + ' 个文件上传失败：' + failed[0].message));
+            : (failed.length + window.I18n.t(' 个文件上传失败：') + failed[0].message));
         }
         // 部分成功时把失败的一并告知，界面层决定怎么提示
         out.failed = failed;
@@ -537,11 +537,11 @@
   function pickInsert(btn, ta, opt) {
     opt = opt || {};
     if (!window.Session || !window.Session.isLogin) {
-      return Promise.resolve(UI.toast('请先登录'));
+      return Promise.resolve(UI.toast(window.I18n.t('请先登录')));
     }
     if (!canUpload()) {
-      return UI.confirm('需要应用内支持',
-        '当前环境无法选择本地文件，请安装最新版应用后重试。', '知道了')
+      return UI.confirm(window.I18n.t('需要应用内支持'),
+        '当前环境无法选择本地文件，请安装最新版应用后重试。', window.I18n.t('知道了'))
         .then(function () {});
     }
     btn.disabled = true;
@@ -563,14 +563,14 @@
       var parts = [];
       if (nImg) parts.push(nImg + ' 张图片');
       if (nVid) parts.push(nVid + ' 个视频');
-      if (nFile) parts.push(nFile + ' 个文件');
-      UI.toast((parts.join('、') || '附件') + '已插入');
+      if (nFile) parts.push(nFile + window.I18n.t(' 个文件'));
+      UI.toast((parts.join('、') || window.I18n.t('附件')) + '已插入');
       if (arr.failed && arr.failed.length) {
-        UI.toast(arr.failed.length + ' 个文件上传失败：' + arr.failed[0].message);
+        UI.toast(arr.failed.length + window.I18n.t(' 个文件上传失败：') + arr.failed[0].message);
       }
     }).catch(function (e) {
       btn.disabled = false;
-      UI.toast('上传失败：' + (e && e.message ? e.message : '未知错误'));
+      UI.toast(window.I18n.t('上传失败：') + (e && e.message ? e.message : window.I18n.t('未知错误')));
     });
   }
 
