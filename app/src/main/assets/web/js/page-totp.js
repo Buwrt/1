@@ -103,12 +103,12 @@
   }
 
   function title(a) {
-    return a.issuer || a.name || '未命名账户';
+    return a.issuer || a.name || window.I18n.t('未命名账户');
   }
 
   function subtitle(a) {
     if (a.issuer && a.name && a.name !== a.issuer) return a.name;
-    return a.issuer ? '' : '未命名账户';
+    return a.issuer ? '' : window.I18n.t('未命名账户');
   }
 
   /* ---------- 分段显示 ---------- */
@@ -152,12 +152,12 @@
     try {
       if (window.NativeBridge && typeof NativeBridge.copy === 'function') {
         NativeBridge.copy(text);
-        UI.toast('已复制');
+        UI.toast(window.I18n.t('已复制'));
         return;
       }
     } catch (e) {}
-    try { UI.copy(text); UI.toast('已复制'); return; } catch (e) {}
-    UI.toast('复制失败，请长按选择');
+    try { UI.copy(text); UI.toast(window.I18n.t('已复制')); return; } catch (e) {}
+    UI.toast(window.I18n.t('复制失败，请长按选择'));
   }
 
   /* ---------- 恢复密钥 ---------- */
@@ -200,9 +200,9 @@
       }
     } catch (e) {}
     if (!done) { try { UI.copy(text); done = true; } catch (e) {} }
-    if (done && idx) UI.toast('已复制第 ' + idx + ' 条，共 ' + total + ' 条');
-    else if (done) UI.toast('已复制');
-    else UI.toast('复制失败，请长按选择');
+    if (done && idx) UI.toast('已复制第 ' + idx + ' 条，共 ' + total + window.I18n.t(' 条'));
+    else if (done) UI.toast(window.I18n.t('已复制'));
+    else UI.toast(window.I18n.t('复制失败，请长按选择'));
   }
 
   /* 导入：拉系统文件选择器选 txt，按行解析后整批存进这个账户。
@@ -210,11 +210,11 @@
   function importRecovery(id) {
     try {
       if (!(window.Native && typeof Native.pickFile === 'function')) {
-        UI.toast('当前环境不支持选择文件');
+        UI.toast(window.I18n.t('当前环境不支持选择文件'));
         return;
       }
       if (typeof Native.canPick === 'function' && !Native.canPick()) {
-        UI.toast('当前环境不支持选择文件');
+        UI.toast(window.I18n.t('当前环境不支持选择文件'));
         return;
       }
       Native.pickFile('*/*').then(function (file) {
@@ -460,7 +460,7 @@
           $secret.value = text;
           preview();
           UI.toast(parsed.length > 1
-            ? ('识别成功，共 ' + parsed.length + ' 个账户')
+            ? ('识别成功，共 ' + parsed.length + window.I18n.t(' 个账户'))
             : '识别成功');
         }
 
@@ -535,7 +535,7 @@
         var sheetAll = document.getElementById('sheet-root');
         if (!isNew) {
           UI.$('#tp-del', sheetAll).onclick = function () {
-            UI.confirm('删除账户', '删除后这串密钥就不在本机了，需要重新从网站获取。', '删除')
+            UI.confirm('删除账户', '删除后这串密钥就不在本机了，需要重新从网站获取。', window.I18n.t('删除'))
               .then(function (ok) {
                 if (!ok) return;
                 save(load().filter(function (x) { return x.id !== a.id; }));
@@ -606,7 +606,7 @@
 
           if (!edited && !added) { UI.toast('这个账户已经在列表里了'); return; }
           if (!save(list)) { UI.toast('保存失败，本机存储不可用'); return; }
-          UI.toast(parsed.length > 1 ? ('已添加 ' + added + ' 个账户') : '已保存');
+          UI.toast(parsed.length > 1 ? ('已添加 ' + added + window.I18n.t(' 个账户')) : window.I18n.t('已保存'));
           close();
           onDone();
         };
@@ -620,11 +620,11 @@
   P.totp = {
     /* 不给 tab：它不是底部一级入口，是从「我的」点进来的内页，
        所以有返回按钮、不显示底部标签栏。 */
-    title: '两步验证器',
+    title: window.I18n.t('两步验证器'),
     menu: function () {
       return [
         { icon: 'plus', label: '添加账户', key: 'add' },
-        { icon: 'info', label: '使用说明', key: 'help' }
+        { icon: 'info', label: window.I18n.t('使用说明'), key: 'help' }
       ];
     },
     onMenu: function (k) {
@@ -638,7 +638,7 @@
 
     help: function () {
       UI.sheet({
-        title: '使用说明',
+        title: window.I18n.t('使用说明'),
         body:
           '<div class="totp-help">' +
           '<p><b>它是什么</b><br>两步验证（2FA）会在密码之外再加一道动态码，' +
