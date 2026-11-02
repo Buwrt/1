@@ -87,19 +87,19 @@
       return { path: path, label: label, sub: sub || short(url, 40), kind: 'route' };
     };
     /* 通知：App 那一页是自己的收件箱，语义一致 */
-    if (top === 'notifications') return wrap('/notifications', '打开通知');
-    if (top === 'explore' || top === 'trending') return wrap('/explore', '打开探索');
-    if (top === 'issues') return wrap('/issues', '打开我的议题');
-    if (top === 'pulls') return wrap('/pulls', '打开我的拉取请求');
-    if (top === 'gists') return wrap('/gists', '打开我的 Gist');
+    if (top === 'notifications') return wrap('/notifications', window.I18n.t('打开通知'));
+    if (top === 'explore' || top === 'trending') return wrap('/explore', window.I18n.t('打开探索'));
+    if (top === 'issues') return wrap('/issues', window.I18n.t('打开我的议题'));
+    if (top === 'pulls') return wrap('/pulls', window.I18n.t('打开我的拉取请求'));
+    if (top === 'gists') return wrap('/gists', window.I18n.t('打开我的 Gist'));
     /* 话题：App 没有「话题」这一页，但它在 GitHub 上等价于
        `topic:xxx` 的仓库搜索 —— 直接落到搜索结果比内置浏览器有用。 */
     if (top === 'topics' && segs[1]) {
       return wrap('/search?q=' + encodeURIComponent('topic:' + segs[1]) +
-        '&type=repositories', '搜索话题 ' + segs[1]);
+        '&type=repositories', window.I18n.t('搜索话题 ') + segs[1]);
     }
     /* 组织：/orgs/<org>/people 这类二级路径也还是那个组织的主页 */
-    if (top === 'orgs' && segs[1]) return wrap(joinPath([segs[1]]), '打开组织 ' + segs[1]);
+    if (top === 'orgs' && segs[1]) return wrap(joinPath([segs[1]]), window.I18n.t('打开组织 ') + segs[1]);
     return null;   // 其余（含网页版设置、marketplace、登录…）一律走内置浏览器
   }
 
@@ -112,8 +112,8 @@
     };
 
     /* 只有 owner —— 这是用户 / 组织主页 */
-    if (segs.length === 1) return out(joinPath([owner]), '打开用户 ' + owner);
-    if (segs.length === 2) return out(base, '打开仓库 ' + owner + '/' + repo);
+    if (segs.length === 1) return out(joinPath([owner]), window.I18n.t('打开用户 ') + owner);
+    if (segs.length === 2) return out(base, window.I18n.t('打开仓库 ') + owner + '/' + repo);
 
     var sub = segs[2], rest = segs.slice(3);
 
@@ -130,82 +130,82 @@
          就散成两段，ref 只剩 'release'，后半截跑进文件路径里。
          先按原始段切开（第 1 段 = ref），ref 自己再解码还原成 release/v1.2。 */
       var restRaw = segsRaw.slice(3);
-      if (!restRaw.length) return out(base, '打开仓库 ' + owner + '/' + repo);
+      if (!restRaw.length) return out(base, window.I18n.t('打开仓库 ') + owner + '/' + repo);
       var ref = safeDecode(restRaw[0]);
       var fp = restRaw.slice(1).map(safeDecode);
       if (!fp.length) {
         // /tree/main：只换了分支，还是代码首页
         return out(base + '?ref=' + encodeURIComponent(ref),
-          '打开 ' + owner + '/' + repo + ' 的 ' + ref);
+          window.I18n.t('打开 ') + owner + '/' + repo + window.I18n.t(' 的 ') + ref);
       }
       var kind = sub === 'tree' ? 'tree' : 'blob';
       var name = fp[fp.length - 1];
       return out(base + '/' + kind + joinPath(fp) + '?ref=' + encodeURIComponent(ref),
-        (kind === 'blob' ? '打开文件 ' : '打开目录 ') + short(name, 24));
+        (kind === 'blob' ? window.I18n.t('打开文件 ') : window.I18n.t('打开目录 ')) + short(name, 24));
     }
 
     /* ---- 议题 / 拉取请求 ---- */
     if (sub === 'issues' || sub === 'pull') {
       if (/^\d+$/.test(rest[0] || '')) {
         return out(base + '/' + sub + '/' + rest[0],
-          (sub === 'issues' ? '打开议题 #' : '打开拉取请求 #') + rest[0]);
+          (sub === 'issues' ? window.I18n.t('打开议题 #') : window.I18n.t('打开拉取请求 #')) + rest[0]);
       }
       // /issues/new、/issues?q=…、光秃秃的 /issues：都落到列表那一页
       return out(base + '/' + (sub === 'issues' ? 'issues' : 'pulls'),
-        '打开' + (sub === 'issues' ? '议题' : '拉取请求') + '列表');
+        window.I18n.t('打开') + (sub === 'issues' ? window.I18n.t('议题') : window.I18n.t('拉取请求')) + window.I18n.t('列表'));
     }
-    if (sub === 'pulls') return out(base + '/pulls', '打开拉取请求列表');
+    if (sub === 'pulls') return out(base + '/pulls', window.I18n.t('打开拉取请求列表'));
 
     /* ---- 发布 ----
        tag 走查询参数（?tag=）而不是第 4 段：
        tag 里带斜杠的仓库很多（release/2026-09），放在路径里会被切碎，
        而且 App 的 /releases/<tag> 本来就是拿第 4 段当 tag 用的。 */
     if (sub === 'releases') {
-      if (!rest.length) return out(base + '/releases', '打开发布列表');
+      if (!rest.length) return out(base + '/releases', window.I18n.t('打开发布列表'));
       var head = rest[0];
       if (head === 'tag' && rest[1]) {
         var tag = rest.slice(1).join('/');
         return out(base + '/releases?tag=' + encodeURIComponent(tag),
-          '打开发布 ' + short(tag, 24));
+          window.I18n.t('打开发布 ') + short(tag, 24));
       }
-      if (head === 'latest') return out(base + '/releases?tag=latest', '打开最新发布');
+      if (head === 'latest') return out(base + '/releases?tag=latest', window.I18n.t('打开最新发布'));
       if (head === 'download' && rest[1]) {
         /* 附件直链：这是要下载的东西，不是要看的页面 */
         return {
           kind: 'download',
           url: '',                       // 下面统一回填（保留原始编码的那份）
           name: rest[rest.length - 1],
-          label: '下载 ' + short(rest[rest.length - 1], 24),
+          label: window.I18n.t('下载 ') + short(rest[rest.length - 1], 24),
           sub: short(url, 40)
         };
       }
-      return out(base + '/releases', '打开发布列表');
+      return out(base + '/releases', window.I18n.t('打开发布列表'));
     }
 
     /* ---- 提交 / Actions ---- */
     if (sub === 'commit' && rest[0]) {
       return out(base + '/commit/' + encodeURIComponent(rest[0]),
-        '打开提交 ' + shortSha(rest[0]));
+        window.I18n.t('打开提交 ') + shortSha(rest[0]));
     }
     if (sub === 'commits') {
       return out(base + '/commits' + (rest[0] ? '?ref=' + encodeURIComponent(rest[0]) : ''),
-        '打开提交历史');
+        window.I18n.t('打开提交历史'));
     }
     if (sub === 'actions') {
       if (rest[0] === 'runs' && rest[1]) {
-        return out(base + '/actions/' + encodeURIComponent(rest[1]), '打开 Actions 运行记录');
+        return out(base + '/actions/' + encodeURIComponent(rest[1]), window.I18n.t('打开 Actions 运行记录'));
       }
-      return out(base + '/actions', '打开 Actions');
+      return out(base + '/actions', window.I18n.t('打开 Actions'));
     }
 
     /* ---- 其余 tab ---- */
-    if (REPO_TABS[sub]) return out(base + '/' + sub, '打开仓库 ' + short(owner + '/' + repo, 24));
+    if (REPO_TABS[sub]) return out(base + '/' + sub, window.I18n.t('打开仓库 ') + short(owner + '/' + repo, 24));
 
     /* wiki、discussions、projects、compare、security、graph、pulse…
        App 里没有对应页面，别硬塞。 */
     return {
       kind: 'external', url: 'https://github.com' + joinPath(segs),
-      label: '用内置浏览器打开', sub: short(url, 40)
+      label: window.I18n.t('用内置浏览器打开'), sub: short(url, 40)
     };
   }
 
@@ -235,7 +235,7 @@
 
     /* 光一个域名：https://github.com（后面没有路径）→ 首页 */
     if (host === 'github.com' && !segs.length) {
-      return { kind: 'route', path: '/', label: '打开首页', sub: 'github.com' };
+      return { kind: 'route', path: '/', label: window.I18n.t('打开首页'), sub: 'github.com' };
     }
 
     if (host === 'gist.github.com') {
@@ -243,10 +243,10 @@
          只看「长得像不像 gist id」（20~40 位十六进制），不猜用户名。 */
       for (var i = segs.length - 1; i >= 0; i--) {
         if (IS_HEXish.test(segs[i])) {
-          return { kind: 'route', path: '/gist/' + segs[i], label: '打开 Gist', sub: short(url, 40) };
+          return { kind: 'route', path: '/gist/' + segs[i], label: window.I18n.t('打开 Gist'), sub: short(url, 40) };
         }
       }
-      return { kind: 'external', url: 'https://' + host + rawPath, label: '用内置浏览器打开', sub: short(url, 40) };
+      return { kind: 'external', url: 'https://' + host + rawPath, label: window.I18n.t('用内置浏览器打开'), sub: short(url, 40) };
     }
 
     if (host === 'raw.githubusercontent.com') {
@@ -256,11 +256,11 @@
         return {
           kind: 'route',
           path: '/' + owner + '/' + repo + '/blob' + joinPath(fp) + '?ref=' + encodeURIComponent(ref),
-          label: '打开文件 ' + short(fp[fp.length - 1], 24),
+          label: window.I18n.t('打开文件 ') + short(fp[fp.length - 1], 24),
           sub: short(url, 40)
         };
       }
-      return { kind: 'external', url: 'https://' + host + rawPath, label: '用内置浏览器打开', sub: short(url, 40) };
+      return { kind: 'external', url: 'https://' + host + rawPath, label: window.I18n.t('用内置浏览器打开'), sub: short(url, 40) };
     }
 
     if (host === 'codeload.github.com') {
@@ -273,16 +273,16 @@
           kind: 'download',
           url: 'https://' + host + rawPath,
           name: fname,
-          label: '下载源码包 ' + short(fname, 24),
+          label: window.I18n.t('下载源码包 ') + short(fname, 24),
           sub: short(url, 40)
         };
       }
-      return { kind: 'external', url: 'https://' + host + rawPath, label: '用内置浏览器打开', sub: short(url, 40) };
+      return { kind: 'external', url: 'https://' + host + rawPath, label: window.I18n.t('用内置浏览器打开'), sub: short(url, 40) };
     }
 
     /* host === 'github.com'：一级是保留字就按保留规则走，认不出来 -> 内置浏览器 */
     var res = RESERVED_TOP.indexOf(segs[0].toLowerCase()) >= 0
-      ? (reservedLevel(segs, url) || { kind: 'external', label: '用内置浏览器打开', sub: short(url, 40) })
+      ? (reservedLevel(segs, url) || { kind: 'external', label: window.I18n.t('用内置浏览器打开'), sub: short(url, 40) })
       : repoLevel(segs, url, segsRaw);
     /* 要浏览器打开 / 要下载的地址统一回填：直接用 rawPath，
        百分号编码和特殊字符统统保真（查询串早在 URL_RE 那步就剥掉了，
