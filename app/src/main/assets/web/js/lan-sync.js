@@ -24,7 +24,7 @@
     try {
       return b[n].apply(b, Array.prototype.slice.call(arguments, 1));
     } catch (e) {
-      toast('调用失败：' + (e && e.message ? e.message : n));
+      toast(window.I18n.t('调用失败：') + (e && e.message ? e.message : n));
       return null;
     }
   }
@@ -117,7 +117,7 @@
       var f = devices[i];
       var tag = f.paired ? '<span style="color:#3fb950">已配对</span>'
         : '<span style="color:#8b949e">未配对</span>';
-      var kind = f.type === 'pc' ? '电脑' : '手机';
+      var kind = f.type === 'pc' ? window.I18n.t('电脑') : window.I18n.t('手机');
       rows += '<div style="padding:10px 0;border-bottom:1px solid #21262d">'
         + '<div><b>' + esc(f.name) + '</b> '
         + '<span style="color:#8b949e;font-size:12px">' + esc(kind) + ' · '
@@ -167,7 +167,7 @@
     if (codeBtn) codeBtn.onclick = function () {
       var pin = call('lanNewPairCode');
       var box = d.querySelector('#ls-codebox');
-      if (!pin) { toast('生成失败，请确认已打开同步面板'); return; }
+      if (!pin) { toast(window.I18n.t('生成失败，请确认已打开同步面板')); return; }
       if (box) {
         box.style.display = 'block';
         var p = d.querySelector('#ls-pin');
@@ -176,7 +176,7 @@
     };
 
     var scanBtn = d.querySelector('#ls-scan');
-    if (scanBtn) scanBtn.onclick = function () { call('lanDiscover'); toast('已重新搜索'); };
+    if (scanBtn) scanBtn.onclick = function () { call('lanDiscover'); toast(window.I18n.t('已重新搜索')); };
 
     var btns = d.querySelectorAll('[data-act]');
     for (var i = 0; i < btns.length; i++) {
@@ -190,7 +190,7 @@
           else if (act === 'unpair') {
             call('lanRemovePeer', id);
             call('lanDiscover');
-            toast('已解除配对');
+            toast(window.I18n.t('已解除配对'));
           }
         };
       })(btns[i]);
@@ -200,30 +200,30 @@
   function doPush(id) {
     var payload = collect();
     var r = call('lanPush', id, JSON.stringify(payload));
-    report(r, '推送');
+    report(r, window.I18n.t('推送'));
   }
 
   function doPull(id) {
     var r = call('lanPull', id);
-    report(r, '同步');
+    report(r, window.I18n.t('同步'));
   }
 
   function doPair(id) {
-    var pin = window.prompt('输入对方显示的 6 位配对码：');
+    var pin = window.prompt(window.I18n.t('输入对方显示的 6 位配对码：'));
     if (!pin) return;
     pin = String(pin).trim();
-    if (!/^\d{6}$/.test(pin)) { toast('配对码是 6 位数字'); return; }
+    if (!/^\d{6}$/.test(pin)) { toast(window.I18n.t('配对码是 6 位数字')); return; }
     var r = call('lanPair', id, pin);
-    report(r, '配对');
+    report(r, window.I18n.t('配对'));
   }
 
   function report(r, verb) {
-    if (!r) { toast(verb + '失败：本机暂不支持'); return; }
+    if (!r) { toast(verb + window.I18n.t('失败：本机暂不支持')); return; }
     var ok = false, msg = '';
     try {
       var o = JSON.parse(r);
       ok = !!o.ok;
-      msg = o.msg || (ok ? verb + '完成' : verb + '失败');
+      msg = o.msg || (ok ? verb + window.I18n.t('完成') : verb + window.I18n.t('失败'));
     } catch (e) { msg = String(r); }
     toast(msg);
   }
@@ -240,10 +240,10 @@
       + 'justify-content:center;padding:20px';
 
     var isPush = info.action === 'push';
-    var title = isPush ? '允许这台设备写入本机？' : '允许这台设备读取本机数据？';
+    var title = isPush ? window.I18n.t('允许这台设备写入本机？') : window.I18n.t('允许这台设备读取本机数据？');
     var sub = isPush
       ? esc(info.peerName) + ' 想把数据推送到本机，同意后将覆盖本机的对应内容。'
-      : esc(info.peerName) + ' 想读取本机的全部可同步数据。';
+      : esc(info.peerName) + window.I18n.t(' 想读取本机的全部可同步数据。');
 
     wrap.innerHTML =
       '<div style="background:#0d1117;border:1px solid #30363d;border-radius:12px;'
@@ -251,7 +251,7 @@
       + '<div style="font-size:16px;font-weight:700;margin-bottom:8px">' + title + '</div>'
       + '<div style="font-size:13px;color:#8b949e;line-height:1.6">' + sub + '</div>'
       + '<div style="margin:12px 0;padding:10px;background:#161b22;border-radius:8px;'
-      + 'font-size:13px">涉及内容：<b>' + esc(info.items || '未知') + '</b></div>'
+      + 'font-size:13px">涉及内容：<b>' + esc(info.items || window.I18n.t('未知')) + '</b></div>'
       + '<div style="display:flex;gap:10px;margin-top:14px">'
       + '<button id="ls-no" style="flex:1;padding:11px;border-radius:8px;'
       + 'background:#21262d;color:#e6edf3;border:1px solid #30363d;font-size:14px">拒绝</button>'
@@ -276,7 +276,7 @@
     if (document.getElementById('lan-sync-entry')) return;
     var b = document.createElement('button');
     b.id = 'lan-sync-entry';
-    b.textContent = '局域网同步';
+    b.textContent = window.I18n.t('局域网同步');
     b.style.cssText = 'position:fixed;z-index:99980;right:12px;bottom:76px;'
       + 'padding:8px 12px;border-radius:20px;background:#21262d;color:#e6edf3;'
       + 'border:1px solid #30363d;font-size:12px;opacity:.9';
@@ -299,18 +299,18 @@
       if (info && info.reqId) approve(info);
     },
     onPaired: function (id, name, sas) {
-      toast('已与 ' + name + ' 配对，短认证串 ' + sas + '（请与对方核对）');
+      toast(window.I18n.t('已与 ') + name + window.I18n.t(' 配对，短认证串 ') + sas + window.I18n.t('（请与对方核对）'));
       call('lanDiscover');
     },
     onSyncDone: function (dir, peerName, items) {
-      toast((dir === 'in' ? '已接收来自 ' : '已发送到 ') + peerName + '：' + items);
+      toast((dir === 'in' ? window.I18n.t('已接收来自 ') : window.I18n.t('已发送到 ')) + peerName + '：' + items);
     },
     /** 原生已把令牌/设置/TOTP 落盘，这里补上 localStorage 那份 */
     onApply: function (json) {
       var data = null;
       try { data = JSON.parse(json); } catch (e) { return; }
       var n = applyWeb(data);
-      if (n) toast('已应用 ' + n + ' 项本地数据，重启页面后生效');
+      if (n) toast(window.I18n.t('已应用 ') + n + window.I18n.t(' 项本地数据，重启页面后生效'));
     },
     collect: collect,
     open: open,
