@@ -531,7 +531,7 @@
 
     /** 生成一条标准 otpauth 链接（分享/导出用） */
     toOtpAuth: function (acct) {
-      var label = encodeURIComponent((acct.issuer ? acct.issuer + ':' : '') + (acct.name || '账户'));
+      var label = encodeURIComponent((acct.issuer ? acct.issuer + ':' : '') + (acct.name || window.I18n.t("账户")));
       var q = 'secret=' + encodeURIComponent(acct.secret);
       if (acct.issuer) q += '&issuer=' + encodeURIComponent(acct.issuer);
       if (acct.digits && acct.digits !== 6) q += '&digits=' + acct.digits;
