@@ -133,7 +133,7 @@
     }
     if (!devices.length) {
       rows = '<div style="color:#8b949e;padding:12px 0">'
-        + '正在搜索同一网络下的设备…（两端都要打开本页）</div>';
+        + window.I18n.t("正在搜索同一网络下的设备…（两端都要打开本页）</div>");
     }
 
     d.innerHTML =
@@ -141,7 +141,7 @@
       + '<b style="font-size:15px">局域网同步</b>'
       + '<button id="ls-close" class="ls-btn">关闭</button></div>'
       + '<div style="color:#8b949e;font-size:12px;margin:8px 0 12px">'
-      + '手机推给电脑免确认；电脑推给手机、手机拉取电脑，都需要另一端确认。</div>'
+      + window.I18n.t("手机推给电脑免确认；电脑推给手机、手机拉取电脑，都需要另一端确认。</div>")
       + '<div style="display:flex;gap:8px;margin-bottom:12px">'
       + '<button id="ls-code" class="ls-btn">生成配对码</button>'
       + '<button id="ls-scan" class="ls-btn">刷新设备</button></div>'
@@ -149,7 +149,7 @@
       + 'background:#161b22;border:1px solid #30363d;border-radius:8px">'
       + '<div style="font-size:26px;letter-spacing:6px;font-weight:700" id="ls-pin">------</div>'
       + '<div style="color:#8b949e;font-size:12px;margin-top:6px">'
-      + '在电脑端输入这 6 位码完成配对，5 分钟内有效</div></div>'
+      + window.I18n.t("在电脑端输入这 6 位码完成配对，5 分钟内有效</div></div>")
       + '<div>' + rows + '</div>'
       + '<style>.ls-btn{background:#21262d;color:#e6edf3;border:1px solid #30363d;'
       + 'border-radius:6px;padding:7px 12px;font-size:13px;cursor:pointer}'
@@ -242,7 +242,7 @@
     var isPush = info.action === 'push';
     var title = isPush ? window.I18n.t('允许这台设备写入本机？') : window.I18n.t('允许这台设备读取本机数据？');
     var sub = isPush
-      ? esc(info.peerName) + ' 想把数据推送到本机，同意后将覆盖本机的对应内容。'
+      ? esc(info.peerName) + window.I18n.t(" 想把数据推送到本机，同意后将覆盖本机的对应内容。")
       : esc(info.peerName) + window.I18n.t(' 想读取本机的全部可同步数据。');
 
     wrap.innerHTML =
