@@ -58,68 +58,68 @@
        win   做对之后给的那句确认（顺手把功能再讲一遍） */
   var STEPS = [
     {
-      title: '欢迎使用 githup',
+      title: window.I18n.t('欢迎使用 githup'),
       body: '把 GitHub 装进口袋：看动态、收通知、搜仓库、逛趋势，都在这一个 App 里。' +
             '<br>这段引导是<b>边做边学</b>的：有几步会请你真的动手试一下，' +
             '做对了会自动往下走，做不出来也可以点「跳过这步」。' +
             '<br>不想看了，随时点卡片右下角的<b>「跳过」</b>。'
     },
     {
-      title: '顶栏：你在哪',
+      title: window.I18n.t('顶栏：你在哪'),
       body: '左边是当前页面的标题。进入二级页面时，最左边会多出一个返回箭头。' +
             '<br>这一栏永远停在屏幕顶部，内容滚动时它不动。',
       target: '#appbar'
     },
     {
-      title: '右上角：藏着的下载管理',
+      title: window.I18n.t('右上角：藏着的下载管理'),
       body: '这排图标里最右边那枚<b>收纳箱</b>是下载管理：正在下的 Release 包在这里看进度。' +
             '<br>它常年待在右上角、没有任何文字，是最容易一直没被发现的入口 —— 先点它一下试试。',
       target: '#appbar-actions',
       act: {
         kind: 'tap',
         sel: '.dl-action',
-        hint: '点一下右上角那枚收纳箱图标',
+        hint: window.I18n.t('点一下右上角那枚收纳箱图标'),
         win: '这就是下载管理，以后下 Release 包都在这儿看进度'
       }
     },
     {
-      title: '下载管理：任务都在这儿',
+      title: window.I18n.t('下载管理：任务都在这儿'),
       body: 'Release 包、源码包的下条都列在这里，能看到进度、暂停和失败原因。' +
             '<br>右上角那枚图标在任何页面都有，下完东西回来点它就行。',
       route: '/downloads'
     },
     {
-      title: '底栏：五个主入口',
+      title: window.I18n.t('底栏：五个主入口'),
       body: '<b>首页</b>看关注的动态，<b>通知</b>收 GitHub 消息，<b>探索</b>逛趋势榜，' +
             '<b>搜索</b>找仓库/用户/代码，<b>我的</b>是你的主页和设置。',
       route: '/home',
       target: '#tabbar'
     },
     {
-      title: '底栏还能「拖」着走',
+      title: window.I18n.t('底栏还能「拖」着走'),
       body: '这枚胶囊上<b>左右拖动可以跟手切换</b>：手指往哪边划，下面的指示条就跟到哪边，' +
-            '松手吸附到最近的一格。比一格一格点要快。',
+            window.I18n.t('松手吸附到最近的一格。比一格一格点要快。'),
       route: '/home',
       target: '#tabbar',
       act: {
         kind: 'drag',
-        hint: '按住底栏胶囊，往左或往右拖出一段距离',
+        hint: window.I18n.t('按住底栏胶囊，往左或往右拖出一段距离'),
         win: '就是这个手感 —— 拖过头会吸附到最近一格'
       }
     },
     {
-      title: '隐藏手势：下拉刷新',
+      title: window.I18n.t('隐藏手势：下拉刷新'),
       body: '页面滚到顶之后，<b>按住屏幕往下拖一段再松手</b>就能刷新当前页。' +
             '<br>没有刷新按钮，也没有转圈的提示 —— 这个手势只能自己发现，现在你发现了。',
       act: {
         kind: 'pull',
         sel: '#view',
-        hint: '在页面上按住，往下拖出一大段再松手',
-        win: '刷新就是这么触发的，随时能用'
+        hint: window.I18n.t('在页面上按住，往下拖出一大段再松手'),
+        win: window.I18n.t('刷新就是这么触发的，随时能用')
       }
     },
     {
-      title: '隐藏按钮：翻译键能长按',
+      title: window.I18n.t('隐藏按钮：翻译键能长按'),
       body: '右上角的<b>译</b>字按钮：点一下翻译本页 / 再点还原；' +
             '<b>长按它会打开翻译设置</b> —— 换引擎、开自动翻译、清缓存都在里面。' +
             '<br>长按在界面上没有任何提示，是这里最容易被漏掉的一个按钮。',
@@ -128,12 +128,12 @@
       act: {
         kind: 'long',
         ms: 500,
-        hint: '按住这个「译」按钮不放，大约 1 秒',
+        hint: window.I18n.t('按住这个「译」按钮不放，大约 1 秒'),
         win: '菜单弹出来了：换引擎、自动翻译、清缓存都在里面'
       }
     },
     {
-      title: '翻译菜单里还有什么',
+      title: window.I18n.t('翻译菜单里还有什么'),
       body: '刚才那个菜单里可以：<b>切换引擎</b>（默认自动，多个引擎一起上）、' +
             '开<b>自动翻译</b>（进页面自己翻，不用点）、<b>清缓存</b>。' +
             '<br>再往下还有一层：菜单里点<b>翻译引擎</b>，在列表里' +
@@ -144,21 +144,21 @@
       round: true
     },
     {
-      title: '搜索：从关键词开始',
+      title: window.I18n.t('搜索：从关键词开始'),
       body: '输入关键词，点右边的<b>搜索</b>（或按回车）。' +
             '<br>框里的 × 是一键清空；下方的<b>排序</b>和<b>筛选</b>可以按语言、Star 数再收窄结果。',
       route: '/search',
       target: '.search-bar'
     },
     {
-      title: '搜索：先选类型再搜',
+      title: window.I18n.t('搜索：先选类型再搜'),
       body: '这几个标签决定你搜的是<b>仓库</b>、<b>用户</b>、<b>代码</b>还是<b>议题</b>。' +
             '<br>先选类型再搜，命中率会高很多。',
       route: '/search',
       target: '#tabs'
     },
     {
-      title: '探索：时间范围和语言',
+      title: window.I18n.t('探索：时间范围和语言'),
       body: '趋势榜的时间范围在这里切：<b>今日 / 本周 / 本月</b>，' +
             '它筛的是「这段时间内新创建的仓库」，和 Star 总数榜不是一回事。' +
             '<br>下面那排<b>语言标签可以左右滑</b>，点一个就只剩那一种语言。',
@@ -166,41 +166,41 @@
       target: '.seg-wrap'
     },
     {
-      title: '隐藏手势：通知长按进多选',
+      title: window.I18n.t('隐藏手势：通知长按进多选'),
       body: '通知列表里<b>按住任意一条不放</b>，就进入多选模式：底部浮出操作栏，' +
-            '可以勾选、全选、批量删除。' +
+            window.I18n.t('可以勾选、全选、批量删除。') +
             '<br>点一下是打开这条通知，长按才是多选 —— 没有任何角标提示。',
       route: '/notifications',
       target: '.notif',
       act: {
         kind: 'long',
         ms: 500,
-        hint: '按住列表里任意一条通知不放',
-        win: '底部这条操作栏就是多选，勾完可以批量删'
+        hint: window.I18n.t('按住列表里任意一条通知不放'),
+        win: window.I18n.t('底部这条操作栏就是多选，勾完可以批量删')
       }
     },
     {
-      title: '设置：界面风格你说了算',
+      title: window.I18n.t('设置：界面风格你说了算'),
       body: '这个开关是<b>iOS风格</b>：开启时底栏是悬浮的磨砂胶囊（默认开），' +
             '关掉就回到朴素样式。<b>机型较老、觉得卡</b>的时候可以关掉它。',
       route: '/settings',
       target: '[data-s="glass"]'
     },
     {
-      title: '设置里还有「再来一次」',
+      title: window.I18n.t('设置里还有「再来一次」'),
       body: '<b>新手指导</b>是现在立刻再看一遍，<b>重置新手引导</b>是抹掉「已看过」的记录、' +
-            '下次打开 App 自动重播。' +
+            window.I18n.t('下次打开 App 自动重播。') +
             '<br>点一下重置试试 —— 反正看完这段我们会把它记成「已看过」。',
       route: '/settings',
       target: '[data-s="guideReset"]',
       act: {
         kind: 'tap',
-        hint: '点一下「重置新手引导」这行',
-        win: '下次打开 App 会自己重播这段引导'
+        hint: window.I18n.t('点一下「重置新手引导」这行'),
+        win: window.I18n.t('下次打开 App 会自己重播这段引导')
       }
     },
     {
-      title: '就这些，开始用吧',
+      title: window.I18n.t('就这些，开始用吧'),
       body: '<b>刚才这些藏起来的：</b>' +
             '<br>· 右上角收纳箱 = 下载管理' +
             '<br>· 底栏可以左右拖着切页' +
@@ -320,8 +320,8 @@
     try {
       if (window.UI && UI.toast) {
         UI.toast(STEPS[S.i] && STEPS[S.i].act
-          ? '先按提示做这一步，做完会自动往下走'
-          : '引导进行中，先看完或点卡片里的「跳过」');
+          ? window.I18n.t('先按提示做这一步，做完会自动往下走')
+          : window.I18n.t('引导进行中，先看完或点卡片里的「跳过」'));
       }
     } catch (e) {}
   }
@@ -528,7 +528,7 @@
        不做强制跳转 —— 有些人的机器上手势就是不太灵。 */
     S.nagTimer = setTimeout(function () {
       if (S.on && !S.win && window.UI && UI.toast) {
-        UI.toast('做不出来也没关系，点「跳过这步」继续', 3000);
+        UI.toast(window.I18n.t('做不出来也没关系，点「跳过这步」继续'), 3000);
       }
     }, act.kind === 'long' ? 9000 : 7000);
     return true;
@@ -547,9 +547,9 @@
     D.root.classList.add('behind');
     D.tip.classList.add('win');
     D.win.hidden = false;
-    D.win.textContent = '✓ ' + (act.win || '就是这个');
+    D.win.textContent = '✓ ' + (act.win || window.I18n.t('就是这个'));
     D.hint.hidden = true;
-    D.next.textContent = '继续';
+    D.next.textContent = window.I18n.t('继续');
 
     S.okTimer = setTimeout(function () {
       if (!S.on) return;
@@ -600,10 +600,10 @@
       var armed = step.act ? armTask(step) : false;
       if (armed) {
         D.hint.hidden = false;
-        D.hint.textContent = '动手试试：' + step.act.hint + '（做完自动进入下一步）';
-        D.next.textContent = '跳过这步';
+        D.hint.textContent = window.I18n.t('动手试试：') + step.act.hint + window.I18n.t('（做完自动进入下一步）');
+        D.next.textContent = window.I18n.t('跳过这步');
       } else {
-        D.next.textContent = (i === STEPS.length - 1) ? '完成' : '下一步';
+        D.next.textContent = (i === STEPS.length - 1) ? window.I18n.t('完成') : window.I18n.t('下一步');
       }
       D.next.classList.toggle('ghost', armed);
     });
@@ -621,7 +621,7 @@
     document.addEventListener('click', guard, true);
     go(0);
     /* 手动从设置里进来时给个提示，让人知道随时能退 */
-    if (opts.manual && window.UI && UI.toast) UI.toast('点卡片里的「跳过」可随时退出引导');
+    if (opts.manual && window.UI && UI.toast) UI.toast(window.I18n.t('点卡片里的「跳过」可随时退出引导'));
   }
 
   function teardown() {
