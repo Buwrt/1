@@ -111,8 +111,8 @@
       var laser = el('i', 'qrl-laser');
       frame.appendChild(laser);
 
-      var tip = el('div', 'qrl-tip', '正在打开相机…');
-      var closeBtn = el('button', 'qrl-close', '✕ 关闭');
+      var tip = el('div', 'qrl-tip', window.I18n.t("正在打开相机…"));
+      var closeBtn = el('button', 'qrl-close', window.I18n.t("✕ 关闭"));
       closeBtn.type = 'button';
       closeBtn.addEventListener('click', function () { finish(null); });
 
@@ -132,7 +132,7 @@
       window.Native.requestCamera().then(function (granted) {
         if (done) return;
         if (!granted) {
-          tip.textContent = '没有相机权限，去系统设置里允许「相机」后再试';
+          tip.textContent = window.I18n.t("没有相机权限，去系统设置里允许「相机」后再试");
           setTimeout(function () { finish(null); }, 1800);
           return;
         }
@@ -172,7 +172,7 @@
 
           ready.then(function () { startLoop(); });
         }).catch(function () {
-          tip.textContent = '相机打开失败，请重试或改用「从图片识别二维码」';
+          tip.textContent = window.I18n.t("相机打开失败，请重试或改用「从图片识别二维码」");
           setTimeout(function () { finish(null); }, 2200);
         });
       });
@@ -180,7 +180,7 @@
       /* ---- ③ 抽帧解码循环 ---- */
       function startLoop() {
         if (done) return;
-        tip.textContent = '对准二维码，识别后自动填入';
+        tip.textContent = window.I18n.t("对准二维码，识别后自动填入");
         var vw = video.videoWidth, vh = video.videoHeight;
         if (!vw || !vh) { hold.timer = setTimeout(startLoop, 120); return; }
 
