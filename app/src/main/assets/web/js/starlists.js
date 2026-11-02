@@ -75,7 +75,7 @@
   /* ============ 官网同步（GitHub Lists） ============
      开着同步时：列表与「仓库归谁」都以官网为准，本机留一份镜像用于
      秒开与离线查看。写操作走「先改镜像（界面立刻响应）→ 再推官网」，
-     推失败就回滚镜像并提示，绝不出现"界面显示成功、官网其实没改"。
+     推失败就回滚镜像并提示，绝不出现window.I18n.t("界面显示成功、官网其实没改")。
      关着同步时：一切照旧，纯本机，下面的代码全部不生效。 */
   var MIRROR_PREFIX = 'gqlists_mirror_v1_';
   function mirrorKey(login) { return MIRROR_PREFIX + (login || me()); }
@@ -108,11 +108,11 @@
   function failTip(e, what) {
     var msg = (e && e.message) || '';
     if (e && e.needUserScope) {
-      UI.toast('令牌缺少 user 权限，' + what + '失败。请重新登录并勾选它');
+      UI.toast(window.I18n.t("令牌缺少 user 权限，") + what + window.I18n.t("失败。请重新登录并勾选它"));
     } else if (/不支持 GraphQL/.test(msg)) {
       UI.toast(window.I18n.t('当前版本不支持官网同步'));
     } else {
-      UI.toast(what + '失败：' + (msg || window.I18n.t('官网接口异常')));
+      UI.toast(what + window.I18n.t("失败：") + (msg || window.I18n.t('官网接口异常')));
     }
   }
 
@@ -129,7 +129,7 @@
     /** 从官网拉一次，覆盖镜像。返回 Promise<Array> */
     syncFromGitHub: function (login) {
       if (!syncOn()) return Promise.resolve(load(login));
-      if (!window.GqLists) return Promise.reject(new Error('不支持官网同步'));
+      if (!window.GqLists) return Promise.reject(new Error(window.I18n.t("不支持官网同步")));
       return window.GqLists.fetchAll(true).then(function (gls) {
         var lists = (gls || []).map(toLocal);
         saveMirror(login || me(), lists);
@@ -265,7 +265,7 @@
           saveMirror(login || me(), m);
           return item;
         }).catch(function (e) {
-          failTip(e, '创建列表');
+          failTip(e, window.I18n.t("创建列表"));
           return null;
         });
       }
@@ -394,7 +394,7 @@
                 { full_name: fullName, description: '', stargazers_count: 0 };
               saveMirror(login || me(), m2);
             }
-            failTip(e, '移出列表');
+            failTip(e, window.I18n.t("移出列表"));
           });
         return true;
       }
@@ -437,10 +437,10 @@
   function editor(list, onDone) {
     var isNew = !list;
     UI.sheet({
-      title: isNew ? '新建列表' : '重命名列表',
+      title: isNew ? window.I18n.t("新建列表") : window.I18n.t("重命名列表"),
       body: '<div class="search-bar" style="margin-top:2px"><div class="search-input">' +
         window.icon('pencil', 15) +
-        '<input id="sl-name" placeholder="列表名称，比如：工具 / 追更 / 以后再看" maxlength="40"></div></div>' +
+        '<input id="sl-name" placeholder=window.I18n.t("列表名称，比如：工具 / 追更 / 以后再看") maxlength="40"></div></div>' +
         (isNew ? '' : '<p class="muted tiny" style="text-align:center;margin:6px 0 0">重命名不影响列表里已加入的仓库</p>'),
       foot: '<button class="btn primary block" id="sl-ok">' + (isNew ? window.I18n.t('创建') : window.I18n.t('保存')) + '</button>',
       onMount: function (body, close) {
@@ -453,13 +453,13 @@
           var r = isNew ? SL.create(name) : SL.rename(list.id, name);
           Promise.resolve(r).then(function (v) {
             if (!v) {
-              input.value = name.trim() ? '这个名字已经用过了' : '';
-              if (!name.trim()) UI.toast('先给列表起个名字');
-              else UI.toast('已经有叫这个名字的列表了');
+              input.value = name.trim() ? window.I18n.t("这个名字已经用过了") : '';
+              if (!name.trim()) UI.toast(window.I18n.t("先给列表起个名字"));
+              else UI.toast(window.I18n.t("已经有叫这个名字的列表了"));
               return;
             }
             close();
-            UI.toast(isNew ? '列表「' + v.name + '」已创建' : window.I18n.t('已重命名'));
+            UI.toast(isNew ? window.I18n.t("列表「") + v.name + window.I18n.t("」已创建") : window.I18n.t('已重命名'));
             if (onDone) onDone(v);
           });
         };
@@ -503,7 +503,7 @@
     }
 
     UI.sheet({
-      title: '加入列表：' + full,
+      title: window.I18n.t("加入列表：") + full,
       body: bodyHtml(),
       onMount: function (bodyEl, close) {
         var wrap = function () { bodyEl.innerHTML = bodyHtml(); bind(); };
@@ -518,10 +518,10 @@
               btn.onclick = function () {
                 if (SL.listsOf(full).indexOf(lid) >= 0) {
                   SL.removeRepo(lid, full);
-                  UI.toast('已移出列表');
+                  UI.toast(window.I18n.t("已移出列表"));
                 } else {
                   SL.addRepo(lid, repo);
-                  UI.toast('已加入列表');
+                  UI.toast(window.I18n.t("已加入列表"));
                 }
                 if (onDone) onDone();
                 wrap();   // 重画勾选态与计数，弹层不关（官方就是勾完还开着）
@@ -532,7 +532,7 @@
                 editor(null, function (created) {
                   if (created) {
                     SL.addRepo(created.id, repo);
-                    UI.toast('已加入「' + created.name + '」');
+                    UI.toast(window.I18n.t("已加入「") + created.name + '」');
                     if (onDone) onDone();
                   }
                 });
