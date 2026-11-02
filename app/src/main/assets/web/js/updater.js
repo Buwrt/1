@@ -95,12 +95,12 @@
 
   /* 前两位变化 = 强制更新（见上面 pack 里的 force 判定），只有第三位是可选的 */
   var LEVEL_TEXT = {
-    major: '大版本更新，安装后才能继续使用',
-    minor: '功能更新，安装后才能继续使用',
-    patch: '修复更新，可以稍后再装',
+    major: window.I18n.t("大版本更新，安装后才能继续使用"),
+    minor: window.I18n.t("功能更新，安装后才能继续使用"),
+    patch: window.I18n.t("修复更新，可以稍后再装"),
     // 版本号没变、但包换了。说成「有新内容」太含糊，用户会以为是同一个包
     // 在反复提醒；这里直接讲明白是「同版本号下的包被重新发布过」。
-    content: '这个安装包已更新，可以稍后再装'
+    content: window.I18n.t("这个安装包已更新，可以稍后再装")
   };
 
   /* ---------- 版本号解析 ---------- */
@@ -368,7 +368,7 @@
   function install(info) {
     var a = info && info.asset;
     if (!a) {
-      if (window.UI) window.UI.toast('这个版本没有附带 APK，已打开下载页');
+      if (window.UI) window.UI.toast(window.I18n.t("这个版本没有附带 APK，已打开下载页"));
       if (info && info.url) openOut(info.url);
       return false;
     }
@@ -380,14 +380,14 @@
 
     if (pinned && listed && pinned !== listed) {
       // 内置的和清单对不上 —— 有一方被改了，直接拒绝
-      if (window.UI) window.UI.toast('安装包校验信息不一致，已阻止安装');
+      if (window.UI) window.UI.toast(window.I18n.t("安装包校验信息不一致，已阻止安装"));
       return false;
     }
     var expect = digest || pinned || listed;
 
     if (!expect) {
       // 拿不到任何指纹：不开这个口子，让用户走官方 Release 页面手动装
-      if (window.UI) window.UI.toast('缺少校验信息，已打开官方下载页');
+      if (window.UI) window.UI.toast(window.I18n.t("缺少校验信息，已打开官方下载页"));
       openOut(info.url || a.browser_download_url);
       return false;
     }
@@ -397,14 +397,14 @@
         // 自更新包来自 Release：第 5 个参数传 release，落 githup/release
         NativeBridge.installApkChecked(a.browser_download_url, a.name,
           JSON.stringify({ Accept: 'application/vnd.android.package-archive' }), expect, 'release');
-        window.UI.toast('正在下载并校验 ' + a.name);
+        window.UI.toast(window.I18n.t("正在下载并校验 ") + a.name);
         return true;
       } catch (e) { /* 落到下面 */ }
     }
 
     // 老版本原生层没有校验能力：宁可不自动装，也不能装个没法验的包。
     // 统一走 openOut，保证这种情况下也一定有个出口，不会点了没反应。
-    if (window.UI) window.UI.toast('当前版本不支持安全校验，已打开官方下载页');
+    if (window.UI) window.UI.toast(window.I18n.t("当前版本不支持安全校验，已打开官方下载页"));
     openOut(info.url || a.browser_download_url);
     return false;
   }
@@ -444,8 +444,8 @@
       一脸问号：「我装的就是 1.1.4，怎么又 1.1.4？」直说「这个安装包更新了」
       才是他在经历的事。
     */
-    var head = force ? '必须更新才能继续使用'
-                     : (byContent ? '这个安装包已更新' : '发现新版本 ' + info.latest);
+    var head = force ? window.I18n.t("必须更新才能继续使用")
+                     : (byContent ? window.I18n.t("这个安装包已更新") : window.I18n.t("发现新版本 ") + info.latest);
 
     UI.sheet({
       title: head,
@@ -464,23 +464,23 @@
           */
           (byContent && (info.sha256 || info.localSha)
             ? '<div class="muted tiny" style="margin-top:2px;font-family:monospace">' +
-                '服务器 ' + esc(String(info.sha256 || '').slice(0, 8)) +
-                ' · 本机 ' + esc(String(info.localSha || '').slice(0, 8)) + '</div>'
+                window.I18n.t("服务器 ") + esc(String(info.sha256 || '').slice(0, 8)) +
+                window.I18n.t(" · 本机 ") + esc(String(info.localSha || '').slice(0, 8)) + '</div>'
             : '') +
         '</div>' +
         '<div class="card" style="margin-top:14px;padding:12px">' +
           '<div style="font-weight:600;margin-bottom:8px;font-size:14px">' + esc(LEVEL_TEXT[info.level] || '有新版本') + '</div>' +
           '<div class="muted" style="font-size:13px;line-height:1.6;margin-bottom:10px">' +
             (force
-              ? '第' + (info.level === 'major' ? '一' : '二') + '位版本号从 ' +
-                esc(parse(info.current).major + '.' + parse(info.current).minor) + ' 升到了 ' +
+              ? window.I18n.t("第") + (info.level === 'major' ? window.I18n.t("一") : window.I18n.t("二")) + window.I18n.t("位版本号从 ") +
+                esc(parse(info.current).major + '.' + parse(info.current).minor) + window.I18n.t(" 升到了 ") +
                 esc(parse(info.latest).major + '.' + parse(info.latest).minor) +
-                '，属于必须安装的' + (info.level === 'major' ? '大版本' : '功能更新') + ' —— 装好才能继续使用。'
+                window.I18n.t("，属于必须安装的") + (info.level === 'major' ? window.I18n.t("大版本") : window.I18n.t("功能更新")) + window.I18n.t(" —— 装好才能继续使用。")
               : byContent
-                ? '你装的这个包和服务器上的不是同一份 —— 版本号同为 ' + esc(info.latest) +
-                  '，但校验和对不上，说明这个版本号下的安装包被重新发布过（通常是又修了一点东西）。' +
-                  '装上去就是最新那份；也可以留在当前版本，不影响使用。'
-                : '这一版只改了第三位版本号（修复更新），不影响使用 —— 你可以现在装，也可以留在当前版本。') +
+                ? window.I18n.t("你装的这个包和服务器上的不是同一份 —— 版本号同为 ") + esc(info.latest) +
+                  window.I18n.t("，但校验和对不上，说明这个版本号下的安装包被重新发布过（通常是又修了一点东西）。") +
+                  window.I18n.t("装上去就是最新那份；也可以留在当前版本，不影响使用。")
+                : window.I18n.t("这一版只改了第三位版本号（修复更新），不影响使用 —— 你可以现在装，也可以留在当前版本。")) +
           '</div>' +
           '<div style="border-top:1px solid var(--border-muted);padding-top:10px">' + notesHtml(info.notes) + '</div>' +
         '</div>',
@@ -512,10 +512,10 @@
           // 内容更新时版本号没变，只能按指纹记录跳过；否则版本号一样会永久屏蔽后续更新
           if (info.fromContent && info.sha256) {
             window.Store.set(SKIP_SHA_KEY, info.sha256);
-            UI.toast('已跳过这个包，下次换内容时仍会提醒');
+            UI.toast(window.I18n.t("已跳过这个包，下次换内容时仍会提醒"));
           } else {
             window.Store.set(SKIP_KEY, info.latest);
-            UI.toast('已跳过 ' + info.latest + '，改前两位版本号时仍会强制提醒');
+            UI.toast(window.I18n.t("已跳过 ") + info.latest + window.I18n.t("，改前两位版本号时仍会强制提醒"));
           }
           close();
           if (opt.onDone) opt.onDone('skip');
@@ -531,7 +531,7 @@
    * 期间照常能点页面上的东西，不打断你正在做的事。
    */
   function upToDateToast(info) {
-    var msg = '您已是最新版本' + (info && info.current ? '（当前 ' + info.current + '）' : '');
+    var msg = window.I18n.t("您已是最新版本") + (info && info.current ? window.I18n.t("（当前 ") + info.current + '）' : '');
     if (window.UI.toastOk) window.UI.toastOk(msg, 2600);
     else window.UI.toast(msg, 2600);
   }
@@ -543,7 +543,7 @@
     return check().then(function (info) {
       UI.loading(false);
       if (!info.ok) {
-        UI.toast(info.reason === 'no-release' ? '还没有发布正式版本' : '检查更新失败，请稍后再试');
+        UI.toast(info.reason === 'no-release' ? window.I18n.t("还没有发布正式版本") : window.I18n.t("检查更新失败，请稍后再试"));
         return info;
       }
       if (!info.hasUpdate) { upToDateToast(info); return info; }
