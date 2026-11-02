@@ -189,7 +189,7 @@
     var head = arr.slice(0, n - 1);
     var rest = 0;
     for (var i = n - 1; i < arr.length; i++) rest += arr[i].value;
-    head.push({ label: '其它', value: rest });
+    head.push({ label: window.I18n.t('其它'), value: rest });
     return head;
   }
 
@@ -197,10 +197,10 @@
 
   function statCards(s, me) {
     var items = [
-      { icon: 'repo', label: '仓库', value: U.num(s.count) },
+      { icon: 'repo', label: window.I18n.t('仓库'), value: U.num(s.count) },
       { icon: 'star', label: '收到 Star', value: U.num(s.stars) },
       { icon: 'code-square', label: '被 Fork', value: U.num(s.forks) },
-      { icon: 'people', label: me && me.type === 'Organization' ? '成员' : '粉丝',
+      { icon: 'people', label: me && me.type === 'Organization' ? window.I18n.t('成员') : window.I18n.t('粉丝'),
         value: U.num((me && me.followers) || 0) }
     ];
     return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
@@ -235,7 +235,7 @@
     var legendItems = items.map(function (it, i) {
       return {
         label: it.label, value: it.value, color: color(i),
-        go: it.go || (unit === ' 个仓库' && it.label !== '其它' ? null : null)
+        go: it.go || (unit === window.I18n.t(' 个仓库') && it.label !== window.I18n.t('其它') ? null : null)
       };
     });
     return '<div class="card" style="padding:14px">'
@@ -260,7 +260,7 @@
     if (s.top.length > 8) {
       var rest = 0;
       for (var i = 8; i < s.top.length; i++) rest += s.top[i].stargazers_count || 0;
-      starTop.push({ label: '其它', value: rest });
+      starTop.push({ label: window.I18n.t('其它'), value: rest });
     }
 
     var langItems = topN(s.byLang, 9).map(function (it) {
@@ -300,13 +300,13 @@
       + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
       + '<button class="btn sm" id="st-fork">' + window.icon('repo', 13)
       + (CTX.includeFork ? ' 含 fork' : ' 不含 fork') + '</button>'
-      + '<span class="muted tiny">共 ' + U.num(CTX.repos.length) + ' 个仓库'
+      + '<span class="muted tiny">共 ' + U.num(CTX.repos.length) + window.I18n.t(' 个仓库')
       + (CTX.includeFork ? '' : '（已排除 ' + U.num(CTX.repos.length - s.count) + ' 个 fork）')
       + '</span></div>'
       + chartBlock('Star 分布', '收到的 Star 都落在哪些仓库上', starTop, s.stars, ' 个',
         U.num(s.stars), 'Star')
       + chartBlock('语言分布', '这些仓库主要用什么语言', langItems, s.count, ' 个',
-        U.num(s.count), '仓库')
+        U.num(s.count), window.I18n.t('仓库'))
       + trendHtml
       + '<div class="muted tiny" style="padding:0 2px 8px">'
       + '数据来自 GitHub 当前值；趋势由本机每天记一笔攒出来，'
