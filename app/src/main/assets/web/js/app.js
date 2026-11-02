@@ -10,11 +10,238 @@
   /* 右上角「下载管理」入口的当前按钮实例（角标刷新用；不在该页时为 null） */
   var dlBtn = null;
 
+  /*
+   * 取身份，失败先静默重试几次再认输。
+   *
+   * 为什么需要它：链路上的偶发拦截（VPN / 代理 / 网关）会返回
+   *   403 {"detail":"No policy rule matched the request"}
+   * 这不是 GitHub 的答复，重试一次往往就通了。而以前身份拉取只跑一次，
+   * 失败立刻 gate(0, true) → 铺出「需要联网完成一次验证」——
+   * 用户满格信号却看到这页，以为是 App 坏了。
+   *
+   * 所以：拿不到身份时先在后台重试，重试成功用户完全无感。
+   * 全部失败才走原来的判定（fail-closed / 401 放行）。
+   *
+   * 注意 me() 默认带 60 秒缓存，重试必须 cache:0 + dedupe:false，
+   * 否则每一次重试都命中同一份缓存结果，等于没重试。
+   */
+  function meRetry(tries) {
+    return window.API.get('/user', null, { cache: 0, dedupe: false }).catch(function (e) {
+      /* 401 是服务器明确说「这张凭据不能用」，重试一万次也一样 —— 立刻认输 */
+      if (e && e.status === 401) throw e;
+      if (tries <= 0) throw e;
+      /* 间隔别太长：最坏 3.8 秒才进首页，再久用户就以为卡住了。 */
+      var wait = [600, 1200, 2000][3 - tries] || 2000;
+      return new Promise(function (res, rej) {
+        setTimeout(function () { meRetry(tries - 1).then(res, rej); }, wait);
+      });
+    });
+  }
+
   var App = {
     pageCache: Object.create(null),
     cacheGet: function (k) { return this.pageCache[k]; },
     cacheSet: function (k, v) { this.pageCache[k] = v; },
     clearPageCache: function () { this.pageCache = Object.create(null); },
+
+    /**
+     * 访问策略命中后的界面。
+     *
+     * 它顶在首页位置上，底栏点不动 —— 所以「退出登录」必须自己给个出口，
+     * 不然人被困在这里，连换账号都做不到。
+     *
+     * 退出走 forget()（连记住的那份一起清）+ Blocklist.reset()（结论作废），
+     * 然后跳登录页。重新登录时按新账号的 ID 再判一次，不在名单里就能进。
+     */
+    lockView: function () {
+      var host = document.getElementById('view');
+      if (!host) return;
+      /* 每次铺页都以当前这次判定为准，别让上一轮的原因残留 */
+      if (App._lockReason === undefined) App._lockReason = '';
+      /* 3 = 无法确认（多半是断网）。措辞要分开：
+         这种情况下说「账号被限制」是冤枉人，用户会以为自己被封了。 */
+      var unknown = (window.Blocklist && window.Blocklist.state() === 3);
+      /*
+        无法确认也要分原因，否则诊断会把人带偏：
+        令牌作废时说「需要联网」，用户盯着一个满格的 WiFi 不知道
+        该干什么 —— 联网一百次也救不回一张废令牌。
+      */
+      var bad = (App._lockReason === 'token');
+      var title = !unknown ? window.I18n.t('当前账号无法使用本应用')
+        : (bad ? window.I18n.t('令牌无效或已过期') : window.I18n.t('需要联网完成一次验证'));
+      var desc = !unknown
+        ? '该 GitHub 账号已被开发者限制访问。<br>如有疑问请联系开发者。'
+        : (bad
+          ? '本机保存的令牌已失效，无法确认账号。<br>请退出后重新登录。'
+          : '本机无法确认当前账号状态。<br>若开着 VPN 或代理，先关掉再试；<br>联网验证一次之后，断网也能正常使用。');
+      host.innerHTML =
+        '<div class="page"><div class="card" style="padding:28px 20px;text-align:center;margin-top:48px">' +
+        '<div style="color:var(--danger);margin-bottom:14px">' + window.icon('x-circle-fill', 40) + '</div>' +
+        '<div style="font-size:17px;font-weight:600;margin-bottom:8px">' + title + '</div>' +
+        '<div class="muted" style="line-height:1.6">' + desc + '</div>' +
+        (unknown
+          ? '<div id="lockStatus" class="muted" style="margin-top:10px;font-size:12px">正在自动重试…</div>'
+          : '') +
+        '<div style="margin-top:22px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">' +
+        (unknown
+          ? '<button class="btn primary" id="lockRetry">重新验证</button>'
+          : '') +
+        '<button class="btn" id="lockLogout">退出登录</button>' +
+        '</div></div></div>';
+
+      var retry = document.getElementById('lockRetry');
+      if (retry) retry.onclick = function () {
+        UI.loading && UI.loading(true);
+        App.reverify().then(function (v) {
+          UI.loading && UI.loading(false);
+          if (v >= 2) App.lockView();
+        }).catch(function () {
+          UI.loading && UI.loading(false);
+          App.lockView();
+        });
+      };
+
+      /*
+        无法确认时自动重试，联网后不用手动点（逻辑见 App.reverify / autoVerify）。
+        令牌作废的情况不开：重试一万次也是 401，白白烧请求配额，
+        屏幕上那句「正在自动重试…」还会让人以为马上就好。
+      */
+      if (unknown && !bad) App.autoVerify(true); else App.autoVerify(false);
+
+      var out = document.getElementById('lockLogout');
+      if (out) out.onclick = function () {
+        App.autoVerify(false);
+        try { window.Session.forget(); } catch (e) {}
+        try { if (window.Blocklist) window.Blocklist.forget(); } catch (e) {}
+        window.Router.replace('/login');
+      };
+    },
+
+    /**
+     * 这次失败是不是「网络不通」—— 也就是 fail-closed 该不该生效。
+     *
+     * ⚠️ 上一版把「所有 4xx」都当成凭据失败放行，这是错的，已回退。
+     * 依据（实测三个令牌对照）：
+     *   · 瞎编令牌   → 401 {"message":"Bad credentials"}   ← 凭据作废
+     *   · 有效令牌   → 200
+     *   · 偶发       → 403 {"detail":"No policy rule matched"}
+     *     那个 403 来自中间网关，不是 GitHub，会自行恢复。
+     *
+     * GitHub 的 403 主要是**限流**（rate limit / abuse）和 SSO 未授权，
+     * 凭据其实是好的。把 403 当成「令牌作废」放行，等于打满配额就能
+     * 绕过名单 —— 这是漏洞，不能开。
+     *
+     * 所以只认 401 这一个信号（GitHub 标准的 Bad credentials），
+     * 其余一律 fail-closed。
+     */
+    isOfflineFail: function (e) {
+      var s = (e && e.status) || 0;
+      if (s === 401) return false;   // 唯一可靠的「凭据作废」信号
+      return true;                   // 无响应 / 403 / 5xx → 都按网络处理
+    },
+
+    /**
+     * 重新验证一次。
+     *
+     * 必须**先重新拉身份**再判定 —— 以前直接 check(0, true)：
+     * uid 传 0 就退回「上次记住的那个」，而断网时压根没记住过，
+     * 于是 uid 恒为 0 → 判定「无法确认」→ 又回到那个页面。
+     * 点了跟没点一样，永远出不去。
+     *
+     * 联网之后 /user 拉得到真实 ID，判定才有东西可比。
+     * 所以第一步是强制拉身份（无缓存、不复用在飞的请求）。
+     */
+    reverify: function () {
+      if (!window.Blocklist) return Promise.resolve(3);
+      window.Blocklist.reset();
+      /* 跟启动时一样先静默重试：点「重新验证」时链路可能正抖，
+         只打一次就把人判成网络不通太冤枉。3 次都失败才算真失败。 */
+      return meRetry(3)
+        .then(function (r) {
+          var uid = (r && r.data && r.data.id) || 0;
+          if (uid) {
+            App._lockReason = '';
+            try { window.Session.user = r.data; } catch (e) {}
+            try { window.Session.register(r.data); } catch (e) {}
+          }
+          /* 拿到身份按真实 ID 判；拿不到传 0 + strict，
+             由 check 决定是「无法确认」还是「全新安装放行」 */
+          return window.Blocklist.check(uid, true);
+        })
+        .catch(function (e) {
+          /*
+            拉身份失败要分原因，一律 fail-closed 会锁死人：
+            401/403 都是「服务器明确拒绝这张凭据」，联网也救不回来 ——
+            再拦着只是把人永远关在验证页外面（自动重试每次还是 401/403）。
+            这种情况放行，让他退回登录页换令牌。
+            网络类失败才 fail-closed，等联网后自动重试跑通。
+          */
+          var offline = App.isOfflineFail(e);
+          App._lockReason = offline ? 'net' : 'token';
+          return window.Blocklist.check(0, offline);
+        })
+        .then(function (v) {
+          if (v >= 2) return v;
+          /* 放行：自动重试该停了，并把拦截页换回正常首页 */
+          App.autoVerify(false);
+          window.Router.replace('/');
+          return v;
+        });
+    },
+
+    /**
+     * 自动重试（on=true 开启 / false 停掉）。
+     *
+     * navigator.onLine 只能说明「有网络连接」，不代表能访问 GitHub
+     * （连上了 WiFi 但没有出口、或 GitHub 不可达都很常见），
+     * 所以真正的判断交给 reverify 自己 —— 跑得通就自动放行。
+     *
+     * 三条触发：进来先排一次、浏览器上报 online、之后定时轮询。
+     * 连续失败会拉长间隔（1.2s → 最长 30s），避免一直打空请求烧配额。
+     */
+    autoVerify: function (on) {
+      var A = App;
+      function stop() {
+        if (A._avTick) { clearTimeout(A._avTick); A._avTick = 0; }
+        if (A._avEvt) { window.removeEventListener('online', A._avEvt); A._avEvt = null; }
+        A._avOn = false;
+        var el = document.getElementById('lockStatus');
+        if (el) el.textContent = '';
+      }
+      stop();
+      if (!on) return;
+
+      A._avOn = true;
+      var gap = 1200;
+      function tick() {
+        if (!A._avOn) return;
+        if (A._avBusy) { schedule(); return; }
+        A._avBusy = true;
+        App.reverify().then(function (v) {
+          A._avBusy = false;
+          if (v >= 2) { stop(); App.lockView(); return; }
+          /* 放行时 reverify 内部已经停了；这里补一次保险 */
+          if (v < 2) { stop(); return; }
+        }).catch(function () {
+          A._avBusy = false;
+          gap = Math.min(30000, Math.round(gap * 2));  // 退避：越失败等越久
+          schedule();
+        });
+      }
+      function schedule() {
+        if (!A._avOn) return;
+        var el = document.getElementById('lockStatus');
+        if (el) {
+          el.textContent = (gap > 5000)
+            ? window.I18n.t('网络不通，') + Math.round(gap / 1000) + window.I18n.t(' 秒后自动重试…')
+            : window.I18n.t('正在自动重试…');
+        }
+        A._avTick = setTimeout(tick, gap);
+      }
+      A._avEvt = function () { gap = 800; schedule(); };
+      window.addEventListener('online', A._avEvt);
+      schedule();
+    },
     invalidate: function (prefix) {
       Object.keys(this.pageCache).forEach(function (k) {
         if (k.indexOf(prefix) === 0) delete App.pageCache[k];
@@ -70,8 +297,8 @@
 
       var b = document.createElement('button');
       b.className = 'icon-btn ch-action';
-      b.setAttribute('aria-label', '下载通道');
-      b.title = '下载通道';
+      b.setAttribute('aria-label', window.I18n.t('下载通道'));
+      b.title = window.I18n.t('下载通道');
       b.innerHTML = window.icon('pulse', 22);
       b.onclick = function () { App.openChannelPicker(); };
       box.appendChild(b);
@@ -118,14 +345,14 @@
       }
 
       UI.sheet({
-        title: '下载通道',
+        title: window.I18n.t('下载通道'),
         icon: 'pulse',
         body:
           '<div class="ch-tip">面板开着就一直在测，下面的速度是此刻的实测值，' +
           '每轮都会刷新。点「自动选择」用当前最快的；也可以自己指定一条。' +
           '「不可用」只是这一轮没连上，不代表这条通道坏了 —— 下一轮可能就活了。' +
           '标「待观察」的是 CI 测不出速度的，多半是海外 IP 被拒，' +
-          '你这边未必 —— 测一下就知道。' +
+          window.I18n.t('你这边未必 —— 测一下就知道。') +
           '标「仅仓库文件」的只代理仓库里的文件，下载 Release 附件时会' +
           '自动跳过它，改用别的通道。</div>' +
           '<div class="list-row ch-row" id="ch-re">' +
@@ -143,11 +370,11 @@
                用户点之前就知道此刻会走哪条。 */
             var autoDesc;
             if (best && bestBps > 0) {
-              autoDesc = '此刻最快：' + best + ' · ' + fmtBps(bestBps);
+              autoDesc = window.I18n.t('此刻最快：') + best + ' · ' + fmtBps(bestBps);
             } else if (best) {
-              autoDesc = '此刻最快：' + best;
+              autoDesc = window.I18n.t('此刻最快：') + best;
             } else {
-              autoDesc = '每次下载都重新挑当前最快的那条';
+              autoDesc = window.I18n.t('每次下载都重新挑当前最快的那条');
             }
             var html = '';
             html += '<div class="list-row ch-row' + (cur === '' || cur === 'auto' ? ' on' : '') +
@@ -165,12 +392,12 @@
                 v = fmtBps(r.bps);
               } else if (r.state === 'fail') {
                 /* 标了适用范围的通道，说明它只是这类文件用不上，不是坏了 */
-                v = r.scope ? '不适用' : '不可用';
+                v = r.scope ? window.I18n.t('不适用') : window.I18n.t('不可用');
               } else if (cached && cached[r.key] && cached[r.key] > 0) {
                 /* 还在测，但上次有成绩 —— 先显示旧的，别整屏「测量中」 */
                 v = fmtBps(cached[r.key]); stale = true;
               } else {
-                v = '测量中…';
+                v = window.I18n.t('测量中…');
               }
               html += '<div class="list-row ch-row' +
                 (cur && cur === r.key ? ' on' : '') + '" data-ch-key="' + r.key + '">' +
@@ -180,8 +407,8 @@
                 (r.scope ? ' <span class="ch-tag">仅仓库文件</span>' : '') +
                 (r.verified ? '' : ' <span class="ch-tag">待观察</span>') +
                 ' <span class="ch-host">' + r.host + '</span></span>' +
-                '<span class="row-desc">' + (stale ? '上次实测，正在刷新…'
-                  : (r.state === 'ok' && r.bps > 0 ? ('实测 ' + fmtBps(r.bps))
+                '<span class="row-desc">' + (stale ? window.I18n.t('上次实测，正在刷新…')
+                  : (r.state === 'ok' && r.bps > 0 ? (window.I18n.t('实测 ') + fmtBps(r.bps))
                     : (r.scope && r.state === 'fail'
                       ? '这条只代理仓库里的文件，Release 附件用不上'
                       : v))) + '</span>' +
@@ -196,7 +423,7 @@
               row.onclick = function () {
                 var k = row.getAttribute('data-ch-key');
                 try { NB.setChannel(k); } catch (e) { }
-                UI.toast(k === 'auto' ? '已设为自动（最快的通道）' : '已选择该通道');
+                UI.toast(k === 'auto' ? window.I18n.t('已设为自动（最快的通道）') : window.I18n.t('已选择该通道'));
                 closeFn();
               };
             });
@@ -251,8 +478,8 @@
       if (h === '/downloads') { dlBtn = null; return; }   // 已经在下载页，不必再给入口
       var b = document.createElement('button');
       b.className = 'icon-btn dl-action';
-      b.setAttribute('aria-label', '下载管理');
-      b.title = '下载管理';
+      b.setAttribute('aria-label', window.I18n.t('下载管理'));
+      b.title = window.I18n.t('下载管理');
       b.innerHTML = window.icon('archive', 22) + '<i class="dl-badge" hidden></i>';
       b.onclick = function () { Router.go('/downloads'); };
       box.appendChild(b);
@@ -989,6 +1216,12 @@
       return routeDepth > 0;
     },
     render: function () {
+      /* 访问策略：命中名单就只画这一页，任何路由都不再进去。
+         放在 render 里而不是某个页面的 render 里 —— 那样只挡一条路，
+         用户换个 hash 照样能进。这里是最外层，跑不掉。 */
+      /* 2=命中名单，3=无法确认（断网且本机有使用痕迹）—— 两种都拦。
+         只拦 2 的话，断网那次判定会被随后的正常渲染盖掉。 */
+      if (window.Blocklist && window.Blocklist.state() >= 2) { App.lockView(); return; }
       var hash = location.hash || '#/';
       /*
         渲染纪元（viewEpoch）：每进一次 render 就换一把新令牌。
@@ -1043,7 +1276,7 @@
       if (page.menu) {
         App.setActions([{
           icon: 'kebab-horizontal', onClick: function () {
-            UI.menu('菜单', page.menu()).then(function (k) { if (k && page.onMenu) page.onMenu(k); });
+            UI.menu(window.I18n.t('菜单'), page.menu()).then(function (k) { if (k && page.onMenu) page.onMenu(k); });
           }
         }]);
       }
@@ -1286,8 +1519,27 @@
       } catch (e) { /* 忽略 */ }
     };
 
+    /*
+      访问策略。三条路都要判，一条都不能漏：
+        · 有令牌且 me() 通 → 拿真实 ID 判
+        · 有令牌但 me() 不通（断网 / 令牌失效）→ 用记住的 ID 判
+        · 没令牌（未登录 / 已退出）→ 同样用记住的 ID 判
+
+      以前只在第一条路判，另外两条直接 boot() —— 于是「登录时断网」
+      和「退出登录再断网」都能直接进去，名单形同虚设。
+    */
+    function gate(uid, strict) {
+      if (!window.Blocklist) { boot(); return; }
+      window.Blocklist.check(uid, strict).then(function (v) {
+        boot();
+        /* 放行了就把上次的原因清掉，别让下一轮拦截页沿用旧文案 */
+        if (v < 2) App._lockReason = '';
+        if (v >= 2) App.lockView();
+      }).catch(function () { boot(); });
+    }
+
     if (token) {
-      window.API.me().then(function (r) {
+      meRetry(3).then(function (r) {
         /* r.data 必须是对象才认。
          * 解析失败（网络层把 body 弄丢、返回空串等）时 r.data 是 null，
          * 这里若直接赋值，后面任何读 user.login 的地方都会抛
@@ -1300,17 +1552,37 @@
         } else {
           window.Session.user = null;
         }
-        boot();
+        gate(r && r.data ? r.data.id : 0);
       }).catch(function (e) {
-        if (e.status === 401) {
-          /* 令牌已被证明失效，不能「记住」—— 记住它，下次打开就会
-             回填一个登不进去的令牌，用户只会以为是 App 坏了。 */
+        /*
+          ⚠️ 这里以前无条件 gate(0, true) —— 不管是 401 还是断网都按拦处理。
+
+          401 时 forget() 已经把记住的 ID 清掉了（这是对的，不能记住一张
+          废令牌），于是 check() 里 n=0，只能靠 strict 决定；strict 又是
+          恒 true，结果必定判 3 —— 铺出「需要联网完成一次验证」。
+
+          可失败原因压根不是网络：满格 5G 也救不回一张废令牌，自动重试
+          每次都是 401，永远成功不了，人就卡在那页出不去。
+
+          现在按原因分开：
+            · 401（令牌作废）→ 放行回登录页，让人重新登录。
+              拦着没意义：作废令牌什么都做不了，跟「退出登录」等价，
+              放他出去换令牌才是正解。
+            · 网络类失败 → 才 fail-closed，等联网后自动重试放行。
+        */
+        var offline = App.isOfflineFail(e);
+        if (!offline) {
+          /* 401/403：令牌已被证明不能用，不能「记住」—— 记住它，
+             下次打开就会回填一个登不进去的令牌，用户只会以为是 App 坏了。 */
           window.Session.forget();
-          UI.toast('登录状态已失效，请重新登录');
+          App._lockReason = 'token';
+          UI.toast(window.I18n.t('登录状态已失效，请重新登录'));
+        } else {
+          App._lockReason = 'net';
         }
-        boot();
+        gate(0, offline);
       });
-    } else boot();
+    } else gate(0);
 
     window.addEventListener('hashchange', function () {
       /*
@@ -1441,6 +1713,18 @@
       /* 从系统设置里改完深浅色再切回来时，WebView 的媒体查询往往不触发，
          这里借 resume 重新对一次系统的权威值，保证「跟随系统」不跑偏。 */
       if ((window.Store.get('theme') || 'auto') === 'auto') App.applyTheme();
+      /*
+        切回前台时补一次验证。
+
+        典型场景：断网被拦 → 切出去开数据/WiFi → 切回来。
+        不补这一下的话，只能干等轮询那一轮（最多几十秒），
+        用户会以为卡死了。
+      */
+      try {
+        if (window.Blocklist && window.Blocklist.state() >= 2) {
+          App.reverify().then(function (v) { if (v >= 2) App.lockView(); });
+        }
+      } catch (e) { /* 忽略 */ }
     };
 
     initKeyboardAware();
@@ -1470,52 +1754,72 @@
       root.style.setProperty('--vvh', Math.round(vvH) + 'px');
       root.classList.toggle('kb-open', kb > 0);
 
-      // 键盘弹出后，把当前聚焦的输入框滚进可视区域
+      // 键盘弹出后，把被遮住的输入框滚进可视区域
       if (kb > 0) {
-        var ae = document.activeElement;
-        if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) {
-          setTimeout(function () {
-            try { ae.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { ae.scrollIntoView(); }
-          }, 60);
-        }
-        // 焦点不在输入框（例如在按钮上触发）时，把弹层里第一个被键盘遮住的控件滚出来
         ensureSheetVisible();
+        ensureViewVisible();
       }
+    }
+
+    /**
+     * 把滚动容器里被键盘遮住的输入框滚上来。
+     *
+     * 主页面（#view）和底部弹层（.sheet-body）共用同一套算法。
+     * 以前只做了弹层那一支，整页表单没人管 —— 编辑 Gist、新建 Issue、
+     * 写评论这类页面里，输入框落在键盘线以下就再也露不出来，
+     * 用户打字看不见自己写了什么。
+     *
+     * 优先滚当前聚焦的那个（用户此刻就在它里面打字），
+     * 焦点不在输入框时才退而找第一个被遮住的。
+     */
+    function ensureVisible(container) {
+      if (!container) return;
+      var kb = parseInt(root.style.getPropertyValue('--kb'), 10) || 0;
+      if (kb <= 0) return;
+      var limit = window.innerHeight - kb;
+      var boxRect = container.getBoundingClientRect();
+      var visibleBottom = Math.min(limit, boxRect.bottom);
+
+      var ae = document.activeElement;
+      var target = null;
+      if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && container.contains(ae)) {
+        target = ae;
+      } else {
+        var nodes = container.querySelectorAll('input, textarea, select, [contenteditable="true"]');
+        for (var i = 0; i < nodes.length; i++) {
+          var rr = nodes[i].getBoundingClientRect();
+          if (rr.height > 0 && rr.bottom > visibleBottom - 8) { target = nodes[i]; break; }
+        }
+      }
+      if (!target) return;
+
+      var tr = target.getBoundingClientRect();
+      /* 余量 16px：贴着键盘线会看不出光标，留出一行更舒服 */
+      if (tr.bottom <= visibleBottom - 16) return;
+
+      var delta = tr.bottom - visibleBottom + 16;
+      var max = Math.max(0, container.scrollHeight - container.clientHeight);
+      container.scrollTop = Math.min(max, container.scrollTop + delta);
+      /* 滚到底仍露不出来（控件比可视区还高）时用块居中兜底 */
+      if (target.getBoundingClientRect().bottom > visibleBottom - 8) {
+        try { target.scrollIntoView({ block: 'center' }); } catch (e) { }
+      }
+    }
+
+    function ensureViewVisible() {
+      /* 键盘动画 200ms 左右才结束，早于这个点量到的高度是中间态 */
+      setTimeout(function () { ensureVisible(document.getElementById('view')); }, 120);
     }
 
     /**
      * 弹层内容可能在视口之外（例如底部弹层里的靠下字段）。
      * 键盘弹出后，把第一个落在键盘线以下的表单控件滚进可视区。
      */
-    function sheetBottomLimit() {
-      return window.innerHeight - (parseInt(root.style.getPropertyValue('--kb'), 10) || 0);
-    }
-
     function ensureSheetVisible() {
       setTimeout(function () {
         var sheetRoot = document.getElementById('sheet-root');
         if (!sheetRoot || !sheetRoot.classList.contains('show')) return;
-        var body = sheetRoot.querySelector('.sheet-body');
-        if (!body) return;
-        var limit = sheetBottomLimit();
-        var bodyRect = body.getBoundingClientRect();
-        // 点击目标必须是「弹层内可见区域底部」与「键盘线」中的较小值
-        var visibleBottom = Math.min(limit, bodyRect.bottom);
-        var nodes = body.querySelectorAll('input, textarea, select, .upload-box');
-        for (var i = 0; i < nodes.length; i++) {
-          var r = nodes[i].getBoundingClientRect();
-          if (r.height > 0 && r.bottom > visibleBottom - 8) {
-            // 需要往下滚的距离 = 目标底边超出可见底部的部分 + 一点余量
-            var delta = r.bottom - visibleBottom + 16;
-            var max = Math.max(0, body.scrollHeight - body.clientHeight);
-            body.scrollTop = Math.min(max, body.scrollTop + delta);
-            // 滚动到底仍露不出来（内容比可视区还高很多）时，用块居中兜底
-            if (nodes[i].getBoundingClientRect().bottom > visibleBottom) {
-              try { nodes[i].scrollIntoView({ block: 'center' }); } catch (e) {}
-            }
-            return;
-          }
-        }
+        ensureVisible(sheetRoot.querySelector('.sheet-body'));
       }, 120);
     }
 
