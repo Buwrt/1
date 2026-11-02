@@ -467,7 +467,7 @@
             /* 网络图要先下载再落盘，慢时好几秒。垫一句反馈，
              * 免得用户以为长按没生效于是再按一次，存出两张一样的。 */
             if (window.UI && typeof window.UI.toast === 'function') {
-              window.UI.toast('正在保存图片…', 1200);
+              window.UI.toast(window.I18n.t("正在保存图片…"), 1200);
             }
             if (window.Native && typeof window.Native.saveImage === 'function') {
               window.Native.saveImage(src);
@@ -587,7 +587,7 @@
         a.href = url;
         a.target = '_blank';
         a.rel = 'noopener';
-        a.textContent = '📎 打开附件';
+        a.textContent = window.I18n.t("📎 打开附件");
         if (v.parentNode) v.parentNode.replaceChild(a, v);
       };
       img.src = url;
@@ -824,7 +824,7 @@
           // 按来源页分子目录：议题里点的进 githup/议题，Release 说明里点的进 githup/release
           var cat = (window.Attach && Attach.currentCategory) ? Attach.currentCategory() : '';
           var ok = window.Native.download(hit.url, hit.name, window.Native.authHeaders(), cat);
-          window.UI.toast(ok ? '开始下载 ' + hit.name : '下载未能发起');
+          window.UI.toast(ok ? window.I18n.t("开始下载 ") + hit.name : window.I18n.t("下载未能发起"));
           return;
         }
         var u = (hit && hit.kind === 'external') ? hit.url : href;
