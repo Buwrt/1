@@ -13,10 +13,10 @@
   }
 
   var USER_TABS = [
-    { key: 'overview', label: '概览' }, { key: 'repos', label: '仓库' },
+    { key: 'overview', label: '概览' }, { key: 'repos', label: window.I18n.t('仓库') },
     { key: 'stars', label: 'Star' }, { key: 'gists', label: 'Gist' },
-    { key: 'activity', label: '动态' }, { key: 'followers', label: '粉丝' },
-    { key: 'following', label: '关注' }, { key: 'orgs', label: '组织' }
+    { key: 'activity', label: '动态' }, { key: 'followers', label: window.I18n.t('粉丝') },
+    { key: 'following', label: window.I18n.t('关注') }, { key: 'orgs', label: window.I18n.t('组织') }
   ];
 
   /* ============ 用户 / 组织 ============ */
@@ -35,11 +35,11 @@
         var u = r.data;
         // 响应体丢了就别往下走：下面每一行都在读 u.login/u.type，null 进来必崩
         if (!u || typeof u !== 'object') {
-          host.innerHTML = UI.errorBox(new Error('用户信息读取失败'));
+          host.innerHTML = UI.errorBox(new Error(window.I18n.t('用户信息读取失败')));
           return;
         }
         var isMe = window.Session.user && window.Session.user.login === login;
-        window.App.title(login, u.type === 'Organization' ? '组织' : (u.name || '用户'));
+        window.App.title(login, u.type === 'Organization' ? window.I18n.t('组织') : (u.name || window.I18n.t('用户')));
 
         host.innerHTML =
           '<div class="profile-head">' +
@@ -98,7 +98,7 @@
         if (uidEl) uidEl.onclick = function () {
           var v = uidEl.getAttribute('data-uid') || '';
           if (!v) return;
-          UI.copy(v, '已复制 ID');
+          UI.copy(v, window.I18n.t('已复制 ID'));
         };
 var ed = UI.$('#edit', host);
         if (ed) ed.onclick = function () {
@@ -109,33 +109,33 @@ var ed = UI.$('#edit', host);
         if (fb) {
           if (window.Session.isLogin) {
             window.API.get('/user/following/' + login, null, { cache: 0 }).then(function () {
-              UI.$('#ftxt', host).textContent = '已关注'; UI.$('#ftxt', host).dataset.on = '1';
+              UI.$('#ftxt', host).textContent = window.I18n.t('已关注'); UI.$('#ftxt', host).dataset.on = '1';
             }).catch(function () {});
           }
           fb.onclick = function () {
-            if (!window.Session.isLogin) return UI.toast('请先登录');
+            if (!window.Session.isLogin) return UI.toast(window.I18n.t('请先登录'));
             var txt = UI.$('#ftxt', host);
             var following = txt.dataset.on === '1';
             var call = following ? window.API.del('/user/following/' + login) : window.API.put('/user/following/' + login, {});
             call.then(function () {
               txt.dataset.on = following ? '0' : '1';
-              txt.textContent = following ? '关注' : '已关注';
-              UI.toast(following ? '已取消关注' : '已关注 ' + login);
-            }).catch(function (e) { UI.toast('操作失败：' + e.message); });
+              txt.textContent = following ? window.I18n.t('关注') : window.I18n.t('已关注');
+              UI.toast(following ? window.I18n.t('已取消关注') : '已关注 ' + login);
+            }).catch(function (e) { UI.toast(window.I18n.t('操作失败：') + e.message); });
           };
         }
         renderUserTab(tab, u, UI.$('#ubody', host));
         window.App.setActions([{
           icon: 'kebab-horizontal', onClick: function () {
-            UI.menu('操作', [
-              { icon: 'link-external', label: '在浏览器打开', key: 'web' },
+            UI.menu(window.I18n.t('操作'), [
+              { icon: 'link-external', label: window.I18n.t('在浏览器打开'), key: 'web' },
               { icon: 'share-android', label: '分享主页', key: 'share' },
               { icon: 'copy', label: '复制主页链接', key: 'copy' }
             ]).then(function (k) {
               var url = u.html_url;
               if (k === 'web') NativeBridge.openExternal ? NativeBridge.openExternal(url) : window.open(url, '_blank');
-              if (k === 'share') NativeBridge.share ? NativeBridge.share(url, login) : UI.copy(url, '已复制');
-              if (k === 'copy') UI.copy(url, '已复制');
+              if (k === 'share') NativeBridge.share ? NativeBridge.share(url, login) : UI.copy(url, window.I18n.t('已复制'));
+              if (k === 'copy') UI.copy(url, window.I18n.t('已复制'));
             });
           }
         }]);
@@ -196,7 +196,7 @@ var ed = UI.$('#edit', host);
     var newBtn = (isSelf && withFilter) ? '<button class="btn primary sm" id="newrepo" style="flex:none">' +
       window.icon('plus', 14) + ' 新建</button>' : '';
     box.innerHTML = (withFilter ? '<div class="filterbar">' +
-      UI.seg('rseg', [{ key: 'updated', label: '最近更新' }, { key: 'pushed', label: '最近推送' }, { key: 'created', label: '最新创建' }, { key: 'full_name', label: '名称' }], 'updated') +
+      UI.seg('rseg', [{ key: 'updated', label: window.I18n.t('最近更新') }, { key: 'pushed', label: window.I18n.t('最近推送') }, { key: 'created', label: window.I18n.t('最新创建') }, { key: 'full_name', label: window.I18n.t('名称') }], 'updated') +
       newBtn + '</div><div class="search-bar"><div class="search-input">' + window.icon('search', 17) +
       '<input id="rf" placeholder="筛选仓库…"></div></div>' : '') + '<div id="rl">' + UI.skeleton(4) + '</div>';
     // 记住当前选的排序：筛选用的是同一个接口，打字时不能把排序键丢掉，
@@ -229,7 +229,7 @@ var ed = UI.$('#edit', host);
             ? { time: st ? new Date(st).toISOString() : null, meta: relMetaHtml(r, relTimes, st) }
             : null);
         }).join('') + '</div>'
-        : (isSelf ? (q ? UI.empty('repo', '没有匹配的仓库', '换个关键词试试')
+        : (isSelf ? (q ? UI.empty('repo', '没有匹配的仓库', window.I18n.t('换个关键词试试'))
           : '<div class="empty">' + window.icon('repo', 36) + '<div class="t">还没有仓库</div>' +
             '<div class="d">创建第一个仓库，开始托管你的代码。</div>' +
             '<button class="btn primary mt12" id="newrepo2">' + window.icon('plus', 14) + ' 新建仓库</button></div>')
@@ -453,11 +453,11 @@ var ed = UI.$('#edit', host);
     box.innerHTML =
       '<div class="filterbar">' +
         UI.seg('sseg', [
-          { key: 'updated', label: '最近更新' },
+          { key: 'updated', label: window.I18n.t('最近更新') },
           { key: 'created', label: '最近 Star' },
-          { key: 'count', label: 'Star 数' }
+          { key: 'count', label: window.I18n.t('Star 数') }
         ], 'updated') +
-        UI.seg('fseg', [{ key: 'all', label: '全部' }, { key: 'fav', label: '收藏夹' }], 'all') +
+        UI.seg('fseg', [{ key: 'all', label: window.I18n.t('全部') }, { key: 'fav', label: '收藏夹' }], 'all') +
       '</div>' +
       /* 收藏夹里的分类隔层：切到「收藏夹」才出现（apply 里控制显隐）。
          全部收藏 / 各列表 / ＋新建，一排横滑 chips，样式全部复用 app.css。 */
@@ -642,8 +642,8 @@ var ed = UI.$('#edit', host);
           for (var i = 0; i < all.length; i++) if (all[i].id === cid) { l = all[i]; break; }
           if (!l) { curList = ''; renderChips(); apply(); return; }
           UI.menu(l.name, [
-            { icon: 'pencil', label: '重命名', key: 'rename' },
-            { icon: 'trash', label: '删除列表', key: 'del' }
+            { icon: 'pencil', label: window.I18n.t('重命名'), key: 'rename' },
+            { icon: 'trash', label: window.I18n.t('删除列表'), key: 'del' }
           ]).then(function (k) {
             if (!k) return;
             if (k === 'rename') return window.StarLists.editor(l, function () { renderChips(); apply(); });
@@ -886,7 +886,7 @@ var ed = UI.$('#edit', host);
       b.innerHTML = list.length ? '<div class="list">' + list.map(function (u) {
         return '<button class="list-row" data-go="/' + U.esc(u.login) + '">' + UI.avatar(u.login, u.avatar_url, 40) +
           '<span class="row-main"><span class="row-title">' + U.esc(u.login) + '</span>' +
-          '<span class="row-desc">' + (u.type === 'User' ? '成员' : '机器人') + '</span></span></button>';
+          '<span class="row-desc">' + (u.type === 'User' ? window.I18n.t('成员') : '机器人') + '</span></span></button>';
       }).join('') + '</div>' : UI.empty('people', '没有公开成员', '');
       window.bindRepoCards(b);
     }).catch(function (e) { UI.$('#ml', box).innerHTML = UI.errorBox(e); });
@@ -904,11 +904,11 @@ var ed = UI.$('#edit', host);
 
   /* ============ Gist ============ */
   P.gists = {
-    title: '我的 Gist',
+    title: window.I18n.t('我的 Gist'),
     render: function (ctx, host) {
       if (!window.Session.isLogin) return window.needLogin(host);
       host.innerHTML = '<div style="padding:10px 12px">' +
-        UI.seg('gseg', [{ key: 'mine', label: '我的' }, { key: 'starred', label: '已 Star' }], ctx.query.type || 'mine') +
+        UI.seg('gseg', [{ key: 'mine', label: window.I18n.t('我的') }, { key: 'starred', label: window.I18n.t('已 Star') }], ctx.query.type || 'mine') +
         '</div><div id="gl">' + UI.skeleton(4) + '</div>';
       UI.$$('#gseg button', host).forEach(function (b) {
         b.onclick = function () { window.Router.go('/gists?type=' + b.getAttribute('data-v')); };
@@ -947,7 +947,7 @@ var ed = UI.$('#edit', host);
       '<div class="field"><label>描述</label>' +
       '<input class="input" id="gd" value="' + U.esc(opt.description || '') + '" placeholder="一句话说明这段代码是干什么的"></div>' +
       '<div class="field"><label>可见性</label>' +
-      UI.seg('gpseg', [{ key: '0', label: '私密' }, { key: '1', label: '公开' }], opt.public === false ? '0' : '1') +
+      UI.seg('gpseg', [{ key: '0', label: window.I18n.t('私密') }, { key: '1', label: window.I18n.t('公开') }], opt.public === false ? '0' : '1') +
       '<div class="hint">私密 Gist 不会出现在搜索里，但拿到链接的人依然能打开 —— 它不等于安全。</div></div>' +
       '<div class="field"><label>文件名</label>' +
       '<input class="input mono" id="gn" value="' + U.esc(originalName) + '" spellcheck="false">' +
@@ -960,7 +960,7 @@ var ed = UI.$('#edit', host);
       title: isNew ? '新建 Gist' : '编辑 Gist', full: true, body: body,
       foot: '<button class="btn" data-no>取消</button>' +
         (isNew ? '' : '<button class="btn danger" data-del>删除</button>') +
-        '<button class="btn primary" data-yes>' + (isNew ? '创建' : '保存') + '</button>',
+        '<button class="btn primary" data-yes>' + (isNew ? window.I18n.t('创建') : window.I18n.t('保存')) + '</button>',
       onMount: function () {
         var pub = opt.public !== false;
         UI.$$('#gpseg button', root).forEach(function (b) {
@@ -997,7 +997,7 @@ var ed = UI.$('#edit', host);
           call.then(function (r) {
             UI.loading(false);
             UI.closeSheet();
-            UI.toast(isNew ? 'Gist 已创建' : '已保存');
+            UI.toast(isNew ? 'Gist 已创建' : window.I18n.t('已保存'));
             if (isNew) {
               var g = r && r.data;
               if (g && g.id) window.Router.go('/gist/' + g.id);
@@ -1005,7 +1005,7 @@ var ed = UI.$('#edit', host);
             } else window.Router.reload();
           }).catch(function (e) {
             UI.loading(false);
-            UI.toast((isNew ? '创建失败：' : '保存失败：') + (e.status === 422 ? '内容不合法，请检查文件名' : e.message));
+            UI.toast((isNew ? window.I18n.t('创建失败：') : window.I18n.t('保存失败：')) + (e.status === 422 ? '内容不合法，请检查文件名' : e.message));
           });
         };
       }
@@ -1013,7 +1013,7 @@ var ed = UI.$('#edit', host);
   }
 
   function newGist() {
-    if (!window.Session.isLogin) return UI.toast('请先登录');
+    if (!window.Session.isLogin) return UI.toast(window.I18n.t('请先登录'));
     gistEditor({});
   }
 
@@ -1026,7 +1026,7 @@ var ed = UI.$('#edit', host);
       return UI.confirm('多文件 Gist',
         '这个 Gist 里有 ' + names.length + ' 个文件（' + names.join('、') + '）。\n\n' +
         'App 里的编辑器一次改一个文件，多文件的编辑建议在网页端进行。要编辑第一个文件 ' + names[0] + ' 吗？',
-        '编辑 ' + names[0]).then(function (ok) {
+        window.I18n.t('编辑 ') + names[0]).then(function (ok) {
         if (ok) gistEditor({ id: g.id, filename: names[0], content: files[names[0]].content, description: g.description, public: g.public });
       });
     }
@@ -1034,17 +1034,17 @@ var ed = UI.$('#edit', host);
   }
 
   function deleteGist(id) {
-    UI.confirm('删除 Gist？', '连同其中的所有文件和 Fork 关系一起删掉，无法恢复。', '删除', true)
+    UI.confirm('删除 Gist？', '连同其中的所有文件和 Fork 关系一起删掉，无法恢复。', window.I18n.t('删除'), true)
       .then(function (ok) {
         if (!ok) return;
         UI.loading(true);
         window.API.del('/gists/' + id).then(function () {
-          UI.loading(false); UI.toast('已删除');
+          UI.loading(false); UI.toast(window.I18n.t('已删除'));
           window.Router.go('/gists');
           window.Router.reload();
         }).catch(function (e) {
           UI.loading(false);
-          UI.toast('删除失败：' + (e.status === 403 ? '这个 Gist 不属于你' : e.message));
+          UI.toast(window.I18n.t('删除失败：') + (e.status === 403 ? '这个 Gist 不属于你' : e.message));
         });
       });
   }
@@ -1059,7 +1059,7 @@ var ed = UI.$('#edit', host);
         var files = Object.keys(g.files || {});
         return '<button class="list-row" data-go="/gist/' + U.esc(g.id) + '">' + UI.avatar(g.owner ? g.owner.login : 'ghost', g.owner ? g.owner.avatar_url : '', 32) +
           '<span class="row-main"><span class="row-title mono tiny">' + U.esc(files[0] || '(空)') + '</span>' +
-          '<span class="row-desc">' + U.esc(g.description || (files.length > 1 ? files.length + ' 个文件' : '无描述')) + '</span>' +
+          '<span class="row-desc">' + U.esc(g.description || (files.length > 1 ? files.length + window.I18n.t(' 个文件') : '无描述')) + '</span>' +
           '<span class="row-meta"><span>' + window.icon('comment', 12) + g.comments + '</span>' +
           (g.public ? '<span class="chip">公开</span>' : '<span class="chip">私密</span>') +
           '<span>' + U.timeAgo(g.updated_at) + '</span></span></span></button>';
@@ -1087,7 +1087,7 @@ var ed = UI.$('#edit', host);
           '<div class="detail-head">' +
           '<div class="detail-title" style="font-size:17px">' + U.esc(g.description || names[0] || 'Gist') + '</div>' +
           '<div class="detail-sub">' + (g.owner ? UI.avatar(g.owner.login, g.owner.avatar_url, 20) + '<a href="#/' + U.esc(g.owner.login) + '">' + U.esc(g.owner.login) + '</a>' : '<span>匿名</span>') +
-          '<span>' + U.timeAgo(g.updated_at) + '</span><span class="chip">' + (g.public ? '公开' : '私密') + '</span></div></div>' +
+          '<span>' + U.timeAgo(g.updated_at) + '</span><span class="chip">' + (g.public ? window.I18n.t('公开') : window.I18n.t('私密')) + '</span></div></div>' +
           names.map(function (n) {
             var f = files[n];
             return '<div class="section-title" style="padding-top:12px">' + window.icon('file-code', 14) + ' ' + U.esc(n) +
@@ -1108,7 +1108,7 @@ var ed = UI.$('#edit', host);
           }
         });
         UI.$$('[data-copy]', host).forEach(function (b) {
-          b.onclick = function () { UI.copy(files[b.getAttribute('data-copy')].content || '', '已复制'); };
+          b.onclick = function () { UI.copy(files[b.getAttribute('data-copy')].content || '', window.I18n.t('已复制')); };
         });
         if (g.comments) {
           window.API.get('/gists/' + ctx.id + '/comments', { per_page: 100 }).then(function (cr) {
@@ -1129,23 +1129,23 @@ var ed = UI.$('#edit', host);
             var mine = !!(window.Session.user && g.owner && g.owner.login === window.Session.user.login);
             var items = [];
             if (mine) {
-              items.push({ icon: 'pencil', label: '编辑', key: 'edit' });
-              items.push({ icon: 'trash', label: '删除', key: 'del' });
+              items.push({ icon: 'pencil', label: window.I18n.t('编辑'), key: 'edit' });
+              items.push({ icon: 'trash', label: window.I18n.t('删除'), key: 'del' });
               items.push('-');
             }
             items = items.concat([
               { icon: 'star', label: 'Star', key: 'star' },
               { icon: 'copy', label: '克隆地址', key: 'clone' },
-              { icon: 'link-external', label: '在浏览器打开', key: 'web' },
+              { icon: 'link-external', label: window.I18n.t('在浏览器打开'), key: 'web' },
               { icon: 'share-android', label: '分享', key: 'share' }
             ]);
-            UI.menu('操作', items).then(function (k) {
+            UI.menu(window.I18n.t('操作'), items).then(function (k) {
               if (k === 'edit') return editGist(g);
               if (k === 'del') return deleteGist(ctx.id);
-              if (k === 'star') window.API.put('/gists/' + ctx.id + '/star', {}).then(function () { UI.toast('已 Star'); }).catch(function (e) { UI.toast('已 Star 或失败'); });
+              if (k === 'star') window.API.put('/gists/' + ctx.id + '/star', {}).then(function () { UI.toast(window.I18n.t('已 Star')); }).catch(function (e) { UI.toast('已 Star 或失败'); });
               if (k === 'web') NativeBridge.openExternal ? NativeBridge.openExternal(g.html_url) : window.open(g.html_url, '_blank');
               if (k === 'share') NativeBridge.share ? NativeBridge.share(g.html_url, g.description || 'Gist') : UI.copy(g.html_url);
-              if (k === 'clone') UI.copy(g.git_pull_url, '已复制');
+              if (k === 'clone') UI.copy(g.git_pull_url, window.I18n.t('已复制'));
             });
           }
         }]);
@@ -1159,8 +1159,8 @@ var ed = UI.$('#edit', host);
   /* ============ 我的 ============ */
   P.profile = {
     tab: 'profile',
-    title: '我的',
-    menu: function () { return [{ icon: 'gear', label: '设置', key: 'settings' }]; },
+    title: window.I18n.t('我的'),
+    menu: function () { return [{ icon: 'gear', label: window.I18n.t('设置'), key: 'settings' }]; },
     onMenu: function () { window.Router.go('/settings'); },
     render: function (ctx, host) {
       if (!window.Session.isLogin) {
@@ -1171,7 +1171,7 @@ var ed = UI.$('#edit', host);
           '<button class="btn primary block" id="lg">登录 GitHub</button></div>' +
           '<div class="section"></div>' +
           '<div class="set-group">' +
-            setRow('shield-check', '两步验证器', '/totp') +
+            setRow('shield-check', window.I18n.t('两步验证器'), '/totp') +
           '</div>' +
           '<div class="section"></div>' +
           '<div class="set-group"><button class="set-row" id="st">' + window.icon('gear', 16) + '<span class="k">应用设置</span>' + window.icon('chevron-right', 16) + '</button></div></div>';
@@ -1236,7 +1236,7 @@ var ed = UI.$('#edit', host);
         if (myuid) myuid.onclick = function () {
           var v = myuid.getAttribute('data-uid') || '';
           if (!v) return;
-          UI.copy(v, '已复制 ID');
+          UI.copy(v, window.I18n.t('已复制 ID'));
         };
         var ep = UI.$('#editprofile', host);
         if (ep) ep.onclick = function () { editProfile(u, paint); };
@@ -1244,12 +1244,12 @@ var ed = UI.$('#edit', host);
         if (nr) nr.onclick = function () { window.newRepo(); };
         var ea = UI.$('#editavatar', host);
         if (ea) ea.onclick = function () {
-          UI.confirm('更换头像',
+          UI.confirm(window.I18n.t('更换头像'),
             'GitHub 未开放头像上传接口，需要在网页端操作。将用应用内浏览器打开，登录态可复用。',
             '打开上传页').then(function (ok) {
             if (!ok) return;
             var url = 'https://github.com/settings/profile';
-            if (window.openWeb) window.openWeb(url, '更换头像');
+            if (window.openWeb) window.openWeb(url, window.I18n.t('更换头像'));
             else if (window.NativeBridge && NativeBridge.openExternal) NativeBridge.openExternal(url);
             else window.open(url, '_blank');
           });
@@ -1276,7 +1276,7 @@ var ed = UI.$('#edit', host);
           window.Session.user = u;
           paint(u);
         } else if (!me) {
-          host.innerHTML = UI.errorBox(new Error('用户信息读取失败'));
+          host.innerHTML = UI.errorBox(new Error(window.I18n.t('用户信息读取失败')));
         }
       }).catch(function (e) {
         if (epoch !== window.Router.viewEpoch) return;
@@ -1400,7 +1400,7 @@ var ed = UI.$('#edit', host);
         var av = root.querySelector('#ep_avatar');
         if (av) av.onclick = function () {
           var url = 'https://github.com/settings/profile';
-          if (window.openWeb) window.openWeb(url, '更换头像');
+          if (window.openWeb) window.openWeb(url, window.I18n.t('更换头像'));
           else if (window.NativeBridge && NativeBridge.openExternal) NativeBridge.openExternal(url);
           else window.open(url, '_blank');
         };
@@ -1444,7 +1444,7 @@ var ed = UI.$('#edit', host);
             UI.loading(false);
             UI.toast(e.status === 404 || e.status === 403
               ? '令牌权限不足，需要 user 权限才能修改资料'
-              : '保存失败：' + e.message);
+              : window.I18n.t('保存失败：') + e.message);
           });
         };
       }
@@ -1462,7 +1462,7 @@ var ed = UI.$('#edit', host);
   }
 
   P.settings = {
-    title: '设置',
+    title: window.I18n.t('设置'),
     render: function (ctx, host) {
       /* 标题是字符串快照，Router 读它时不会重算。切语言后如果不刷，
          顶栏会一直停在旧语言。每次 render 刷一次最省事。 */
@@ -1597,11 +1597,11 @@ var ed = UI.$('#edit', host);
           ], String(s.codeFont), function (v) { window.Store.set('codeFont', +v); UI.toast('已调整'); window.Router.reload(); });
           /* 重新看一遍新手引导。restart() 会先把「已看过」的状态清掉，
              这样引导中途退出、下次打开也不会被当成「已看过」而不弹。*/
-          if (k === 'guide') return window.Onboarding ? window.Onboarding.restart() : UI.toast('当前版本不支持');
+          if (k === 'guide') return window.Onboarding ? window.Onboarding.restart() : UI.toast(window.I18n.t('当前版本不支持'));
           /* 重置：只抹记录，不立刻播。抹完把本行刷成「已是初始状态」，
              用户能当场确认生效 —— 否则点一下什么都没变，会以为坏了。 */
           if (k === 'guideReset') {
-            if (!window.Onboarding) return UI.toast('当前版本不支持');
+            if (!window.Onboarding) return UI.toast(window.I18n.t('当前版本不支持'));
             if (!window.Onboarding.isDone()) return UI.toast('已经是初始状态，下次打开会自动播放');
             window.Onboarding.reset();
             UI.toast('已重置，下次打开 App 会自动重新播放引导');
@@ -1614,7 +1614,7 @@ var ed = UI.$('#edit', host);
             { key: 'explore', label: L('settings.startTab.explore'), icon: 'telescope' },
             { key: 'profile', label: L('settings.startTab.profile'), icon: 'person' }
           ], s.startTab, function (v) { window.Store.set('startTab', v); window.Router.reload(); });
-          if (k === 'lang') { if (window.I18n && window.I18n.chooseSheet) return window.I18n.chooseSheet(); return UI.toast('当前版本不支持'); }
+          if (k === 'lang') { if (window.I18n && window.I18n.chooseSheet) return window.I18n.chooseSheet(); return UI.toast(window.I18n.t('当前版本不支持')); }
           if (k === 'quota') return quota(host);
           if (k === 'totp') return window.Router.go('/totp');
           if (k === 'cache') {
@@ -1622,7 +1622,7 @@ var ed = UI.$('#edit', host);
             try { if (window.NativeBridge && NativeBridge.clearCache) NativeBridge.clearCache(); } catch (e) {}
             UI.toast('缓存已清除');
           }
-          if (k === 'update') return window.Updater ? window.Updater.manualCheck() : UI.toast('当前版本不支持在线检查');
+          if (k === 'update') return window.Updater ? window.Updater.manualCheck() : UI.toast(window.I18n.t('当前版本不支持在线检查'));
           if (k === 'about') return about();
         };
       });
@@ -1690,7 +1690,7 @@ var ed = UI.$('#edit', host);
 
     function row(a, idx) {
       var builtin = !!a.builtin;
-      var title = builtin ? '内置账号' : (a.login || '未知账号');
+      var title = builtin ? window.I18n.t('内置账号') : (a.login || '未知账号');
       var sub = builtin
         ? '打开即可用，无需登录'
         : ((a.name && a.name !== a.login) ? a.name : '');
@@ -1738,13 +1738,13 @@ var ed = UI.$('#edit', host);
         e.stopPropagation();
         var login = d.getAttribute('data-del');
         if (!login) return;
-        UI.confirm('删除账号', '将从本机删除「' + login + '」的令牌，之后需要重新登录。', '删除', true)
+        UI.confirm('删除账号', '将从本机删除「' + login + '」的令牌，之后需要重新登录。', window.I18n.t('删除'), true)
           .then(function (ok) {
             if (!ok) return;
             var done = false;
             try { done = window.Session.removeAccount(login); } catch (err) { done = false; }
             if (!done) { UI.toast('删除失败'); return; }
-            UI.toast('已删除');
+            UI.toast(window.I18n.t('已删除'));
             renderAccountSheet();     // 重画弹层，列表要跟着变
             window.Router.replace('/');
           });
@@ -1794,6 +1794,7 @@ var ed = UI.$('#edit', host);
    *
    * 换完令牌必须重新拉一次身份：Session.user 还是上个账号的，
    * 不重拉的话顶栏显示旧名字、内容也可能是旧的。
+   * 拉完还要再判一次访问名单 —— 新账号可能在名单里。
    */
   function switchTo(login, builtin, tokenHint) {
     var ok = false;
@@ -1832,11 +1833,24 @@ var ed = UI.$('#edit', host);
       }
       UI.closeSheet();
 
-      var who = (r && r.data && r.data.login) || '内置账号';
+      var who = (r && r.data && r.data.login) || window.I18n.t('内置账号');
 
-      if (fixed) UI.toast('这条记录绑错了令牌，已修正为 ' + who + '（需用 ' + login + ' 请重新登录）');
-      else UI.toast('已切换到 ' + who);
-      window.Router.replace('/');
+      /* 换人了，按**真实**账号的 ID 判定（不能用点的那个 login，
+         绑错时它根本不是本人） */
+      var uid = r && r.data ? r.data.id : 0;
+      function done() {
+        if (fixed) UI.toast('这条记录绑错了令牌，已修正为 ' + who + '（需用 ' + login + ' 请重新登录）');
+        else UI.toast('已切换到 ' + who);
+        window.Router.replace('/');
+      }
+      if (window.Blocklist && window.Blocklist.check) {
+        window.Blocklist.check(uid).then(function (v) {
+          if (v >= 2) { window.Router.replace('/'); window.App.lockView(); return; }
+          done();
+        }).catch(function () { done(); });
+        return;
+      }
+      done();
     }).catch(function () {
       UI.loading && UI.loading(false);
       UI.closeSheet();
@@ -1875,9 +1889,9 @@ var ed = UI.$('#edit', host);
     try {
       var raw = window.Store.get('totp_accounts');
       var arr = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : [];
-      if (!Array.isArray(arr) || !arr.length) return '未添加';
-      return arr.length + ' 个账户';
-    } catch (e) { return '未添加'; }
+      if (!Array.isArray(arr) || !arr.length) return window.I18n.t('未添加');
+      return arr.length + window.I18n.t(' 个账户');
+    } catch (e) { return window.I18n.t('未添加'); }
   }
 
   /*
@@ -2049,13 +2063,13 @@ var ed = UI.$('#edit', host);
         '<div class="set-group">' +
         row('repo', 'repo', '开源地址', 'Buwrt/githup') +
         row('qq', 'comment-discussion', 'QQ 群', ME.qq) +
-        row('tips', 'heart', '赞赏支持', '微信 / 支付宝') +
+        row('tips', 'heart', window.I18n.t('赞赏支持'), '微信 / 支付宝') +
         row('issues', 'bug', '反馈问题', '') +
         '</div>' +
 
         '<div class="section"></div>' +
         '<div class="set-group">' +
-        row('update', 'sync', '检查更新', 'v' + appVer()) +
+        row('update', 'sync', window.I18n.t('检查更新'), 'v' + appVer()) +
         row('errlog', 'bug', '下载错误日志', '') +
         '</div>' +
 
@@ -2095,7 +2109,7 @@ var ed = UI.$('#edit', host);
           UI.$$('.fp-copy').forEach(function (b) {
             b.onclick = function (e) {
               e.stopPropagation();
-              UI.copy(b.getAttribute('data-fp'), '指纹已复制');
+              UI.copy(b.getAttribute('data-fp'), window.I18n.t('指纹已复制'));
             };
           });
         }
@@ -2111,7 +2125,7 @@ var ed = UI.$('#edit', host);
             // （web/img/tips.png），不联网、不上传任何东西。不裁剪、不压缩，保证能扫。
             if (k === 'tips') {
               UI.sheet({
-                title: '赞赏支持',
+                title: window.I18n.t('赞赏支持'),
                 body:
                   '<div class="center" style="padding:2px 0 6px">' +
                   '<img id="tip-qr" src="img/tips.png" alt="赞赏码" ' +
@@ -2173,7 +2187,7 @@ var ed = UI.$('#edit', host);
             if (k === 'update') {
               UI.closeSheet();
               if (window.Updater) return window.Updater.manualCheck();
-              return UI.toast('当前版本不支持在线检查');
+              return UI.toast(window.I18n.t('当前版本不支持在线检查'));
             }
 
             // 下载错误日志：把今天出的问题（功能出错 / 脚本报错 / 闪退 / 关键操作）
@@ -2203,7 +2217,7 @@ var ed = UI.$('#edit', host);
                         UI.toast(ok ? '已存到 Download/githup/错误日志' : '保存失败，请稍后再试');
                       });
                     } else {
-                      UI.toast('当前版本不支持');
+                      UI.toast(window.I18n.t('当前版本不支持'));
                     }
                   };
                 }
