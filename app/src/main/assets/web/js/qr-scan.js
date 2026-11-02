@@ -53,7 +53,7 @@
       var url = URL.createObjectURL(blob);
       var img = new Image();
       img.onload = function () { URL.revokeObjectURL(url); resolve(img); };
-      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('图片无法解码')); };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error(window.I18n.t("图片无法解码"))); };
       img.src = url;
     });
   }
@@ -62,7 +62,7 @@
   function toImageData(bitmap) {
     var sw = bitmap.width || bitmap.naturalWidth;
     var sh = bitmap.height || bitmap.naturalHeight;
-    if (!sw || !sh) throw new Error('图片尺寸无效');
+    if (!sw || !sh) throw new Error(window.I18n.t("图片尺寸无效"));
 
     var scale = 1;
     if (Math.max(sw, sh) > MAX_EDGE) scale = MAX_EDGE / Math.max(sw, sh);
