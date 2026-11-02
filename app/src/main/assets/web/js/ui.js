@@ -76,12 +76,12 @@
     logTrouble: function (msg) {
       try {
         if (!msg || typeof msg !== 'string') return false;
-        var TROUBLE_WORDS = ['不可用', '失败', '出错', '错误', '卡住', '超时',
+        var TROUBLE_WORDS = [window.I18n.t('不可用'), window.I18n.t('失败'), '出错', '错误', '卡住', '超时',
                              '无法', '没能', '没成功', '异常', '中断', '拒绝',
                              '不存在', '找不到', '已停止', '拦截', '阻止',
                              /* 补：这些说法不含上面任何一个词，以前全被漏掉 */
                              '连不上', '没反应', '被限制', '已过期', '不完整',
-                             '超时了', '已取消', '403', '404', '500'];
+                             '超时了', window.I18n.t('已取消'), '403', '404', '500'];
         var hit = false;
         for (var i = 0; i < TROUBLE_WORDS.length; i++) {
           if (msg.indexOf(TROUBLE_WORDS[i]) >= 0) { hit = true; break; }
@@ -137,7 +137,7 @@
 
     /* ---------- 复制 ---------- */
     copy: function (text, tip) {
-      var done = function () { UI.toast(tip || '已复制'); };
+      var done = function () { UI.toast(tip || window.I18n.t('已复制')); };
       if (window.NativeBridge && typeof window.NativeBridge.copy === 'function') {
         try { window.NativeBridge.copy(text); done(); return; } catch (e) {}
       }
@@ -205,7 +205,7 @@
         UI.sheet({
           title: title,
           body: '<div style="font-size:14px;color:var(--fg-muted);line-height:1.6">' + U.esc(msg || '') + '</div>',
-          foot: '<button class="btn" data-no>取消</button><button class="btn ' + (danger ? 'danger' : 'primary') + '" data-yes>' + U.esc(okText || '确定') + '</button>',
+          foot: '<button class="btn" data-no>取消</button><button class="btn ' + (danger ? 'danger' : 'primary') + '" data-yes>' + U.esc(okText || window.I18n.t('确定')) + '</button>',
           onMount: function (body, close) {
             var root = document.getElementById('sheet-root');
             root.querySelector('[data-yes]').onclick = function () { decided = true; close(); resolve(true); };
@@ -290,7 +290,7 @@
           '<div class="field"><input class="input" id="pv" type="' + (opt.type || 'text') + '" value="' + U.esc(opt.value || '') + '" placeholder="' + U.esc(opt.placeholder || '') + '"' + (opt.multiline ? '' : '') + '></div>';
         UI.sheet({
           title: title, body: body,
-          foot: '<button class="btn" data-no>取消</button><button class="btn primary" data-yes>' + U.esc(opt.ok || '确定') + '</button>',
+          foot: '<button class="btn" data-no>取消</button><button class="btn primary" data-yes>' + U.esc(opt.ok || window.I18n.t('确定')) + '</button>',
           onMount: function (b, close) {
             var root = document.getElementById('sheet-root');
             var input = root.querySelector('#pv');
@@ -607,7 +607,7 @@
       try {
         if (!ev) return;
         var err = ev.error;
-        var text = (err && err.message) ? err.message : (ev.message || '未知错误');
+        var text = (err && err.message) ? err.message : (ev.message || window.I18n.t('未知错误'));
         var where = shortFile(ev.filename);
         var sig = 'onerror|' + where + '|' + text;
         if (!allowed(sig)) return;
