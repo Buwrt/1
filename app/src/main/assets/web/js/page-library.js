@@ -251,14 +251,14 @@
 
   function checkAll() {
     var targets = CTX.items.filter(function (it) { return !it.ignoreUpdate && !it.pending; });
-    if (!targets.length) { UI.toast('没有需要检查的应用'); return Promise.resolve(); }
+    if (!targets.length) { UI.toast(window.I18n.t("没有需要检查的应用")); return Promise.resolve(); }
     UI.loading(true);
     var i = 0, done = 0;
-    UI.toast('正在检查 ' + targets.length + window.I18n.t(' 个应用'));
+    UI.toast(window.I18n.t("正在检查 ") + targets.length + window.I18n.t(' 个应用'));
     function next() {
       if (i >= targets.length) {
         UI.loading(false);
-        UI.toast('检查完成，' + done + window.I18n.t(' 个有更新'));
+        UI.toast(window.I18n.t("检查完成，") + done + window.I18n.t(' 个有更新'));
         return render();
       }
       return checkOne(targets[i++]).then(function (ok) {
@@ -327,7 +327,7 @@
 
   function doUpdate(it) {
     function go(url, name, tag, asset) {
-      if (!url) { UI.toast('这一版没找到可安装的 APK'); return; }
+      if (!url) { UI.toast(window.I18n.t("这一版没找到可安装的 APK")); return; }
       /* ⚠️ 这里**不要**置 pending。
          下载是异步的，用户完全可能在系统安装器上点取消 —— 那一装没成，
          版本没变，行却永远卡在「待安装」，角标也随之消失，看起来像
@@ -335,11 +335,11 @@
          真正的 pending 时机是「下完、拉起安装器之前」，由原生
          trackFromApk() 去做（那一刻文件确实在，路径是真的）。 */
       if (startInstall(url, name, it)) {
-        UI.toast(window.I18n.t('开始下载 ') + name + '，完成后会拉起安装器');
+        UI.toast(window.I18n.t('开始下载 ') + name + window.I18n.t("，完成后会拉起安装器"));
       } else {
         // 一个出口都不能少：原生能力不在时也要有地方可去，不能点了没反应
         try { NB.openExternal && NB.openExternal(url); } catch (e) { }
-        UI.toast('无法直接安装，已在浏览器中打开下载链接');
+        UI.toast(window.I18n.t("无法直接安装，已在浏览器中打开下载链接"));
       }
     }
 
@@ -356,8 +356,8 @@
            后者常见于一个仓库发多个包名，用户点 A 的更新却找不到 A。
            含糊说一句「没有 APK」会让人以为软件坏了。 */
         UI.toast((it && it.asset)
-          ? '新版里没有跟「' + it.asset + '」匹配的安装包，可长按 ⋯ 重新选择'
-          : '这一版没有可安装的 APK');
+          ? window.I18n.t("新版里没有跟「") + it.asset + window.I18n.t("」匹配的安装包，可长按 ⋯ 重新选择")
+          : window.I18n.t("这一版没有可安装的 APK"));
         return;
       }
       try {
@@ -374,7 +374,7 @@
       go(r.asset.browser_download_url, r.asset.name, r.rel.tag_name, r.asset.name);
     }, function () {
       UI.loading(false);
-      UI.toast('取不到 Release，检查网络或登录状态');
+      UI.toast(window.I18n.t("取不到 Release，检查网络或登录状态"));
     });
   }
 
@@ -389,15 +389,15 @@
        典型场景是「在系统安装器上点了取消」—— 文件没丢，重下纯属浪费。 */
     var ok = false;
     try { ok = !!(NB.libInstallPending && NB.libInstallPending(it.pkg)); } catch (e) { ok = false; }
-    if (ok) { UI.toast('正在拉起安装器'); return; }
-    UI.toast('安装包已丢失，重新下载');
+    if (ok) { UI.toast(window.I18n.t("正在拉起安装器")); return; }
+    UI.toast(window.I18n.t("安装包已丢失，重新下载"));
     doUpdate(it);
   }
 
   function doOpen(it) {
     var ok = false;
     try { ok = NB.libOpen(it.pkg); } catch (e) { }
-    if (!ok) UI.toast('打不开（可能已经卸载了）');
+    if (!ok) UI.toast(window.I18n.t("打不开（可能已经卸载了）"));
   }
 
   /**
@@ -409,8 +409,8 @@
    */
   function doUninstall(it) {
     UI.confirm(
-      '卸载 ' + (it.app_name || it.pkg) + '？',
-      '这会从你的设备上移除 ' + (it.app_name || it.pkg) + '。此操作无法撤消。',
+      window.I18n.t("卸载 ") + (it.app_name || it.pkg) + '？',
+      window.I18n.t("这会从你的设备上移除 ") + (it.app_name || it.pkg) + window.I18n.t("。此操作无法撤消。"),
       window.I18n.t('卸载'), true
     ).then(function (yes) {
       if (!yes) return;
@@ -418,7 +418,7 @@
       try { ok = NB.libUninstall(it.pkg); } catch (e) { ok = false; }
       // 返回值说明「真的弹出了系统卸载框」还是「只打开了应用信息页兜底」。
       // 不能统一说「请在系统弹窗中确认」—— 兜底时根本没有弹窗在等你。
-      UI.toast(ok ? '请在系统弹窗中确认卸载' : '已打开应用信息页，请在其中卸载');
+      UI.toast(ok ? window.I18n.t("请在系统弹窗中确认卸载") : window.I18n.t("已打开应用信息页，请在其中卸载"));
       reconcileAfterUninstall(it.pkg);
     });
   }
@@ -452,18 +452,18 @@
   function openSettings(it) {
     UI.menu(it.app_name || it.pkg, [
       { key: 'check', label: window.I18n.t('检查更新'), icon: 'sync' },
-      { key: 'pre', label: it.preRelease ? '不收预发布版' : '接收预发布版', icon: 'tag' },
-      { key: 'ignore', label: it.ignoreUpdate ? '恢复更新提醒' : '忽略此应用的更新', icon: 'bell-slash' },
-      { key: 'skip', label: '跳过当前这一版', icon: 'skip' },
+      { key: 'pre', label: it.preRelease ? window.I18n.t("不收预发布版") : window.I18n.t("接收预发布版"), icon: 'tag' },
+      { key: 'ignore', label: it.ignoreUpdate ? window.I18n.t("恢复更新提醒") : window.I18n.t("忽略此应用的更新"), icon: 'bell-slash' },
+      { key: 'skip', label: window.I18n.t("跳过当前这一版"), icon: 'skip' },
       '-',
-      { key: 'rebind', label: '重新选择装的哪个包', icon: 'package' },
-      { key: 'variant', label: it.pinned_variant ? '改钉的变体（' + it.pinned_variant + '）' : '钉住一个变体', icon: 'package' },
-      { key: 'advanced', label: '高级过滤（asset 正则）', icon: 'filter' },
+      { key: 'rebind', label: window.I18n.t("重新选择装的哪个包"), icon: 'package' },
+      { key: 'variant', label: it.pinned_variant ? window.I18n.t("改钉的变体（") + it.pinned_variant + '）' : window.I18n.t("钉住一个变体"), icon: 'package' },
+      { key: 'advanced', label: window.I18n.t("高级过滤（asset 正则）"), icon: 'filter' },
       '-',
-      { key: 'repo', label: '打开仓库', icon: 'repo' },
-      { key: 'copy', label: '复制包名', icon: 'copy' },
+      { key: 'repo', label: window.I18n.t("打开仓库"), icon: 'repo' },
+      { key: 'copy', label: window.I18n.t("复制包名"), icon: 'copy' },
       '-',
-      { key: 'unlink', label: '从应用库移除', icon: 'x' },
+      { key: 'unlink', label: window.I18n.t("从应用库移除"), icon: 'x' },
       { key: 'uninstall', label: window.I18n.t('卸载'), icon: 'trash' }
     ]).then(function (k) {
       if (!k) return;
@@ -475,9 +475,9 @@
       if (k === 'variant') return pickVariant(it);
       if (k === 'advanced') return advancedFilter(it);
       if (k === 'repo') { window.Router.go('/' + it.owner + '/' + it.repo); return; }
-      if (k === 'copy') { NB.copy(it.pkg); UI.toast('已复制包名'); return; }
+      if (k === 'copy') { NB.copy(it.pkg); UI.toast(window.I18n.t("已复制包名")); return; }
       if (k === 'unlink') {
-        UI.confirm('移出应用库', '只是不再跟踪更新，不会卸载手机上的应用。', window.I18n.t('移除'), true)
+        UI.confirm(window.I18n.t("移出应用库"), window.I18n.t("只是不再跟踪更新，不会卸载手机上的应用。"), window.I18n.t('移除'), true)
           .then(function (yes) { if (yes) { NB.libRemove(it.pkg); render(); } });
         return;
       }
@@ -500,8 +500,8 @@
       var list = apkOnly(r.rel.assets || []);
       if (!list.length) { UI.toast(window.I18n.t('这一版没有 APK 附件')); return; }
       var now = it.asset || '';
-      UI.menu('这个应用装的是哪个包？', list.map(function (a) {
-        var label = a.name + (a.name === now ? '（当前）' : '');
+      UI.menu(window.I18n.t("这个应用装的是哪个包？"), list.map(function (a) {
+        var label = a.name + (a.name === now ? window.I18n.t("（当前）") : '');
         return { key: a.browser_download_url, label: label, value: (a.size / 1048576).toFixed(1) + ' MB' };
       })).then(function (url) {
         if (!url) return;
@@ -520,7 +520,7 @@
         // 关键：把「装的是哪个包」也改掉，否则下次还会按旧身份去挑
         try { NB.libSetVariant(it.pkg, ''); } catch (e) { }
         libRebindAsset(it.pkg, picked.name);
-        UI.toast('已绑定为 ' + picked.name);
+        UI.toast(window.I18n.t("已绑定为 ") + picked.name);
         render();
       });
     }, function () { UI.loading(false); });
@@ -549,11 +549,11 @@
       var items = opts.map(function (o) {
         return { key: o.key, label: o.name, value: (o.size / 1048576).toFixed(1) + ' MB' };
       });
-      items.push({ key: '__none__', label: '不钉（自动挑）' });
-      UI.menu('钉住哪个变体？', items).then(function (k) {
+      items.push({ key: '__none__', label: window.I18n.t("不钉（自动挑）") });
+      UI.menu(window.I18n.t("钉住哪个变体？"), items).then(function (k) {
         if (!k) return;
         NB.libSetVariant(it.pkg, k === '__none__' ? '' : k);
-        UI.toast(k === '__none__' ? '已取消钉住' : '已钉住 ' + k);
+        UI.toast(k === '__none__' ? window.I18n.t("已取消钉住") : window.I18n.t("已钉住 ") + k);
         render();
       });
     }, function () { UI.loading(false); });
@@ -561,24 +561,24 @@
 
   /** 高级过滤：正则 + 是否退到更旧的 release。 */
   function advancedFilter(it) {
-    UI.prompt('asset 名正则', {
-      desc: '只有名字匹配这个正则的 APK 才会被挑中。留空表示不限制。',
+    UI.prompt(window.I18n.t("asset 名正则"), {
+      desc: window.I18n.t("只有名字匹配这个正则的 APK 才会被挑中。留空表示不限制。"),
       value: it.asset_regex || '',
-      placeholder: '例如 foss|universal',
+      placeholder: window.I18n.t("例如 foss|universal"),
       ok: window.I18n.t('下一步')
     }).then(function (v) {
       if (v === null) return;
       UI.loading(true);
       fetchRelease(it, { force: true }).then(function (r) {
         UI.loading(false);
-        if (!r) { UI.toast('取不到 Release'); return; }
+        if (!r) { UI.toast(window.I18n.t("取不到 Release")); return; }
         var names = apkOnly(r.rel.assets || []).map(function (a) { return a.name; });
         var matched = [];
         try { matched = JSON.parse(NB.libPreviewMatch(JSON.stringify(names), v) || '[]'); } catch (e) { }
         var msg = v
-          ? '匹配到 ' + matched.length + ' 个：\n' + (matched.slice(0, 6).join('\n') || '（一个都没匹配上）')
-          : '未设置过滤，将自动挑合适的那个。';
-        UI.confirm('过滤结果', msg, window.I18n.t('保存')).then(function (yes) {
+          ? window.I18n.t("匹配到 ") + matched.length + ' 个：\n' + (matched.slice(0, 6).join('\n') || window.I18n.t("（一个都没匹配上）"))
+          : window.I18n.t("未设置过滤，将自动挑合适的那个。");
+        UI.confirm(window.I18n.t("过滤结果"), msg, window.I18n.t('保存')).then(function (yes) {
           if (!yes) return;
           NB.libSetAdvanced(it.pkg, v, false);
           render();
@@ -596,7 +596,7 @@
     UI.loading(false);
 
     if (!apps.length) {
-      UI.toast('没扫到本机应用（可能缺少「查询全部应用」权限）');
+      UI.toast(window.I18n.t("没扫到本机应用（可能缺少「查询全部应用」权限）"));
       return;
     }
     // 按安装来源排序：侧载商店 → 侧载 → Play → 厂商 → 系统
@@ -607,7 +607,7 @@
 
     var shown = apps;
     function rows(list) {
-      if (!list.length) return UI.empty('search', '没有匹配的应用');
+      if (!list.length) return UI.empty('search', window.I18n.t("没有匹配的应用"));
       return list.slice(0, 150).map(function (a) {
         return '<button class="opt" data-pkg="' + U.esc(a.pkg) + '" data-name="' + U.esc(a.name) + '">' +
           '<span class="opt-ico">' + window.icon(a.priority === 0 ? 'package' : (a.system ? 'shield' : 'circle'), 18) + '</span>' +
@@ -618,9 +618,9 @@
     }
 
     UI.sheet({
-      title: '选择要跟踪的应用',
+      title: window.I18n.t("选择要跟踪的应用"),
       full: true,
-      body: '<div class="field"><input class="input" id="lk-q" placeholder="搜索应用名或包名"></div>' +
+      body: '<div class="field"><input class="input" id="lk-q" placeholder=window.I18n.t("搜索应用名或包名")></div>' +
         '<div id="lk-list">' + rows(shown) + '</div>',
       onMount: function () {
         var root = document.getElementById('sheet-root');
@@ -650,14 +650,14 @@
   }
 
   function askRepo(pkg, name) {
-    UI.prompt('这个应用来自哪个仓库？', {
-      desc: '填 owner/repo，例如 Buwrt/githup。',
+    UI.prompt(window.I18n.t("这个应用来自哪个仓库？"), {
+      desc: window.I18n.t("填 owner/repo，例如 Buwrt/githup。"),
       placeholder: 'owner/repo',
       ok: window.I18n.t('下一步')
     }).then(function (v) {
       if (!v) return;
       var m = /^([^/\s]+)\/([^/\s]+)$/.exec(v.trim());
-      if (!m) { UI.toast('格式不对，要像 owner/repo 这样'); return; }
+      if (!m) { UI.toast(window.I18n.t("格式不对，要像 owner/repo 这样")); return; }
       var owner = m[1], repo = m[2].replace(/\.git$/, '');
       UI.loading(true);
       window.API.get('/repos/' + owner + '/' + repo + '/releases/latest', null, { cache: 0 })
@@ -665,11 +665,11 @@
           UI.loading(false);
           var rel = res && res.data;
           var a = pickAsset(rel, null);
-          if (!a) { UI.toast('这个仓库最新一版里没有 APK 附件'); return; }
-          UI.confirm('关联 ' + name, (rel.tag_name || '') + ' · ' + a.name, '加入应用库').then(function (yes) {
+          if (!a) { UI.toast(window.I18n.t("这个仓库最新一版里没有 APK 附件")); return; }
+          UI.confirm(window.I18n.t("关联 ") + name, (rel.tag_name || '') + ' · ' + a.name, window.I18n.t("加入应用库")).then(function (yes) {
             if (!yes) return;
             NB.libAdd(pkg, owner, repo, name, rel.tag_name, a.name, a.browser_download_url);
-            UI.toast('已加入应用库');
+            UI.toast(window.I18n.t("已加入应用库"));
             render();
           });
         }, function () {
@@ -691,11 +691,11 @@
        显示它才不会出现「1.1.1 → V15」这种自己跟自己打架的文案
        （用户装的就是 V15，只因 APK 里 versionName 写着 1.1.1）。 */
     var cur = it.installed_tag || it.installed_vname || '';
-    if (it.pending) return { text: '已下载，等待安装', tone: 'accent' };
-    if (it.hasUpdate) return { text: '有更新：' + (cur || '?') + ' → ' + (it.latest_tag || '?'), tone: 'accent' };
-    if (!it.present) return { text: '手机上已不存在', tone: 'err' };
+    if (it.pending) return { text: window.I18n.t("已下载，等待安装"), tone: 'accent' };
+    if (it.hasUpdate) return { text: window.I18n.t("有更新：") + (cur || '?') + ' → ' + (it.latest_tag || '?'), tone: 'accent' };
+    if (!it.present) return { text: window.I18n.t("手机上已不存在"), tone: 'err' };
     if (it.sysFingerprint && it.fingerprint && it.sysFingerprint !== it.fingerprint) {
-      return { text: '签名变了，注意来源', tone: 'err' };
+      return { text: window.I18n.t("签名变了，注意来源"), tone: 'err' };
     }
     return { text: window.I18n.t('已是最新') + (cur ? '（' + cur + '）' : ''), tone: '' };
   }
@@ -760,7 +760,7 @@
     var rows = g.members.map(function (m) { return rowHtml(m, true); }).join('');
     return '<div class="card">' +
       '<div class="muted tiny" style="margin-bottom:6px">' + U.esc(g.owner + '/' + g.repo)
-      + ' · ' + g.members.length + ' 个应用</div>' + rows + '</div>';
+      + ' · ' + g.members.length + window.I18n.t(" 个应用</div>") + rows + '</div>';
   }
 
   function section(title, key, list) {
@@ -788,7 +788,7 @@
   function render() {
     var host = document.getElementById('view');
     if (!has()) {
-      host.innerHTML = UI.empty('package', '当前环境没有应用库能力');
+      host.innerHTML = UI.empty('package', window.I18n.t("当前环境没有应用库能力"));
       return Promise.resolve();
     }
 
@@ -812,13 +812,13 @@
       var idle = sortList(all.filter(function (it) { return !it.hasUpdate && !it.pending; }));
 
       var html = '<div style="padding:12px;display:flex;flex-direction:column;gap:10px">' +
-        '<div class="field"><input class="input" id="lib-q" placeholder="搜索应用" value="' + U.esc(CTX.query) + '"></div>';
+        '<div class="field"><input class="input" id="lib-q" placeholder=window.I18n.t("搜索应用") value="' + U.esc(CTX.query) + '"></div>';
 
       if (!items.length) {
-        html += UI.empty('package', '应用库还是空的', '点右上角 ➕ 加入本机已装的应用，开始跟踪它的更新');
+        html += UI.empty('package', window.I18n.t("应用库还是空的"), window.I18n.t("点右上角 ➕ 加入本机已装的应用，开始跟踪它的更新"));
       } else {
-        html += section('待安装', 'pending', pend)
-          + section('有更新', 'updates', upd)
+        html += section(window.I18n.t("待安装"), 'pending', pend)
+          + section(window.I18n.t("有更新"), 'updates', upd)
           + section(window.I18n.t('已是最新'), 'idle', idle);
       }
       html += '</div>';
@@ -830,18 +830,18 @@
         {
           icon: 'kebab-horizontal', onClick: function () {
             UI.menu(window.I18n.t('应用库'), [
-              { key: 'sort', label: '排序：' + ({ updates: window.I18n.t('有更新优先'), recent: window.I18n.t('最近检查'), name: window.I18n.t('名称') }[CTX.sort]), icon: 'filter' },
-              { key: 'sync', label: '与本机对账', icon: 'sync' },
+              { key: 'sort', label: window.I18n.t("排序：") + ({ updates: window.I18n.t('有更新优先'), recent: window.I18n.t('最近检查'), name: window.I18n.t('名称') }[CTX.sort]), icon: 'filter' },
+              { key: 'sync', label: window.I18n.t("与本机对账"), icon: 'sync' },
               '-',
-              { key: 'export', label: '导出清单（复制）', icon: 'copy' },
-              { key: 'import', label: '从剪贴板导入', icon: 'download' }
+              { key: 'export', label: window.I18n.t("导出清单（复制）"), icon: 'copy' },
+              { key: 'import', label: window.I18n.t("从剪贴板导入"), icon: 'download' }
             ]).then(function (k) {
               if (!k) return;
-              if (k === 'sync') { NB.libSync(); UI.toast('已对账'); return render(); }
-              if (k === 'export') { NB.copy(NB.libExport()); UI.toast('清单已复制到剪贴板'); return; }
+              if (k === 'sync') { NB.libSync(); UI.toast(window.I18n.t("已对账")); return render(); }
+              if (k === 'export') { NB.copy(NB.libExport()); UI.toast(window.I18n.t("清单已复制到剪贴板")); return; }
               if (k === 'import') {
                 var s = NB.getClipboard();
-                if (!s) { UI.toast('剪贴板是空的'); return; }
+                if (!s) { UI.toast(window.I18n.t("剪贴板是空的")); return; }
                 UI.toast(NB.libImport(s));
                 return render();
               }
