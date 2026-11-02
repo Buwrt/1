@@ -21,7 +21,7 @@
       title: window.I18n.t('下载管理'),
       render: function (ctx, host) {
         host.innerHTML = '<div class="dl-empty">' + window.icon('download', 40) +
-          '<p>当前环境没有原生下载能力</p></div>';
+          window.I18n.t("<p>当前环境没有原生下载能力</p></div>");
       }
     };
     return;
@@ -45,7 +45,7 @@
     show: function () {
       adviceOn = true;
       try {
-        UI.toast('下载偏慢，可以去「下载通道」挑一条更快的');
+        UI.toast(window.I18n.t("下载偏慢，可以去「下载通道」挑一条更快的"));
       } catch (e) { }
       /* 人正好在下载管理页：就地插一条，不用等下次 render */
       try {
@@ -63,7 +63,7 @@
       '<span class="row-main">' +
       '<span class="row-title">下载偏慢</span>' +
       '<span class="row-desc">软件已自动换过几次通道。可以自己挑一条 —— ' +
-      '面板里能看到每条的实时速度。</span>' +
+      window.I18n.t("面板里能看到每条的实时速度。</span>") +
       '</span></div>' +
       '<div class="dl-advice-acts">' +
       '<button class="dl-advice-btn primary" id="dl-advice-go">去挑选</button>' +
@@ -107,10 +107,10 @@
     var today = new Date();
     var sameDay = d.getFullYear() === today.getFullYear() &&
       d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
-    if (sameDay) return '今天 ' + hm;
+    if (sameDay) return window.I18n.t("今天 ") + hm;
     var y = new Date(today.getTime() - 86400000);
     if (d.getFullYear() === y.getFullYear() && d.getMonth() === y.getMonth() && d.getDate() === y.getDate())
-      return '昨天 ' + hm;
+      return window.I18n.t("昨天 ") + hm;
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' +
       String(d.getDate()).padStart(2, '0') + ' ' + hm;
   }
@@ -129,8 +129,8 @@
     if (t.ch) desc += ' · ' + t.ch;
     var paused = t.status === STATUS_PAUSED;
     var failed = t.status === STATUS_FAILED;
-    if (paused) desc += ' · 等待网络';
-    if (failed) desc += ' · 失败';
+    if (paused) desc += window.I18n.t(" · 等待网络");
+    if (failed) desc += window.I18n.t(" · 失败");
     return '<div class="list-row dl-row-in" data-id="' + t.id + '">' +
       '<span class="dlh-ico run">' + window.icon('download', 15) + '</span>' +
       '<span class="row-main">' +
@@ -230,7 +230,7 @@
         ev.stopPropagation();
         var name = b.getAttribute('data-del');
         var id = Number(b.getAttribute('data-id') || 0);
-        UI.confirm('删除下载记录', '把「' + name + '」的文件和记录一起删掉？').then(function (yes) {
+        UI.confirm(window.I18n.t("删除下载记录"), window.I18n.t("把「") + name + window.I18n.t("」的文件和记录一起删掉？")).then(function (yes) {
           if (!yes) return;
           act({
             action: 'delete', name: name, dlId: id,
@@ -254,9 +254,9 @@
           payload.install = !!m.install;
           payload.sha = m.sha || '';
         } catch (e) { }
-        if (!payload.url) { UI.toast('这条记录太老了，重试不了'); return; }
+        if (!payload.url) { UI.toast(window.I18n.t("这条记录太老了，重试不了")); return; }
         act(payload);
-        UI.toast('开始重新下载 ' + name);
+        UI.toast(window.I18n.t("开始重新下载 ") + name);
         setTimeout(refreshHistory, 300);
       };
     });
@@ -297,9 +297,9 @@
      所以把选择交给用户，并把“连文件一起删”放第一位
      —— 大多数人点“清空”就是想清干净。 */
   function clearHistory() {
-    UI.menu('清空下载记录', [
-      { icon: 'trash', label: '清空记录并删除文件', key: 'purge' },
-      { icon: 'clock', label: '只清记录，保留文件', key: 'keep' }
+    UI.menu(window.I18n.t("清空下载记录"), [
+      { icon: 'trash', label: window.I18n.t("清空记录并删除文件"), key: 'purge' },
+      { icon: 'clock', label: window.I18n.t("只清记录，保留文件"), key: 'keep' }
     ]).then(function (k) {
       if (!k) return;
       act({ action: 'clear', purgeFiles: k === 'purge' });
@@ -370,9 +370,9 @@
         '</div></div>' +
         '<div class="dl-note">下载的文件按来源分目录保存：Release 附件在 ' +
           'Download/githup/release/，仓库文件在 Download/githup/file/，' +
-          '议题附件在 Download/githup/议题/（其余直接放在 Download/githup/）。' +
-          '记录右侧会标出这一条实际存在哪个目录；' +
-        '公开资源走加速通道，太慢或失败会自动换通道重试。</div>' +
+          window.I18n.t("议题附件在 Download/githup/议题/（其余直接放在 Download/githup/）。") +
+          window.I18n.t("记录右侧会标出这一条实际存在哪个目录；") +
+        window.I18n.t("公开资源走加速通道，太慢或失败会自动换通道重试。</div>") +
         '</div>';
 
       /* 原生层判定「慢」过就把建议条插在最前面 */
@@ -402,7 +402,7 @@
             var i = h2.indexOf('://');
             if (i >= 0) h2 = h2.substring(i + 3);
             while (h2.charAt(h2.length - 1) === '/') h2 = h2.substring(0, h2.length - 1);
-            chCur.textContent = '已指定：' + (h2 === 'direct' ? '直连' : h2);
+            chCur.textContent = window.I18n.t("已指定：") + (h2 === 'direct' ? window.I18n.t("直连") : h2);
           }
         } catch (e) { }
       }
