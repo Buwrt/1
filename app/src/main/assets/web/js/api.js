@@ -27,7 +27,7 @@
         var timer = setTimeout(function () {
           if (self.pending[id]) {
             delete self.pending[id];
-            reject(new Error('请求超时'));
+            reject(new Error(window.I18n.t('请求超时')));
           }
         }, self.TIMEOUT);
         self.pending[id] = {
@@ -97,7 +97,7 @@
         var timer = setTimeout(function () {
           if (self.pending[id]) {
             delete self.pending[id];
-            reject(new Error('请求超时'));
+            reject(new Error(window.I18n.t('请求超时')));
           }
         }, 60000);
         self.pending[id] = {
@@ -185,12 +185,12 @@
      */
     pickFile: function (accept) {
       var self = this;
-      if (!this.canPick()) return Promise.reject(new Error('当前环境不支持选择文件'));
+      if (!this.canPick()) return Promise.reject(new Error(window.I18n.t('当前环境不支持选择文件')));
       return new Promise(function (resolve, reject) {
         var id = 'p' + (self.seq++);
         var timer = setTimeout(function () {
           delete self._pickCbs[id];
-          reject(new Error('选择文件超时'));
+          reject(new Error(window.I18n.t('选择文件超时')));
         }, 180000);
         self._pickCbs[id] = function (meta, err) {
           clearTimeout(timer);
@@ -214,15 +214,15 @@
      */
     pickFiles: function (accept) {
       var self = this;
-      if (!this.canPick()) return Promise.reject(new Error('当前环境不支持选择文件'));
+      if (!this.canPick()) return Promise.reject(new Error(window.I18n.t('当前环境不支持选择文件')));
       if (!(window.NativeBridge && typeof window.NativeBridge.pickFile === 'function')) {
-        return Promise.reject(new Error('当前环境不支持选择文件'));
+        return Promise.reject(new Error(window.I18n.t('当前环境不支持选择文件')));
       }
       return new Promise(function (resolve, reject) {
         var id = 'p' + (self.seq++);
         var timer = setTimeout(function () {
           delete self._pickCbs[id];
-          reject(new Error('选择文件超时'));
+          reject(new Error(window.I18n.t('选择文件超时')));
         }, 180000);
         self._pickCbs[id] = function (meta, err) {
           clearTimeout(timer);
@@ -253,13 +253,13 @@
     pickFolder: function () {
       var self = this;
       if (!(window.NativeBridge && typeof window.NativeBridge.pickFolder === 'function')) {
-        return Promise.reject(new Error('当前环境不支持选择文件夹'));
+        return Promise.reject(new Error(window.I18n.t('当前环境不支持选择文件夹')));
       }
       return new Promise(function (resolve, reject) {
         var id = 'd' + (self.seq++);
         var timer = setTimeout(function () {
           delete self._pickCbs[id];
-          reject(new Error('选择文件夹超时'));
+          reject(new Error(window.I18n.t('选择文件夹超时')));
         }, 180000);
         self._pickCbs[id] = function (meta, err) {
           clearTimeout(timer);
@@ -285,7 +285,7 @@
     listFolder: function (treeUri) {
       var self = this;
       if (!(window.NativeBridge && typeof window.NativeBridge.listFolder === 'function')) {
-        return Promise.reject(new Error('当前环境不支持读取文件夹'));
+        return Promise.reject(new Error(window.I18n.t('当前环境不支持读取文件夹')));
       }
       return new Promise(function (resolve, reject) {
         var id = 't' + (self.seq++);
@@ -313,7 +313,7 @@
     readFileBase64: function (uri, maxBytes) {
       var self = this;
       if (!(window.NativeBridge && typeof window.NativeBridge.readFileBase64 === 'function')) {
-        return Promise.reject(new Error('当前环境不支持读取文件'));
+        return Promise.reject(new Error(window.I18n.t('当前环境不支持读取文件')));
       }
       return new Promise(function (resolve, reject) {
         var id = 'f' + (self.seq++);
@@ -372,13 +372,13 @@
     makeKeystore: function (seed, alias, pass) {
       var self = this;
       if (!(window.NativeBridge && typeof window.NativeBridge.makeKeystore === 'function')) {
-        return Promise.reject(new Error('当前版本不支持在应用内生成签名'));
+        return Promise.reject(new Error(window.I18n.t('当前版本不支持在应用内生成签名')));
       }
       return new Promise(function (resolve, reject) {
         var id = 'k' + (self.seq++);
         var timer = setTimeout(function () {
           delete self._ksCbs[id];
-          reject(new Error('生成签名超时，请重试'));
+          reject(new Error(window.I18n.t('生成签名超时，请重试')));
         }, 120000);
         self._ksCbs[id] = function (b64, err) {
           clearTimeout(timer);
@@ -407,7 +407,7 @@
     uploadBinary: function (url, uri, headers) {
       var self = this;
       if (!(window.NativeBridge && typeof window.NativeBridge.uploadBinary === 'function')) {
-        return Promise.reject(new Error('当前环境不支持二进制上传'));
+        return Promise.reject(new Error(window.I18n.t('当前环境不支持二进制上传')));
       }
       return new Promise(function (resolve, reject) {
         var id = 'u' + (self.seq++);
@@ -431,13 +431,13 @@
     uploadMultipart: function (url, uri, headers, head, tail) {
       var self = this;
       if (!(window.NativeBridge && typeof window.NativeBridge.uploadMultipart === 'function')) {
-        return Promise.reject(new Error('当前环境不支持附件上传'));
+        return Promise.reject(new Error(window.I18n.t('当前环境不支持附件上传')));
       }
       return new Promise(function (resolve, reject) {
         var id = 'm' + (self.seq++);
         // 文件可能很大、网络可能很慢，2 分钟还没回音才算失败
         var timer = setTimeout(function () {
-          if (self.pending[id]) { delete self.pending[id]; reject(new Error('上传超时')); }
+          if (self.pending[id]) { delete self.pending[id]; reject(new Error(window.I18n.t('上传超时'))); }
         }, 120000);
         self.pending[id] = {
           resolve: function (v) { clearTimeout(timer); resolve(v); },
@@ -470,12 +470,12 @@
     uploadMultipartB64: function (url, uri, headers, head, tail) {
       var self = this;
       if (!(window.NativeBridge && typeof window.NativeBridge.uploadMultipartB64 === 'function')) {
-        return Promise.reject(new Error('当前环境不支持文件上传'));
+        return Promise.reject(new Error(window.I18n.t('当前环境不支持文件上传')));
       }
       return new Promise(function (resolve, reject) {
         var id = 'b' + (self.seq++);
         var timer = setTimeout(function () {
-          if (self.pending[id]) { delete self.pending[id]; reject(new Error('上传超时')); }
+          if (self.pending[id]) { delete self.pending[id]; reject(new Error(window.I18n.t('上传超时'))); }
         }, 180000);
         self.pending[id] = {
           resolve: function (v) { clearTimeout(timer); resolve(v); },
@@ -582,12 +582,12 @@
     uploadRaw: function (url, uri, headers) {
       var self = this;
       if (!(window.NativeBridge && typeof window.NativeBridge.uploadRaw === 'function')) {
-        return Promise.reject(new Error('当前环境不支持附件上传'));
+        return Promise.reject(new Error(window.I18n.t('当前环境不支持附件上传')));
       }
       return new Promise(function (resolve, reject) {
         var id = 'w' + (self.seq++);
         var timer = setTimeout(function () {
-          if (self.pending[id]) { delete self.pending[id]; reject(new Error('上传超时')); }
+          if (self.pending[id]) { delete self.pending[id]; reject(new Error(window.I18n.t('上传超时'))); }
         }, 120000);
         self.pending[id] = {
           resolve: function (v) { clearTimeout(timer); resolve(v); },
@@ -635,7 +635,7 @@
     saveImage: function (url) {
       var NB = window.NativeBridge;
       if (!(NB && typeof NB.saveImage === 'function')) {
-        if (window.UI && window.UI.toast) window.UI.toast('当前版本不支持保存图片');
+        if (window.UI && window.UI.toast) window.UI.toast(window.I18n.t('当前版本不支持保存图片'));
         return false;
       }
       NB.saveImage(url);
@@ -693,14 +693,14 @@
       var self = this;
       var NB = window.NativeBridge;
       if (!(NB && typeof NB.fetchRunLogs === 'function')) {
-        return Promise.reject(new Error('当前版本不支持 App 内查看日志'));
+        return Promise.reject(new Error(window.I18n.t('当前版本不支持 App 内查看日志')));
       }
       return new Promise(function (resolve, reject) {
         var id = 'l' + (self.seq++);
         // 日志包可能几 MB，解压+回灌给的时间给足，宁可慢也别让用户看到一个假的失败
         var timer = setTimeout(function () {
           delete self._logCbs[id];
-          reject(new Error('读取日志超时'));
+          reject(new Error(window.I18n.t('读取日志超时')));
         }, 60000);
         self._logCbs[id] = function (data, err) {
           clearTimeout(timer);
@@ -725,7 +725,7 @@
       if (err) return cb(null, err);
       var data = null;
       try { data = typeof json === 'string' ? JSON.parse(json) : json; }
-      catch (e) { return cb(null, '日志解析失败'); }
+      catch (e) { return cb(null, window.I18n.t('日志解析失败')); }
       cb(data, null);
     },
 
@@ -1043,7 +1043,6 @@
     get usingEmbedded() {
       return !!embeddedToken() && this.token === embeddedToken();
     },
-
     /* ───────── 多账号 ─────────
        账号串存在原生 SecurePrefs（加密）里，这里只做读写和切换编排。
 
@@ -1075,7 +1074,7 @@
         var has = list.some(function (a) { return a && a.token === emb; });
         if (!has) {
           list.unshift({
-            id: '', login: '', name: '内置账号', avatar: '',
+            id: '', login: '', name: window.I18n.t('内置账号'), avatar: '',
             token: emb, builtin: true,
             current: (!this.token || this.token === emb)
           });
@@ -1169,7 +1168,7 @@
           window.NativeBridge.setToken(emb);
           window.NativeBridge.setSavedToken('');
           if (window.NativeBridge.addAccount) {
-            window.NativeBridge.addAccount('', '', '内置账号', '', emb);
+            window.NativeBridge.addAccount('', '', window.I18n.t('内置账号'), '', emb);
           }
           if (window.NativeBridge.switchAccount) window.NativeBridge.switchAccount('');
         }
@@ -1218,8 +1217,13 @@
       try { window.Store.set('lastUser', ''); } catch (e) {}
       /* Star 收藏夹镜像：按登录名隔离，换人必须重载 */
       try { if (window.StarLists && window.StarLists.reload) window.StarLists.reload(); } catch (e) {}
+      /* 访问判定作废：bl_uid 还留着上个账号的 ID，
+         不清的话新账号会被上个账号的结论误伤。切换时明确知道新 ID，
+         直接重判即可，不需要那份兜底。 */
+      try { if (window.Blocklist && window.Blocklist.forget) window.Blocklist.forget(); } catch (e) {}
       try { window.App.updateBadge(); } catch (e) {}
     },
+
     /** 内置令牌被证明无效时调用：真正清空，不再回落 */
     markEmbeddedBroken: function () {
       this._embeddedBroken = true;
@@ -1276,7 +1280,7 @@
    * 直接当成请求失败抛出去 —— 让各页已有的 .catch() 去展示错误，语义也对。
    */
   function emptyBodyError(res) {
-    var e = new Error('响应内容读取失败');
+    var e = new Error(window.I18n.t('响应内容读取失败'));
     e.status = res.status || 0;
     e.emptyBody = true;
     return e;
@@ -1441,27 +1445,27 @@
 
     var what, why = '';
     if (status === 401) {
-      what = '登录状态失效（401）';
-      why = '可能是令牌过期或被撤销，重新登录即可';
+      what = window.I18n.t('登录状态失效（401）');
+      why = window.I18n.t('可能是令牌过期或被撤销，重新登录即可');
     } else if (status === 403) {
-      what = '没有权限或被限流（403）';
-      why = err && err.rateLimited ? '接口调用次数已用完，等一会再试' : '这个操作需要更高权限';
+      what = window.I18n.t('没有权限或被限流（403）');
+      why = err && err.rateLimited ? window.I18n.t('接口调用次数已用完，等一会再试') : window.I18n.t('这个操作需要更高权限');
     } else if (status === 404) {
-      what = '没找到这个东西（404）';
+      what = window.I18n.t('没找到这个东西（404）');
       why = String(path || '').split('?')[0];
     } else if (status >= 500) {
-      what = '服务器端出错（' + status + '）';
-      why = 'GitHub 那边的问题，稍后重试';
+      what = window.I18n.t('服务器端出错（') + status + '）';
+      why = window.I18n.t('GitHub 那边的问题，稍后重试');
     } else if (status === 0 || !status) {
-      what = '网络连不上';
-      why = String((err && err.message) || '请求没能发出去或没等到回应').slice(0, 120);
+      what = window.I18n.t('网络连不上');
+      why = String((err && err.message) || window.I18n.t('请求没能发出去或没等到回应')).slice(0, 120);
     } else {
-      what = '请求失败（' + status + '）';
+      what = window.I18n.t('请求失败（') + status + '）';
       why = String((err && err.message) || '').slice(0, 120);
     }
     try {
       if (window.API && typeof window.API.logError === 'function') {
-        window.API.logError('请求：' + method + ' ' + String(path || '').split('?')[0],
+        window.API.logError(window.I18n.t('请求：') + method + ' ' + String(path || '').split('?')[0],
           what + (why ? '。' + why : ''));
       }
     } catch (e) { }
@@ -1492,7 +1496,7 @@
      */
     graphql: function (query, variables, opts) {
       opts = opts || {};
-      if (!Session.token) return Promise.reject(new Error('未登录'));
+      if (!Session.token) return Promise.reject(new Error(window.I18n.t('未登录')));
       var body = JSON.stringify({ query: query, variables: variables || {} });
       var headers = {
         'Authorization': 'Bearer ' + Session.token,
@@ -1522,13 +1526,13 @@
           var j = null;
           try { j = JSON.parse(res.text); } catch (e) { j = null; }
           if (!j) {
-            var err = new Error('GraphQL 返回无法解析');
+            var err = new Error(window.I18n.t('GraphQL 返回无法解析'));
             err.status = res.status;
             throw err;
           }
           /* GraphQL 的错误在 body 里，状态码常常还是 200 */
           if (j.errors && j.errors.length) {
-            var msg = (j.errors[0] && j.errors[0].message) || 'GraphQL 错误';
+            var msg = (j.errors[0] && j.errors[0].message) || window.I18n.t('GraphQL 错误');
             var type = (j.errors[0] && j.errors[0].type) || '';
             var e = new Error(msg);
             e.status = res.status;
@@ -1583,7 +1587,18 @@
         });
     },
 
-    clearCache: function () { cache = Object.create(null); },
+    /*
+     * 清缓存。传 prefix 就只清 URL 里含该前缀的那些（比如 fork 完只清
+     * '/user/repos'，别的页面缓存不受影响）；不传就是全清。
+     */
+    clearCache: function (prefix) {
+      if (!prefix) { cache = Object.create(null); return; }
+      var next = Object.create(null);
+      Object.keys(cache).forEach(function (k) {
+        if (k.indexOf(prefix) < 0) next[k] = cache[k];
+      });
+      cache = next;
+    },
 
     /**
      * 只读内存缓存，不发请求、不写缓存。
@@ -1651,12 +1666,12 @@
       var t = Date.parse(iso);
       if (isNaN(t)) return '';
       var s = Math.floor((Date.now() - t) / 1000);
-      if (s < 45) return '刚刚';
-      if (s < 3600) return Math.floor(s / 60) + ' 分钟前';
-      if (s < 86400) return Math.floor(s / 3600) + ' 小时前';
-      if (s < 2592000) return Math.floor(s / 86400) + ' 天前';
-      if (s < 31536000) return Math.floor(s / 2592000) + ' 个月前';
-      return Math.floor(s / 31536000) + ' 年前';
+      if (s < 45) return window.I18n.t('刚刚');
+      if (s < 3600) return Math.floor(s / 60) + window.I18n.t(' 分钟前');
+      if (s < 86400) return Math.floor(s / 3600) + window.I18n.t(' 小时前');
+      if (s < 2592000) return Math.floor(s / 86400) + window.I18n.t(' 天前');
+      if (s < 31536000) return Math.floor(s / 2592000) + window.I18n.t(' 个月前');
+      return Math.floor(s / 31536000) + window.I18n.t(' 年前');
     },
     date: function (iso) {
       var d = new Date(iso);
