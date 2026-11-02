@@ -256,6 +256,15 @@
   function t(key, fallback) {
     var pack = PACKS[lang()] || ZH;
     var v = pack[key];
+    /* 界面里写死的中文是「以中文为键」批量转换过来的（见 i18n-strings.js）：
+     * 业务代码里写 t('删除')，中文模式下这张表根本不参与，
+     * 英文模式下才查它。好处是漏一个词也只是那一处退回中文，不会炸。 */
+    if ((v === undefined || v === null || v === '') && lang() === 'en') {
+      try {
+        var flat = window.I18N_STRINGS;
+        if (flat && flat[key]) v = flat[key];
+      } catch (e) {}
+    }
     if (v === undefined || v === null || v === '') v = ZH[key];   // 缺词回落中文
     if (v === undefined || v === null || v === '') return fallback === undefined ? key : fallback;
     return v;
