@@ -159,7 +159,7 @@
   function pack(url, file) {
     var kind = kindOf(file);
     var md;
-    if (kind === 'image') md = '![' + (file.name || '图片') + '](' + url + ')';
+    if (kind === 'image') md = '![' + (file.name || window.I18n.t("图片")) + '](' + url + ')';
     else if (kind === 'video') md = url;      // GitHub 会自己渲染成播放器
     else md = '[' + (file.name || window.I18n.t('附件')) + '](' + url + ')';
     return { url: url, markdown: md, kind: kind, name: file.name, size: file.size };
@@ -183,10 +183,10 @@
   /** 把常见状态码翻成中文，别让用户对着 422 发呆 */
   function httpHint(code, msg) {
     if (code === 401) return window.I18n.t('登录状态已失效，请重新登录');
-    if (code === 403) return '没有该仓库的权限，或已触发速率限制';
-    if (code === 404) return '上传接口不可用（404），可能是仓库 id 失效或仓库不可见';
-    if (code === 422) return msg || '文件类型或大小不被接受（422）';
-    return msg || ('上传失败（HTTP ' + code + '）');
+    if (code === 403) return window.I18n.t("没有该仓库的权限，或已触发速率限制");
+    if (code === 404) return window.I18n.t("上传接口不可用（404），可能是仓库 id 失效或仓库不可见");
+    if (code === 422) return msg || window.I18n.t("文件类型或大小不被接受（422）");
+    return msg || (window.I18n.t("上传失败（HTTP ") + code + '）');
   }
 
   /* ---------- 仓库数字 id ---------- */
@@ -252,7 +252,7 @@
         var u = data && (data.url || data.href ||
           (data.asset && (data.asset.href || data.asset.url)));
         if (!u) {
-          var e3 = new Error('上传成功但没拿到链接，请重试');
+          var e3 = new Error(window.I18n.t("上传成功但没拿到链接，请重试"));
           e3.status = code;
           throw e3;
         }
@@ -273,7 +273,7 @@
     };
     return window.API.post(LEGACY_POLICY_URL, body).then(function (r) {
       var d = r && r.data;
-      if (!d || !d.upload_url) throw new Error('拿不到上传策略（登录状态或网络异常）');
+      if (!d || !d.upload_url) throw new Error(window.I18n.t("拿不到上传策略（登录状态或网络异常）"));
       return d;
     });
   }
@@ -316,7 +316,7 @@
     var asset = policy.asset || {};
     var finalUrl = asset.href || asset.url || '';
     if (!finalUrl && asset.id) finalUrl = 'https://github.com/user-attachments/assets/' + asset.id;
-    if (!finalUrl) throw new Error('上传成功但没拿到链接，请重试或改用网页端');
+    if (!finalUrl) throw new Error(window.I18n.t("上传成功但没拿到链接，请重试或改用网页端"));
     return pack(finalUrl, file);
   }
 
@@ -332,7 +332,7 @@
       return window.Native.uploadMultipart(url, file.uri, headers, mp.head, mp.tail).then(function (res) {
         var code = res && res.status;
         if (!code || code >= 400) {
-          var e = new Error(parseErr(res) || ('上传失败（HTTP ' + code + '）'));
+          var e = new Error(parseErr(res) || (window.I18n.t("上传失败（HTTP ") + code + '）'));
           e.status = code || 0;
           throw e;
         }
@@ -350,7 +350,7 @@
    */
   function ensureAttachRelease(full) {
     if (!full || full.indexOf('/') < 0) {
-      return Promise.reject(new Error('缺少仓库信息，无法上传此类文件'));
+      return Promise.reject(new Error(window.I18n.t("缺少仓库信息，无法上传此类文件")));
     }
     if (_attachRel[full]) return Promise.resolve(_attachRel[full]);
     return window.API.get('/repos/' + full + '/releases', { per_page: 100 }).then(function (r) {
@@ -358,8 +358,8 @@
       if (hit) return hit;
       return window.API.post('/repos/' + full + '/releases', {
         tag_name: ATTACH_TAG,
-        name: '议题附件（githup 自动）',
-        body: '由 githup App 自动创建，用来存放议题中上传的非图片/视频附件。可随时删除。'
+        name: window.I18n.t("议题附件（githup 自动）"),
+        body: window.I18n.t("由 githup App 自动创建，用来存放议题中上传的非图片/视频附件。可随时删除。")
       }).then(function (rr) { return rr.data; });
     }).then(function (rel) {
       _attachRel[full] = rel;
@@ -411,7 +411,7 @@
         var data = null;
         try { data = res.body ? JSON.parse(res.body) : null; } catch (e2) { data = null; }
         var u = data && data.browser_download_url;
-        if (!u) throw new Error('上传成功但没拿到下载链接，请重试');
+        if (!u) throw new Error(window.I18n.t("上传成功但没拿到下载链接，请重试"));
         // 白名单外的图片/视频（bmp/heic/mkv…）GitHub 不保证内联，统一做成
         // 可点击的下载链接，避免贴一条光秃秃、不渲染的网址
         var packed = pack(u, file);
@@ -424,9 +424,9 @@
     }).catch(function (e) {
       // 403/404 基本就是没权限或仓库不可见：把 GitHub 的平台限制讲清楚
       if (e && (e.status === 403 || e.status === 404)) {
-        throw new Error('GitHub 只允许在议题中直接附加图片和视频；「' +
-          (file.name || '该文件') + '」属于其他类型，需要先推送到仓库或 Release，' +
-          '而你对该仓库没有推送权限。');
+        throw new Error(window.I18n.t("GitHub 只允许在议题中直接附加图片和视频；「") +
+          (file.name || window.I18n.t("该文件")) + window.I18n.t("」属于其他类型，需要先推送到仓库或 Release，") +
+          window.I18n.t("而你对该仓库没有推送权限。"));
       }
       throw e;
     });
@@ -440,17 +440,17 @@
    * @return {Promise<{url:string, markdown:string, kind:string, name:string, size:number}>}
    */
   function upload(file, repoFull) {
-    if (!file || !file.uri) return Promise.reject(new Error('没有选中文件'));
+    if (!file || !file.uri) return Promise.reject(new Error(window.I18n.t("没有选中文件")));
 
     var info = directInfo(file);
     var limit = info
       ? (/^image\//.test(info.mime) ? LIMIT_IMAGE : LIMIT_VIDEO)
       : LIMIT_FALLBACK;
     if (file.size && file.size > limit) {
-      return Promise.reject(new Error('文件 ' + fmtSize(file.size) + ' 超过上限（' + fmtSize(limit) + '）'));
+      return Promise.reject(new Error(window.I18n.t("文件 ") + fmtSize(file.size) + window.I18n.t(" 超过上限（") + fmtSize(limit) + '）'));
     }
     if (window.Native && !window.Native.uploadRaw && !window.Native.uploadMultipart) {
-      return Promise.reject(new Error('当前版本不支持附件上传'));
+      return Promise.reject(new Error(window.I18n.t("当前版本不支持附件上传")));
     }
 
     // 不在白名单：走专用 Release 兜底
@@ -504,7 +504,7 @@
             if (opt.onProgress) opt.onProgress((idx + 1) / list.length, meta);
           }).catch(function (e) {
             // 一个失败不拖累其它：记下来继续传下一个
-            failed.push({ name: meta.name, message: e && e.message ? e.message : '上传失败' });
+            failed.push({ name: meta.name, message: e && e.message ? e.message : window.I18n.t("上传失败") });
           });
         });
       });
@@ -541,11 +541,11 @@
     }
     if (!canUpload()) {
       return UI.confirm(window.I18n.t('需要应用内支持'),
-        '当前环境无法选择本地文件，请安装最新版应用后重试。', window.I18n.t('知道了'))
+        window.I18n.t("当前环境无法选择本地文件，请安装最新版应用后重试。"), window.I18n.t('知道了'))
         .then(function () {});
     }
     btn.disabled = true;
-    UI.toast(opt.hint || '请选择文件');
+    UI.toast(opt.hint || window.I18n.t("请选择文件"));
     return pickAndUpload({
       repoFull: opt.repoFull,
       multiple: true,
@@ -561,10 +561,10 @@
       var nVid = arr.filter(function (r) { return r.kind === 'video'; }).length;
       var nFile = arr.filter(function (r) { return r.kind === 'file'; }).length;
       var parts = [];
-      if (nImg) parts.push(nImg + ' 张图片');
-      if (nVid) parts.push(nVid + ' 个视频');
+      if (nImg) parts.push(nImg + window.I18n.t(" 张图片"));
+      if (nVid) parts.push(nVid + window.I18n.t(" 个视频"));
       if (nFile) parts.push(nFile + window.I18n.t(' 个文件'));
-      UI.toast((parts.join('、') || window.I18n.t('附件')) + '已插入');
+      UI.toast((parts.join('、') || window.I18n.t('附件')) + window.I18n.t("已插入"));
       if (arr.failed && arr.failed.length) {
         UI.toast(arr.failed.length + window.I18n.t(' 个文件上传失败：') + arr.failed[0].message);
       }
