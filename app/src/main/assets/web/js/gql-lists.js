@@ -32,7 +32,7 @@
      理由：收藏夹本来就该跟着账号走 —— 官网建了列表、换手机还在，
      App 里却看不到，那才是让人困惑的。所以这里不提供关闭入口。
 
-     但这不等于"强制联网"：令牌不带 user 权限、或 GraphQL 报错时，
+     但这不等于window.I18n.t("强制联网")：令牌不带 user 权限、或 GraphQL 报错时，
      下面每一步都会抛出带 needUserScope / gqlFailed 的错误，上层
      （starlists.js）据此自动退回本机收藏夹。用户看到的是列表照常能用，
      只是不同步 —— 不会卡住、不会白屏、数据不会丢。 */
@@ -301,19 +301,19 @@
     function bodyHtml() {
       return '' +
         '<p class="muted tiny" style="margin:6px 10px 0;line-height:1.6">' +
-          '列表跟 GitHub 账号走：官网 <b>?tab=stars</b> 里建的 Lists，' +
-          '在这里直接可见；在这里新建、改名、加删仓库，也同步回官网。' +
+          window.I18n.t("列表跟 GitHub 账号走：官网 <b>?tab=stars</b> 里建的 Lists，") +
+          window.I18n.t("在这里直接可见；在这里新建、改名、加删仓库，也同步回官网。") +
           window.I18n.t('换手机登录同一个号，列表还在。') +
         '</p>' +
         '<p class="muted tiny" style="margin:6px 10px 0;line-height:1.6">' +
-          '这条路走的是 GitHub 的 GraphQL（Lists 没有 REST 接口），' +
-          '需要令牌带 <b>user</b> 权限，且该功能官方仍在预览阶段。' +
-          '权限不够时会自动退回本机收藏夹，不影响其他功能。' +
+          window.I18n.t("这条路走的是 GitHub 的 GraphQL（Lists 没有 REST 接口），") +
+          window.I18n.t("需要令牌带 <b>user</b> 权限，且该功能官方仍在预览阶段。") +
+          window.I18n.t("权限不够时会自动退回本机收藏夹，不影响其他功能。") +
         '</p>' +
         '<div class="sep-line"></div>' +
         '<button class="opt" id="gq-now">' +
           '<span class="opt-ico">' + window.icon('download', 18) + '</span>' +
-          '<span>立即从官网拉取</span></button>';
+          window.I18n.t("<span>立即从官网拉取</span></button>");
     }
 
     UI.sheet({
@@ -332,7 +332,7 @@
               UI.loading(false);
               var msg = (e && e.message) || '';
               if (e && e.needUserScope) {
-                UI.toast('令牌缺少 user 权限，请重新登录并勾选它');
+                UI.toast(window.I18n.t("令牌缺少 user 权限，请重新登录并勾选它"));
               } else {
                 UI.toast(window.I18n.t('同步失败：') + (msg || window.I18n.t('官网接口异常')));
               }
