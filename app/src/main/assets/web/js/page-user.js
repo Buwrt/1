@@ -13,9 +13,9 @@
   }
 
   var USER_TABS = [
-    { key: 'overview', label: '概览' }, { key: 'repos', label: window.I18n.t('仓库') },
+    { key: 'overview', label: window.I18n.t("概览") }, { key: 'repos', label: window.I18n.t('仓库') },
     { key: 'stars', label: 'Star' }, { key: 'gists', label: 'Gist' },
-    { key: 'activity', label: '动态' }, { key: 'followers', label: window.I18n.t('粉丝') },
+    { key: 'activity', label: window.I18n.t("动态") }, { key: 'followers', label: window.I18n.t('粉丝') },
     { key: 'following', label: window.I18n.t('关注') }, { key: 'orgs', label: window.I18n.t('组织') }
   ];
 
@@ -62,7 +62,7 @@
           (u.location ? '<span>' + window.icon('globe', 14) + U.esc(u.location) + '</span>' : '') +
           (u.email ? '<span>' + window.icon('mail', 14) + U.esc(u.email) + '</span>' : '') +
           (u.blog ? '<span>' + window.icon('link', 14) + '<a href="' + U.esc(u.blog) + '" target="_blank">' + U.esc(u.blog.replace(/^https?:\/\//, '')) + '</a></span>' : '') +
-          (u.created_at ? '<span>' + window.icon('clock', 14) + '加入于 ' + U.date(u.created_at) + '</span>' : '') +
+          (u.created_at ? '<span>' + window.icon('clock', 14) + window.I18n.t("加入于 ") + U.date(u.created_at) + '</span>' : '') +
           '</div>' +
           '<div class="stat-row">' +
           '<a href="#/' + U.esc(login) + '?tab=repos"><b>' + U.num(u.public_repos) + '</b>仓库</a>' +
@@ -120,7 +120,7 @@ var ed = UI.$('#edit', host);
             call.then(function () {
               txt.dataset.on = following ? '0' : '1';
               txt.textContent = following ? window.I18n.t('关注') : window.I18n.t('已关注');
-              UI.toast(following ? window.I18n.t('已取消关注') : '已关注 ' + login);
+              UI.toast(following ? window.I18n.t('已取消关注') : window.I18n.t("已关注 ") + login);
             }).catch(function (e) { UI.toast(window.I18n.t('操作失败：') + e.message); });
           };
         }
@@ -129,8 +129,8 @@ var ed = UI.$('#edit', host);
           icon: 'kebab-horizontal', onClick: function () {
             UI.menu(window.I18n.t('操作'), [
               { icon: 'link-external', label: window.I18n.t('在浏览器打开'), key: 'web' },
-              { icon: 'share-android', label: '分享主页', key: 'share' },
-              { icon: 'copy', label: '复制主页链接', key: 'copy' }
+              { icon: 'share-android', label: window.I18n.t("分享主页"), key: 'share' },
+              { icon: 'copy', label: window.I18n.t("复制主页链接"), key: 'copy' }
             ]).then(function (k) {
               var url = u.html_url;
               if (k === 'web') NativeBridge.openExternal ? NativeBridge.openExternal(url) : window.open(url, '_blank');
@@ -194,11 +194,11 @@ var ed = UI.$('#edit', host);
   function repoList(ep, params, box, login, withFilter) {
     var isSelf = !!(window.Session.user && login === window.Session.user.login);
     var newBtn = (isSelf && withFilter) ? '<button class="btn primary sm" id="newrepo" style="flex:none">' +
-      window.icon('plus', 14) + ' 新建</button>' : '';
+      window.icon('plus', 14) + window.I18n.t(" 新建</button>") : '';
     box.innerHTML = (withFilter ? '<div class="filterbar">' +
       UI.seg('rseg', [{ key: 'updated', label: window.I18n.t('最近更新') }, { key: 'pushed', label: window.I18n.t('最近推送') }, { key: 'created', label: window.I18n.t('最新创建') }, { key: 'full_name', label: window.I18n.t('名称') }], 'updated') +
       newBtn + '</div><div class="search-bar"><div class="search-input">' + window.icon('search', 17) +
-      '<input id="rf" placeholder="筛选仓库…"></div></div>' : '') + '<div id="rl">' + UI.skeleton(4) + '</div>';
+      '<input id="rf" placeholder=window.I18n.t("筛选仓库…")></div></div>' : '') + '<div id="rl">' + UI.skeleton(4) + '</div>';
     // 记住当前选的排序：筛选用的是同一个接口，打字时不能把排序键丢掉，
     // 否则选了「名称」再敲一下关键词，列表又跳回默认的「最近更新」
     var curSort = 'updated';
@@ -219,7 +219,7 @@ var ed = UI.$('#edit', host);
       /* 发布时间要挨个仓库去问，几十个请求下来要几秒。先按兜底顺序画出来，
          别让人盯着一片空白等 —— 时间补齐后再排一次、重画一次。 */
       var note = pending ? '<div class="fnote">' + window.icon('clock', 12) +
-        '正在读取各仓库的最新版本时间…</div>' : '';
+        window.I18n.t("正在读取各仓库的最新版本时间…</div>") : '';
       b.innerHTML = note + (list.length
         /* ⚠️ 不能写成 map(window.repoRow)：map 会送三个参数（元素、下标、数组），
            下标落到 extra 上，第 2 条起就渲染出 1、2、3 */
@@ -229,11 +229,11 @@ var ed = UI.$('#edit', host);
             ? { time: st ? new Date(st).toISOString() : null, meta: relMetaHtml(r, relTimes, st) }
             : null);
         }).join('') + '</div>'
-        : (isSelf ? (q ? UI.empty('repo', '没有匹配的仓库', window.I18n.t('换个关键词试试'))
+        : (isSelf ? (q ? UI.empty('repo', window.I18n.t("没有匹配的仓库"), window.I18n.t('换个关键词试试'))
           : '<div class="empty">' + window.icon('repo', 36) + '<div class="t">还没有仓库</div>' +
             '<div class="d">创建第一个仓库，开始托管你的代码。</div>' +
             '<button class="btn primary mt12" id="newrepo2">' + window.icon('plus', 14) + ' 新建仓库</button></div>')
-          : UI.empty('repo', '没有仓库', '')));
+          : UI.empty('repo', window.I18n.t("没有仓库"), '')));
       /* 这一块是原地重画的，不走 Router —— 不打招呼的话翻译要等
        * MutationObserver 那一拍才发现列表换了（详见 ui.js 的 noticeRefresh）。 */
       if (window.UI) UI.noticeRefresh(b);
@@ -409,7 +409,7 @@ var ed = UI.$('#edit', host);
     /* 版本时间比最近一次推代码还老 → 不挂这个角标。这一行的位置已经由那串
        「x 天前」说明了，旁边再来一个「新版 2 年前」，看着就像顺序又乱了。 */
     if (sortVal && t < sortVal) return '';
-    return '<span>' + window.icon('tag', 12) + '新版 ' + U.timeAgo(new Date(t).toISOString()) + '</span>';
+    return '<span>' + window.icon('tag', 12) + window.I18n.t("新版 ") + U.timeAgo(new Date(t).toISOString()) + '</span>';
   }
 
   /**
@@ -454,16 +454,16 @@ var ed = UI.$('#edit', host);
       '<div class="filterbar">' +
         UI.seg('sseg', [
           { key: 'updated', label: window.I18n.t('最近更新') },
-          { key: 'created', label: '最近 Star' },
+          { key: 'created', label: window.I18n.t("最近 Star") },
           { key: 'count', label: window.I18n.t('Star 数') }
         ], 'updated') +
-        UI.seg('fseg', [{ key: 'all', label: window.I18n.t('全部') }, { key: 'fav', label: '收藏夹' }], 'all') +
+        UI.seg('fseg', [{ key: 'all', label: window.I18n.t('全部') }, { key: 'fav', label: window.I18n.t("收藏夹") }], 'all') +
       '</div>' +
       /* 收藏夹里的分类隔层：切到「收藏夹」才出现（apply 里控制显隐）。
          全部收藏 / 各列表 / ＋新建，一排横滑 chips，样式全部复用 app.css。 */
       '<div class="chips" id="fav-chips" hidden></div>' +
       '<div class="search-bar"><div class="search-input">' + window.icon('search', 17) +
-        '<input id="sf" placeholder="筛选 Star 的仓库…"></div></div>' +
+        '<input id="sf" placeholder=window.I18n.t("筛选 Star 的仓库…")></div></div>' +
       '<div id="sl">' + UI.skeleton(4) + '</div>';
 
     function isFav(name) { return favs.indexOf(name) >= 0; }
@@ -488,10 +488,10 @@ var ed = UI.$('#edit', host);
            两回事」—— 也就是用户看到的「停留几秒后排序错乱」。 */
         time: (byUpdate && st) ? new Date(st).toISOString() : null,
         meta: (r.starred_at
-          ? '<span>' + window.icon('star', 12) + 'Star 于 ' + U.timeAgo(r.starred_at) + '</span>'
+          ? '<span>' + window.icon('star', 12) + window.I18n.t("Star 于 ") + U.timeAgo(r.starred_at) + '</span>'
           : '') + (byUpdate ? relMetaHtml(r, relTimes, st) : ''),
         side: '<button class="btn sm" data-fav="' + U.esc(r.full_name) + '">' +
-          window.icon(fav ? 'star-fill' : 'star', 12) + (fav ? '已收藏' : '收藏') + '</button>'
+          window.icon(fav ? 'star-fill' : 'star', 12) + (fav ? window.I18n.t("已收藏") : window.I18n.t("收藏")) + '</button>'
       };
     }
 
@@ -520,8 +520,8 @@ var ed = UI.$('#edit', host);
       var b = UI.$('#sl', box); if (!b) return;
       if (!list.length) {
         b.innerHTML = UI.empty('star',
-          onlyFav ? '收藏夹还是空的' : '还没有 Star 的仓库',
-          onlyFav ? '回到「全部」，点条目上的「收藏」即可加进来；长按仓库还能给它分个类' : 'Star 过的仓库会出现在这里');
+          onlyFav ? window.I18n.t("收藏夹还是空的") : window.I18n.t("还没有 Star 的仓库"),
+          onlyFav ? window.I18n.t("回到「全部」，点条目上的「收藏」即可加进来；长按仓库还能给它分个类") : window.I18n.t("Star 过的仓库会出现在这里"));
         return;
       }
       b.innerHTML = '<div class="list">' + list.map(function (r) {
@@ -544,8 +544,8 @@ var ed = UI.$('#edit', host);
         });
       }
       if (!snaps.length) {
-        b.innerHTML = UI.empty('star', '这个隔层还是空的',
-          '切回「全部收藏」，长按一个仓库勾进来即可');
+        b.innerHTML = UI.empty('star', window.I18n.t("这个隔层还是空的"),
+          window.I18n.t("切回「全部收藏」，长按一个仓库勾进来即可"));
         return;
       }
       b.innerHTML = '<div class="list">' + snaps.map(function (r) {
@@ -577,7 +577,7 @@ var ed = UI.$('#edit', host);
         }
       }).catch(function (e) {
         if (e && e.needUserScope) {
-          UI.toast('令牌缺少 user 权限，列表暂用本机版');
+          UI.toast(window.I18n.t("令牌缺少 user 权限，列表暂用本机版"));
         }
       });
     }
@@ -614,7 +614,7 @@ var ed = UI.$('#edit', host);
          开着时打个勾，让人一眼知道列表现在跟账号走。 */
       if (window.GqLists && typeof window.GqLists.settingsSheet === 'function') {
         html += '<button class="chip active" data-cloud="1">' +
-          window.icon('sync', 12) + '已同步</button>';
+          window.icon('sync', 12) + window.I18n.t("已同步</button>");
       }
       el.innerHTML = html;
 
@@ -648,13 +648,13 @@ var ed = UI.$('#edit', host);
             if (!k) return;
             if (k === 'rename') return window.StarLists.editor(l, function () { renderChips(); apply(); });
             /* 删除是危险操作，菜单里再确认一次 —— 长按容易误触 */
-            UI.menu('删除「' + l.name + '」？', [
-              { icon: 'trash', label: '删除（收藏与仓库本体不受影响）', key: 'yes' }
+            UI.menu(window.I18n.t("删除「") + l.name + '」？', [
+              { icon: 'trash', label: window.I18n.t("删除（收藏与仓库本体不受影响）"), key: 'yes' }
             ]).then(function (k2) {
               if (k2 !== 'yes') return;
               window.StarLists.remove(cid);
               if (curList === cid) curList = '';
-              UI.toast('列表已删除');
+              UI.toast(window.I18n.t("列表已删除"));
               renderChips();
               apply();
             });
@@ -830,8 +830,8 @@ var ed = UI.$('#edit', host);
       e.preventDefault();
       var name = hit.getAttribute('data-fav');
       var i = favs.indexOf(name);
-      if (i >= 0) { favs.splice(i, 1); UI.toast('已移出收藏夹'); }
-      else { favs.push(name); UI.toast('已加入收藏夹'); }
+      if (i >= 0) { favs.splice(i, 1); UI.toast(window.I18n.t("已移出收藏夹")); }
+      else { favs.push(name); UI.toast(window.I18n.t("已加入收藏夹")); }
       window.Store.setJSON(FAV_KEY, favs);
       apply();
     });
@@ -859,7 +859,7 @@ var ed = UI.$('#edit', host);
         return '<button class="list-row" data-go="/' + U.esc(u.login) + '">' + UI.avatar(u.login, u.avatar_url, 40) +
           '<span class="row-main"><span class="row-title">' + U.esc(u.login) + '</span>' +
           (u.name ? '<span class="row-desc">' + U.esc(u.name) + '</span>' : '') + '</span></button>';
-      }).join('') + '</div>' : UI.empty('people', '暂无用户', '');
+      }).join('') + '</div>' : UI.empty('people', window.I18n.t("暂无用户"), '');
       window.bindRepoCards(b);
     }).catch(function (e) { UI.$('#pl', box).innerHTML = UI.errorBox(e); });
   }
@@ -873,7 +873,7 @@ var ed = UI.$('#edit', host);
         return '<button class="list-row" data-go="/' + U.esc(o.login) + '">' + UI.avatar(o.login, o.avatar_url, 40, true) +
           '<span class="row-main"><span class="row-title">' + U.esc(o.login) + '</span>' +
           (o.description ? '<span class="row-desc">' + U.esc(o.description) + '</span>' : '') + '</span></button>';
-      }).join('') + '</div>' : UI.empty('organization', '没有加入的组织', '');
+      }).join('') + '</div>' : UI.empty('organization', window.I18n.t("没有加入的组织"), '');
       window.bindRepoCards(b);
     }).catch(function (e) { UI.$('#ol', box).innerHTML = UI.errorBox(e); });
   }
@@ -887,7 +887,7 @@ var ed = UI.$('#edit', host);
         return '<button class="list-row" data-go="/' + U.esc(u.login) + '">' + UI.avatar(u.login, u.avatar_url, 40) +
           '<span class="row-main"><span class="row-title">' + U.esc(u.login) + '</span>' +
           '<span class="row-desc">' + (u.type === 'User' ? window.I18n.t('成员') : '机器人') + '</span></span></button>';
-      }).join('') + '</div>' : UI.empty('people', '没有公开成员', '');
+      }).join('') + '</div>' : UI.empty('people', window.I18n.t("没有公开成员"), '');
       window.bindRepoCards(b);
     }).catch(function (e) { UI.$('#ml', box).innerHTML = UI.errorBox(e); });
   }
@@ -953,11 +953,11 @@ var ed = UI.$('#edit', host);
       '<input class="input mono" id="gn" value="' + U.esc(originalName) + '" spellcheck="false">' +
       '<div class="hint">带扩展名才能让 GitHub 认出语言、给出高亮，例如 main.py、app.js。</div></div>' +
       '<div class="field"><label>内容</label>' +
-      '<textarea class="textarea" id="gc2" style="min-height:280px" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off" placeholder="把代码贴在这里">' +
+      '<textarea class="textarea" id="gc2" style="min-height:280px" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off" placeholder=window.I18n.t("把代码贴在这里")>' +
       U.esc(opt.content || '') + '</textarea></div>';
 
     UI.sheet({
-      title: isNew ? '新建 Gist' : '编辑 Gist', full: true, body: body,
+      title: isNew ? window.I18n.t("新建 Gist") : window.I18n.t("编辑 Gist"), full: true, body: body,
       foot: '<button class="btn" data-no>取消</button>' +
         (isNew ? '' : '<button class="btn danger" data-del>删除</button>') +
         '<button class="btn primary" data-yes>' + (isNew ? window.I18n.t('创建') : window.I18n.t('保存')) + '</button>',
@@ -979,8 +979,8 @@ var ed = UI.$('#edit', host);
           var desc = root.querySelector('#gd').value.trim();
           var name = root.querySelector('#gn').value.trim().replace(/^\/+/, '');
           var text = root.querySelector('#gc2').value;
-          if (!name) return UI.toast('请填文件名');
-          if (!text.trim()) return UI.toast('内容不能为空');
+          if (!name) return UI.toast(window.I18n.t("请填文件名"));
+          if (!text.trim()) return UI.toast(window.I18n.t("内容不能为空"));
 
           var files = {};
           // 改名要靠 filename 字段指回旧名字，否则旧文件会变成空的留在那里
@@ -997,7 +997,7 @@ var ed = UI.$('#edit', host);
           call.then(function (r) {
             UI.loading(false);
             UI.closeSheet();
-            UI.toast(isNew ? 'Gist 已创建' : window.I18n.t('已保存'));
+            UI.toast(isNew ? window.I18n.t("Gist 已创建") : window.I18n.t('已保存'));
             if (isNew) {
               var g = r && r.data;
               if (g && g.id) window.Router.go('/gist/' + g.id);
@@ -1005,7 +1005,7 @@ var ed = UI.$('#edit', host);
             } else window.Router.reload();
           }).catch(function (e) {
             UI.loading(false);
-            UI.toast((isNew ? window.I18n.t('创建失败：') : window.I18n.t('保存失败：')) + (e.status === 422 ? '内容不合法，请检查文件名' : e.message));
+            UI.toast((isNew ? window.I18n.t('创建失败：') : window.I18n.t('保存失败：')) + (e.status === 422 ? window.I18n.t("内容不合法，请检查文件名") : e.message));
           });
         };
       }
@@ -1021,11 +1021,11 @@ var ed = UI.$('#edit', host);
   function editGist(g) {
     var files = g.files || {};
     var names = Object.keys(files);
-    if (!names.length) return UI.toast('这个 Gist 没有文件');
+    if (!names.length) return UI.toast(window.I18n.t("这个 Gist 没有文件"));
     if (names.length > 1) {
-      return UI.confirm('多文件 Gist',
-        '这个 Gist 里有 ' + names.length + ' 个文件（' + names.join('、') + '）。\n\n' +
-        'App 里的编辑器一次改一个文件，多文件的编辑建议在网页端进行。要编辑第一个文件 ' + names[0] + ' 吗？',
+      return UI.confirm(window.I18n.t("多文件 Gist"),
+        window.I18n.t("这个 Gist 里有 ") + names.length + window.I18n.t(" 个文件（") + names.join('、') + '）。\n\n' +
+        window.I18n.t("App 里的编辑器一次改一个文件，多文件的编辑建议在网页端进行。要编辑第一个文件 ") + names[0] + window.I18n.t(" 吗？"),
         window.I18n.t('编辑 ') + names[0]).then(function (ok) {
         if (ok) gistEditor({ id: g.id, filename: names[0], content: files[names[0]].content, description: g.description, public: g.public });
       });
@@ -1034,7 +1034,7 @@ var ed = UI.$('#edit', host);
   }
 
   function deleteGist(id) {
-    UI.confirm('删除 Gist？', '连同其中的所有文件和 Fork 关系一起删掉，无法恢复。', window.I18n.t('删除'), true)
+    UI.confirm(window.I18n.t("删除 Gist？"), window.I18n.t("连同其中的所有文件和 Fork 关系一起删掉，无法恢复。"), window.I18n.t('删除'), true)
       .then(function (ok) {
         if (!ok) return;
         UI.loading(true);
@@ -1044,7 +1044,7 @@ var ed = UI.$('#edit', host);
           window.Router.reload();
         }).catch(function (e) {
           UI.loading(false);
-          UI.toast(window.I18n.t('删除失败：') + (e.status === 403 ? '这个 Gist 不属于你' : e.message));
+          UI.toast(window.I18n.t('删除失败：') + (e.status === 403 ? window.I18n.t("这个 Gist 不属于你") : e.message));
         });
       });
   }
@@ -1063,7 +1063,7 @@ var ed = UI.$('#edit', host);
           '<span class="row-meta"><span>' + window.icon('comment', 12) + g.comments + '</span>' +
           (g.public ? '<span class="chip">公开</span>' : '<span class="chip">私密</span>') +
           '<span>' + U.timeAgo(g.updated_at) + '</span></span></span></button>';
-      }).join('') + '</div>' : UI.empty('code-square', '暂无 Gist', '');
+      }).join('') + '</div>' : UI.empty('code-square', window.I18n.t("暂无 Gist"), '');
       window.bindRepoCards(box);
     }).catch(function (e) { box.innerHTML = UI.errorBox(e); });
   }
@@ -1078,7 +1078,7 @@ var ed = UI.$('#edit', host);
         if (epoch !== window.Router.viewEpoch) return;
         var g = r.data;
         if (!g || typeof g !== 'object') {
-          host.innerHTML = UI.errorBox(new Error('Gist 内容读取失败'));
+          host.innerHTML = UI.errorBox(new Error(window.I18n.t("Gist 内容读取失败")));
           return;
         }
         var files = g.files || {};
@@ -1135,14 +1135,14 @@ var ed = UI.$('#edit', host);
             }
             items = items.concat([
               { icon: 'star', label: 'Star', key: 'star' },
-              { icon: 'copy', label: '克隆地址', key: 'clone' },
+              { icon: 'copy', label: window.I18n.t("克隆地址"), key: 'clone' },
               { icon: 'link-external', label: window.I18n.t('在浏览器打开'), key: 'web' },
-              { icon: 'share-android', label: '分享', key: 'share' }
+              { icon: 'share-android', label: window.I18n.t("分享"), key: 'share' }
             ]);
             UI.menu(window.I18n.t('操作'), items).then(function (k) {
               if (k === 'edit') return editGist(g);
               if (k === 'del') return deleteGist(ctx.id);
-              if (k === 'star') window.API.put('/gists/' + ctx.id + '/star', {}).then(function () { UI.toast(window.I18n.t('已 Star')); }).catch(function (e) { UI.toast('已 Star 或失败'); });
+              if (k === 'star') window.API.put('/gists/' + ctx.id + '/star', {}).then(function () { UI.toast(window.I18n.t('已 Star')); }).catch(function (e) { UI.toast(window.I18n.t("已 Star 或失败")); });
               if (k === 'web') NativeBridge.openExternal ? NativeBridge.openExternal(g.html_url) : window.open(g.html_url, '_blank');
               if (k === 'share') NativeBridge.share ? NativeBridge.share(g.html_url, g.description || 'Gist') : UI.copy(g.html_url);
               if (k === 'clone') UI.copy(g.git_pull_url, window.I18n.t('已复制'));
@@ -1245,8 +1245,8 @@ var ed = UI.$('#edit', host);
         var ea = UI.$('#editavatar', host);
         if (ea) ea.onclick = function () {
           UI.confirm(window.I18n.t('更换头像'),
-            'GitHub 未开放头像上传接口，需要在网页端操作。将用应用内浏览器打开，登录态可复用。',
-            '打开上传页').then(function (ok) {
+            window.I18n.t("GitHub 未开放头像上传接口，需要在网页端操作。将用应用内浏览器打开，登录态可复用。"),
+            window.I18n.t("打开上传页")).then(function (ok) {
             if (!ok) return;
             var url = 'https://github.com/settings/profile';
             if (window.openWeb) window.openWeb(url, window.I18n.t('更换头像'));
@@ -1352,8 +1352,8 @@ var ed = UI.$('#edit', host);
       { k: 'twitter', label: 'X / Twitter', ph: 'https://x.com/用户名' },
       { k: 'mastodon', label: 'Mastodon', ph: 'https://mastodon.social/@用户名' },
       { k: 'linkedin', label: 'LinkedIn', ph: 'https://linkedin.com/in/用户名' },
-      { k: 'zhihu', label: '知乎', ph: 'https://zhihu.com/people/用户名' },
-      { k: 'bilibili', label: '哔哩哔哩', ph: 'https://space.bilibili.com/UID' }
+      { k: 'zhihu', label: window.I18n.t("知乎"), ph: 'https://zhihu.com/people/用户名' },
+      { k: 'bilibili', label: window.I18n.t("哔哩哔哩"), ph: 'https://space.bilibili.com/UID' }
     ];
 
     var body =
@@ -1365,7 +1365,7 @@ var ed = UI.$('#edit', host);
       '<button class="btn sm" style="flex:none" id="ep_avatar">去修改</button></div>' +
 
       '<div class="form-row"><label>昵称</label><input class="input" id="ep_name" value="' + U.esc(u.name || '') + '" placeholder="显示名称"></div>' +
-      '<div class="form-row"><label>简介</label><textarea class="input" id="ep_bio" rows="3" placeholder="一句话介绍自己">' + U.esc(u.bio || '') + '</textarea></div>' +
+      '<div class="form-row"><label>简介</label><textarea class="input" id="ep_bio" rows="3" placeholder=window.I18n.t("一句话介绍自己")>' + U.esc(u.bio || '') + '</textarea></div>' +
       '<div class="form-row"><label>公司</label><input class="input" id="ep_company" value="' + U.esc(u.company || '') + '" placeholder="@company"></div>' +
       '<div class="form-row"><label>地区</label><input class="input" id="ep_location" value="' + U.esc(u.location || '') + '" placeholder="城市"></div>' +
       '<div class="form-row"><label>博客</label><input class="input" id="ep_blog" value="' + U.esc(u.blog || '') + '" placeholder="https://"></div>' +
@@ -1379,15 +1379,15 @@ var ed = UI.$('#edit', host);
       '<div class="set-group-title" style="padding-left:0">其他</div>' +
       '<label class="rowflex" style="gap:10px;padding:10px 0">' +
       '<input type="checkbox" id="ep_hire" style="width:16px;height:16px"' + (u.hireable ? ' checked' : '') + '>' +
-      '<span>愿意接受工作机会（显示「可雇佣」标记）</span></label>' +
+      window.I18n.t("<span>愿意接受工作机会（显示「可雇佣」标记）</span></label>") +
       '<label class="rowflex" style="gap:10px;padding:10px 0">' +
       '<input type="checkbox" id="ep_emailvis" style="width:16px;height:16px"' + (u.email ? ' checked' : '') + '>' +
-      '<span>公开显示邮箱' + (u.email ? '：' + U.esc(u.email) : '（未设置）') + '</span></label>' +
+      window.I18n.t("<span>公开显示邮箱") + (u.email ? '：' + U.esc(u.email) : window.I18n.t("（未设置）")) + '</span></label>' +
 
       '<div class="set-note">头像与用户名暂不支持在应用内修改，GitHub 未开放对应接口。</div>';
 
     UI.sheet({
-      title: '编辑资料',
+      title: window.I18n.t("编辑资料"),
       icon: 'pencil',
       full: true,
       body: body,
@@ -1439,11 +1439,11 @@ var ed = UI.$('#edit', host);
               repaint(u2);
             }
             window.App.clearPageCache();
-            UI.toast('资料已更新');
+            UI.toast(window.I18n.t("资料已更新"));
           }).catch(function (e) {
             UI.loading(false);
             UI.toast(e.status === 404 || e.status === 403
-              ? '令牌权限不足，需要 user 权限才能修改资料'
+              ? window.I18n.t("令牌权限不足，需要 user 权限才能修改资料")
               : window.I18n.t('保存失败：') + e.message);
           });
         };
@@ -1585,16 +1585,16 @@ var ed = UI.$('#edit', host);
           if (k === 'glass') {
             var on = !window.App.navGlass();
             window.App.setNavGlass(on);
-            UI.toast(on ? '已开启 iOS风格' : '已关闭，底栏恢复朴素样式');
+            UI.toast(on ? window.I18n.t("已开启 iOS风格") : window.I18n.t("已关闭，底栏恢复朴素样式"));
             window.Router.reload();
             return;
           }
           if (k === 'font') UI.choose(L('settings.codeFont'), [
-            { key: '12', label: '小（12px）', icon: 'typography' },
-            { key: '13', label: '标准（13px）', icon: 'typography' },
-            { key: '15', label: '大（15px）', icon: 'typography' },
-            { key: '17', label: '特大（17px）', icon: 'typography' }
-          ], String(s.codeFont), function (v) { window.Store.set('codeFont', +v); UI.toast('已调整'); window.Router.reload(); });
+            { key: '12', label: window.I18n.t("小（12px）"), icon: 'typography' },
+            { key: '13', label: window.I18n.t("标准（13px）"), icon: 'typography' },
+            { key: '15', label: window.I18n.t("大（15px）"), icon: 'typography' },
+            { key: '17', label: window.I18n.t("特大（17px）"), icon: 'typography' }
+          ], String(s.codeFont), function (v) { window.Store.set('codeFont', +v); UI.toast(window.I18n.t("已调整")); window.Router.reload(); });
           /* 重新看一遍新手引导。restart() 会先把「已看过」的状态清掉，
              这样引导中途退出、下次打开也不会被当成「已看过」而不弹。*/
           if (k === 'guide') return window.Onboarding ? window.Onboarding.restart() : UI.toast(window.I18n.t('当前版本不支持'));
@@ -1602,9 +1602,9 @@ var ed = UI.$('#edit', host);
              用户能当场确认生效 —— 否则点一下什么都没变，会以为坏了。 */
           if (k === 'guideReset') {
             if (!window.Onboarding) return UI.toast(window.I18n.t('当前版本不支持'));
-            if (!window.Onboarding.isDone()) return UI.toast('已经是初始状态，下次打开会自动播放');
+            if (!window.Onboarding.isDone()) return UI.toast(window.I18n.t("已经是初始状态，下次打开会自动播放"));
             window.Onboarding.reset();
-            UI.toast('已重置，下次打开 App 会自动重新播放引导');
+            UI.toast(window.I18n.t("已重置，下次打开 App 会自动重新播放引导"));
             window.Router.reload();
             return;
           }
@@ -1620,7 +1620,7 @@ var ed = UI.$('#edit', host);
           if (k === 'cache') {
             window.API.clearCache(); window.App.clearPageCache();
             try { if (window.NativeBridge && NativeBridge.clearCache) NativeBridge.clearCache(); } catch (e) {}
-            UI.toast('缓存已清除');
+            UI.toast(window.I18n.t("缓存已清除"));
           }
           if (k === 'update') return window.Updater ? window.Updater.manualCheck() : UI.toast(window.I18n.t('当前版本不支持在线检查'));
           if (k === 'about') return about();
@@ -1690,9 +1690,9 @@ var ed = UI.$('#edit', host);
 
     function row(a, idx) {
       var builtin = !!a.builtin;
-      var title = builtin ? window.I18n.t('内置账号') : (a.login || '未知账号');
+      var title = builtin ? window.I18n.t('内置账号') : (a.login || window.I18n.t("未知账号"));
       var sub = builtin
-        ? '打开即可用，无需登录'
+        ? window.I18n.t("打开即可用，无需登录")
         : ((a.name && a.name !== a.login) ? a.name : '');
       var isCur = builtin ? onBuiltin : (!onBuiltin && a.login === curLogin);
       var av = a.avatar
@@ -1722,7 +1722,7 @@ var ed = UI.$('#edit', host);
       '<div class="set-note">切换不会删除任何账号，令牌都留在本机，可随时切回来。</div>';
 
     UI.sheet({
-      title: '切换账号',
+      title: window.I18n.t("切换账号"),
       icon: 'people',
       body: body,
       foot: '<button class="btn" data-close="1">取消</button>' +
@@ -1738,12 +1738,12 @@ var ed = UI.$('#edit', host);
         e.stopPropagation();
         var login = d.getAttribute('data-del');
         if (!login) return;
-        UI.confirm('删除账号', '将从本机删除「' + login + '」的令牌，之后需要重新登录。', window.I18n.t('删除'), true)
+        UI.confirm(window.I18n.t("删除账号"), window.I18n.t("将从本机删除「") + login + window.I18n.t("」的令牌，之后需要重新登录。"), window.I18n.t('删除'), true)
           .then(function (ok) {
             if (!ok) return;
             var done = false;
             try { done = window.Session.removeAccount(login); } catch (err) { done = false; }
-            if (!done) { UI.toast('删除失败'); return; }
+            if (!done) { UI.toast(window.I18n.t("删除失败")); return; }
             UI.toast(window.I18n.t('已删除'));
             renderAccountSheet();     // 重画弹层，列表要跟着变
             window.Router.replace('/');
@@ -1774,8 +1774,8 @@ var ed = UI.$('#edit', host);
 
     var quit = UI.$('#acQuit', root);
     if (quit) quit.onclick = function () {
-      UI.confirm('退出当前账号',
-        '退出后本机仍保存该账号，可从「切换账号」一键切回来。', '退出', true)
+      UI.confirm(window.I18n.t("退出当前账号"),
+        window.I18n.t("退出后本机仍保存该账号，可从「切换账号」一键切回来。"), window.I18n.t("退出"), true)
         .then(function (ok) {
           if (!ok) return;
           var remembered = false;
@@ -1783,7 +1783,7 @@ var ed = UI.$('#edit', host);
           window.App.clearPageCache();
           try { window.App.updateBadge(); } catch (e) {}
           UI.closeSheet();
-          UI.toast(remembered ? '已退出，账号已保留' : '已退出（本机未能记住该账号）');
+          UI.toast(remembered ? window.I18n.t("已退出，账号已保留") : window.I18n.t("已退出（本机未能记住该账号）"));
           window.Router.replace('/login');
         });
     };
@@ -1803,14 +1803,14 @@ var ed = UI.$('#edit', host);
         ? window.Session.switchToBuiltin()
         : (tokenHint ? window.Session.switchToToken(tokenHint) : window.Session.switchTo(login));
     } catch (e) { ok = false; }
-    if (!ok) { UI.toast('切换失败：本机未能换到该账号的令牌'); return; }
+    if (!ok) { UI.toast(window.I18n.t("切换失败：本机未能换到该账号的令牌")); return; }
 
     UI.loading && UI.loading(true);
     /* dedupe:false —— 切换前可能有一次 /user 还在飞，复用它拿到的就是旧身份 */
     window.API.get('/user', null, { cache: 0, dedupe: false }).then(function (r) {
       UI.loading && UI.loading(false);
       /* 换完拉一次身份，顺便校验：拉出来的不是目标账号，说明没真换过去。
-         早期版本在这里不校验，切错了也提示"已切换"，看着像成功其实是假的。 */
+         早期版本在这里不校验，切错了也提示window.I18n.t("已切换")，看着像成功其实是假的。 */
       var got = (r && r.data && r.data.login) || '';
       /*
         拉出来的不是目标账号 —— 说明这条记录**绑错了**：
@@ -1839,8 +1839,8 @@ var ed = UI.$('#edit', host);
          绑错时它根本不是本人） */
       var uid = r && r.data ? r.data.id : 0;
       function done() {
-        if (fixed) UI.toast('这条记录绑错了令牌，已修正为 ' + who + '（需用 ' + login + ' 请重新登录）');
-        else UI.toast('已切换到 ' + who);
+        if (fixed) UI.toast(window.I18n.t("这条记录绑错了令牌，已修正为 ") + who + window.I18n.t("（需用 ") + login + window.I18n.t(" 请重新登录）"));
+        else UI.toast(window.I18n.t("已切换到 ") + who);
         window.Router.replace('/');
       }
       if (window.Blocklist && window.Blocklist.check) {
@@ -1854,7 +1854,7 @@ var ed = UI.$('#edit', host);
     }).catch(function () {
       UI.loading && UI.loading(false);
       UI.closeSheet();
-      UI.toast('已切换，但未能获取账号信息');
+      UI.toast(window.I18n.t("已切换，但未能获取账号信息"));
       window.Router.replace('/');
     });
   }
@@ -1907,9 +1907,9 @@ var ed = UI.$('#edit', host);
   function quota(host) {
     window.API.rateLimit().then(function (r) {
       var d = r.data && r.data.rate;
-      if (!d) return UI.toast('无法获取配额');
+      if (!d) return UI.toast(window.I18n.t("无法获取配额"));
       UI.sheet({
-        title: 'API 配额',
+        title: window.I18n.t("API 配额"),
         body: '<div class="card" style="padding:14px">' +
           '<div class="rowflex" style="justify-content:space-between"><span>核心接口</span><b>' + d.remaining + ' / ' + d.limit + '</b></div>' +
           '<div class="skel" style="height:6px;margin:10px 0;border-radius:3px;position:relative;overflow:hidden">' +
@@ -2014,34 +2014,34 @@ var ed = UI.$('#edit', host);
      */
     var fpRow = function (kind, val) {
       val = String(val || '').toLowerCase();
-      var shown = val || (kind.indexOf('源码') >= 0 ? '未生成' : '无法读取');
+      var shown = val || (kind.indexOf(window.I18n.t("源码")) >= 0 ? window.I18n.t("未生成") : window.I18n.t("无法读取"));
       return '<div class="fp-item">' +
         '<span class="fp-kind">' + U.esc(kind) + '</span>' +
         '<code class="fp-val">' + U.esc(shown) + '</code>' +
         (val ? '<button class="fp-copy" data-fp="' + U.esc(val) + '" ' +
-               'title="复制这枚指纹">' + window.icon('copy', 14) + '</button>' : '') +
+               'title=window.I18n.t("复制这枚指纹")>' + window.icon('copy', 14) + '</button>' : '') +
         '</div>';
     };
 
     /** 把两条指纹交给共享渲染器，画成和 Release 详情页一模一样的表格 */
     var fpTable = function (srcSha, certSha256) {
       var items = [
-        { kind: '源码指纹（源码快照 SHA-256）', val: String(srcSha || '').toLowerCase() },
-        { kind: '签名指纹（证书 SHA-256）', val: String(certSha256 || '').toLowerCase() }
+        { kind: window.I18n.t("源码指纹（源码快照 SHA-256）"), val: String(srcSha || '').toLowerCase() },
+        { kind: window.I18n.t("签名指纹（证书 SHA-256）"), val: String(certSha256 || '').toLowerCase() }
       ];
       if (window.Fingerprints && window.Fingerprints.cardHtml) {
         return window.Fingerprints.cardHtml(items,
-          '点最右列按钮复制。在仓库里跑 ' +
-          '<code>python3 tools/gen-srcfingerprint.py --check</code> 比对源码指纹；' +
-          '签名指纹应与官方发布的一致，不一致说明这个包被人重新打包过。' +
-          '这张表与 Release 详情页「校验信息」完全相同。');
+          window.I18n.t("点最右列按钮复制。在仓库里跑 ") +
+          window.I18n.t("<code>python3 tools/gen-srcfingerprint.py --check</code> 比对源码指纹；") +
+          window.I18n.t("签名指纹应与官方发布的一致，不一致说明这个包被人重新打包过。") +
+          window.I18n.t("这张表与 Release 详情页「校验信息」完全相同。"));
       }
       /* page-detail.js 万一没加载：退回逐行渲染，至少值还是完整的 */
       return items.map(function (it) { return fpRow(it.kind, it.val); }).join('');
     };
 
     UI.sheet({
-      title: '关于 githup',
+      title: window.I18n.t("关于 githup"),
       body:
         '<div class="center" style="padding:12px 0 6px">' +
         '<div style="display:flex;justify-content:center;color:var(--fg)">' + window.icon('mark-github', 52) + '</div>' +
@@ -2051,26 +2051,26 @@ var ed = UI.$('#edit', host);
         '</div>' +
 
         '<div class="muted" style="font-size:13px;line-height:1.8;margin-top:14px">' +
-        '一个轻量的第三方 GitHub 客户端：浏览仓库与代码、读 Issue 和 PR、看 Actions 构建、' +
-        '发 Release、上传文件，乃至让 GitHub Actions 在云端替你打包 Android 应用。' +
+        window.I18n.t("一个轻量的第三方 GitHub 客户端：浏览仓库与代码、读 Issue 和 PR、看 Actions 构建、") +
+        window.I18n.t("发 Release、上传文件，乃至让 GitHub Actions 在云端替你打包 Android 应用。") +
         '<br><br>' +
-        '整个界面是一套纯前端单页应用跑在 WebView 里，原生层只做网页做不到的事 —— ' +
-        '绕过跨域发请求、调系统文件选择器、上传二进制、下载 APK 并拉起安装器。' +
-        '所以它体积很小，却在手机上把 GitHub 该有的都补齐了。' +
+        window.I18n.t("整个界面是一套纯前端单页应用跑在 WebView 里，原生层只做网页做不到的事 —— ") +
+        window.I18n.t("绕过跨域发请求、调系统文件选择器、上传二进制、下载 APK 并拉起安装器。") +
+        window.I18n.t("所以它体积很小，却在手机上把 GitHub 该有的都补齐了。") +
         '</div>' +
 
         '<div class="section"></div>' +
         '<div class="set-group">' +
-        row('repo', 'repo', '开源地址', 'Buwrt/githup') +
-        row('qq', 'comment-discussion', 'QQ 群', ME.qq) +
-        row('tips', 'heart', window.I18n.t('赞赏支持'), '微信 / 支付宝') +
-        row('issues', 'bug', '反馈问题', '') +
+        row('repo', 'repo', window.I18n.t("开源地址"), 'Buwrt/githup') +
+        row('qq', 'comment-discussion', window.I18n.t("QQ 群"), ME.qq) +
+        row('tips', 'heart', window.I18n.t('赞赏支持'), window.I18n.t("微信 / 支付宝")) +
+        row('issues', 'bug', window.I18n.t("反馈问题"), '') +
         '</div>' +
 
         '<div class="section"></div>' +
         '<div class="set-group">' +
         row('update', 'sync', window.I18n.t('检查更新'), 'v' + appVer()) +
-        row('errlog', 'bug', '下载错误日志', '') +
+        row('errlog', 'bug', window.I18n.t("下载错误日志"), '') +
         '</div>' +
 
         /* 源码指纹 + 签名指纹：让人能核对「手上这个包到底是不是官方那份」。
@@ -2096,9 +2096,9 @@ var ed = UI.$('#edit', host);
         '</div>' +
 
         '<div class="set-note">' +
-        '本应用为个人学习用途的第三方客户端，与 GitHub, Inc. 无任何隶属关系。' +
-        '所有数据均通过 GitHub 官方公开 API 获取，访问令牌只保存在你的设备本机、不会上传到任何服务器。' +
-        '图标取自 GitHub Octicons（MIT），代码高亮基于 highlight.js（BSD），Markdown 解析基于 marked（MIT）。' +
+        window.I18n.t("本应用为个人学习用途的第三方客户端，与 GitHub, Inc. 无任何隶属关系。") +
+        window.I18n.t("所有数据均通过 GitHub 官方公开 API 获取，访问令牌只保存在你的设备本机、不会上传到任何服务器。") +
+        window.I18n.t("图标取自 GitHub Octicons（MIT），代码高亮基于 highlight.js（BSD），Markdown 解析基于 marked（MIT）。") +
         '</div>',
 
       onMount: function () {
@@ -2128,11 +2128,11 @@ var ed = UI.$('#edit', host);
                 title: window.I18n.t('赞赏支持'),
                 body:
                   '<div class="center" style="padding:2px 0 6px">' +
-                  '<img id="tip-qr" src="img/tips.png" alt="赞赏码" ' +
+                  '<img id="tip-qr" src="img/tips.png" alt=window.I18n.t("赞赏码") ' +
                   'style="width:100%;max-width:340px;display:block;margin:0 auto">' +
                   '</div>' +
                   '<div class="muted tiny" style="margin-top:12px;line-height:1.7;text-align:center">' +
-                  '如果这个软件帮到了你，可以请我喝杯咖啡。<br>完全自愿，不给也一样能正常使用全部功能。<br>' +
+                  window.I18n.t("如果这个软件帮到了你，可以请我喝杯咖啡。<br>完全自愿，不给也一样能正常使用全部功能。<br>") +
                   '<span style="opacity:.75">长按图片可保存原图到相册</span>' +
                   '</div>',
                 foot: '<button class="btn primary" data-close="1">好的</button>',
@@ -2160,13 +2160,13 @@ var ed = UI.$('#edit', host);
             // 没装就退化成复制群号，总之不能点了没反应。
             if (k === 'qq') {
               UI.sheet({
-                title: '加入 QQ 群',
+                title: window.I18n.t("加入 QQ 群"),
                 body: '<div class="center" style="padding:6px 0 2px">' +
                   '<div style="font-size:22px;font-weight:600;letter-spacing:1px">' + ME.qq + '</div>' +
                   '<div class="muted tiny" style="margin-top:6px">交流使用问题、反馈 Bug、获取更新</div>' +
                   '</div>' +
                   '<div class="muted tiny" style="margin-top:12px;line-height:1.7">' +
-                  '点「一键加群」会尝试唤起 QQ；如果手机没装 QQ，选「复制群号」再手动搜索即可。' +
+                  window.I18n.t("点「一键加群」会尝试唤起 QQ；如果手机没装 QQ，选「复制群号」再手动搜索即可。") +
                   '</div>',
                 foot: '<button class="btn" data-qq-copy="1">复制群号</button>' +
                   '<button class="btn primary" data-qq-open="1">一键加群</button>',
@@ -2197,11 +2197,11 @@ var ed = UI.$('#edit', host);
             if (k === 'errlog') {
               UI.closeSheet();
               UI.sheet({
-                title: '错误日志',
+                title: window.I18n.t("错误日志"),
                 body: '<div class="muted" style="font-size:14px;line-height:1.7">' +
-                  '出问题时，App 会自动把情况记在**内部**小本子里（只记今天，' +
-                  '明天自动从头开始），不会往下载目录里放任何东西。<br><br>' +
-                  '想拿去用的时候，在这里手动导出：' +
+                  window.I18n.t("出问题时，App 会自动把情况记在**内部**小本子里（只记今天，") +
+                  window.I18n.t("明天自动从头开始），不会往下载目录里放任何东西。<br><br>") +
+                  window.I18n.t("想拿去用的时候，在这里手动导出：") +
                   '</div>',
                 foot: '<button class="btn" data-log-share="1">分享</button>' +
                   '<button class="btn primary" data-log-save="1">保存到本地</button>',
@@ -2214,7 +2214,7 @@ var ed = UI.$('#edit', host);
                     close();
                     if (window.Native && Native.saveLog) {
                       Native.saveLog(function (ok) {
-                        UI.toast(ok ? '已存到 Download/githup/错误日志' : '保存失败，请稍后再试');
+                        UI.toast(ok ? window.I18n.t("已存到 Download/githup/错误日志") : window.I18n.t("保存失败，请稍后再试"));
                       });
                     } else {
                       UI.toast(window.I18n.t('当前版本不支持'));
