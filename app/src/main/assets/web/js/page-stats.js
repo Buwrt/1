@@ -167,7 +167,7 @@
     repos.forEach(function (r) {
       stars += r.stargazers_count || 0;
       forks += r.forks_count || 0;
-      var lg = String(r.language || '').trim() || '未标注';
+      var lg = String(r.language || '').trim() || window.I18n.t("未标注");
       byLang[lg] = (byLang[lg] || 0) + 1;
     });
 
@@ -198,8 +198,8 @@
   function statCards(s, me) {
     var items = [
       { icon: 'repo', label: window.I18n.t('仓库'), value: U.num(s.count) },
-      { icon: 'star', label: '收到 Star', value: U.num(s.stars) },
-      { icon: 'code-square', label: '被 Fork', value: U.num(s.forks) },
+      { icon: 'star', label: window.I18n.t("收到 Star"), value: U.num(s.stars) },
+      { icon: 'code-square', label: window.I18n.t("被 Fork"), value: U.num(s.forks) },
       { icon: 'people', label: me && me.type === 'Organization' ? window.I18n.t('成员') : window.I18n.t('粉丝'),
         value: U.num((me && me.followers) || 0) }
     ];
@@ -283,7 +283,7 @@
       trendHtml = '<div class="card" style="padding:14px">'
         + '<div style="font-weight:600">Star 总数趋势</div>'
         + '<div class="muted tiny" style="margin:2px 0 10px">已攒 ' + snaps.length + ' 天 · '
-        + '相比起点 ' + sign + U.num(delta) + '</div>'
+        + window.I18n.t("相比起点 ") + sign + U.num(delta) + '</div>'
         + sparkline(vals)
         + '<div class="muted tiny" style="margin-top:6px">'
         + U.num(d0) + ' → ' + U.num(d1) + '</div></div>';
@@ -292,25 +292,25 @@
         + '<div style="font-weight:600">Star 总数趋势</div>'
         + '<div class="muted tiny" style="margin-top:4px">正在攒数据（'
         + snaps.length + '/' + TREND_MIN + '）。'
-        + 'GitHub 不提供历史数据，只能自己一天记一笔 —— 再来几天就能看到曲线了。</div></div>';
+        + window.I18n.t("GitHub 不提供历史数据，只能自己一天记一笔 —— 再来几天就能看到曲线了。</div></div>");
     }
 
     host.innerHTML = '<div style="padding:12px;display:flex;flex-direction:column;gap:12px">'
       + statCards(s, me)
       + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
       + '<button class="btn sm" id="st-fork">' + window.icon('repo', 13)
-      + (CTX.includeFork ? ' 含 fork' : ' 不含 fork') + '</button>'
+      + (CTX.includeFork ? window.I18n.t(" 含 fork") : window.I18n.t(" 不含 fork")) + '</button>'
       + '<span class="muted tiny">共 ' + U.num(CTX.repos.length) + window.I18n.t(' 个仓库')
-      + (CTX.includeFork ? '' : '（已排除 ' + U.num(CTX.repos.length - s.count) + ' 个 fork）')
+      + (CTX.includeFork ? '' : window.I18n.t("（已排除 ") + U.num(CTX.repos.length - s.count) + window.I18n.t(" 个 fork）"))
       + '</span></div>'
-      + chartBlock('Star 分布', '收到的 Star 都落在哪些仓库上', starTop, s.stars, ' 个',
+      + chartBlock(window.I18n.t("Star 分布"), window.I18n.t("收到的 Star 都落在哪些仓库上"), starTop, s.stars, window.I18n.t(" 个"),
         U.num(s.stars), 'Star')
-      + chartBlock('语言分布', '这些仓库主要用什么语言', langItems, s.count, ' 个',
+      + chartBlock(window.I18n.t("语言分布"), window.I18n.t("这些仓库主要用什么语言"), langItems, s.count, window.I18n.t(" 个"),
         U.num(s.count), window.I18n.t('仓库'))
       + trendHtml
       + '<div class="muted tiny" style="padding:0 2px 8px">'
-      + '数据来自 GitHub 当前值；趋势由本机每天记一笔攒出来，'
-      + '换设备或清数据会重新攒。</div>'
+      + window.I18n.t("数据来自 GitHub 当前值；趋势由本机每天记一笔攒出来，")
+      + window.I18n.t("换设备或清数据会重新攒。</div>")
       + '</div>';
 
     var fb = host.querySelector('#st-fork');
@@ -330,24 +330,24 @@
           if (r.me) CTX.me = r.me;
           CTX.repos = r.repos;
           render();
-          UI.toast('已刷新');
+          UI.toast(window.I18n.t("已刷新"));
         }, function () {
           UI.loading(false); CTX.busy = false;
-          UI.toast('刷新失败');
+          UI.toast(window.I18n.t("刷新失败"));
         });
       }
     }]);
   }
 
   P.stats = {
-    title: '数据概览',
+    title: window.I18n.t("数据概览"),
     render: function (ctx, host) {
       host.innerHTML = UI.skeleton(4);
       CTX.busy = true;
       return fetchAll(false).then(function (r) {
         CTX.busy = false;
         if (!r.me) {
-          host.innerHTML = UI.empty('graph', '需要登录才能看数据概览');
+          host.innerHTML = UI.empty('graph', window.I18n.t("需要登录才能看数据概览"));
           return;
         }
         CTX.me = r.me;
@@ -355,7 +355,7 @@
         render();
       }, function () {
         CTX.busy = false;
-        host.innerHTML = UI.empty('alert', '取不到数据', '检查网络或令牌配额后重试');
+        host.innerHTML = UI.empty('alert', window.I18n.t("取不到数据"), window.I18n.t("检查网络或令牌配额后重试"));
       });
     }
   };
