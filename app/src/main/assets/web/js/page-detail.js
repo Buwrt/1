@@ -89,7 +89,7 @@
           '<div class="detail-title">' + U.esc(it.title) + ' <span class="detail-number">#' + n + '</span></div>' +
           '<div class="detail-sub">' + UI.stateBadge(it, isPR) +
           '<span>' + U.esc((it.user && it.user.login) || '') + window.I18n.t(' 创建于 ') + U.timeAgo(it.created_at) + '</span>' +
-          '<span>' + it.comments + ' 条评论</span></div>' +
+          '<span>' + it.comments + window.I18n.t(" 条评论</span></div>") +
           (it.labels && it.labels.length ? '<div class="rowflex wrap mt12">' + it.labels.map(function (l) {
             return '<span class="label" style="' + U.labelStyle(l.color) + '">' + U.esc(l.name) + '</span>';
           }).join('') + '</div>' : '') +
@@ -219,7 +219,7 @@
       var pr = r.data;
       if (pr.merged) return UI.toast(window.I18n.t('该 PR 已合并'));
       if (pr.state === 'closed') return UI.toast(window.I18n.t('该 PR 已关闭，无法合并'));
-      if (pr.draft) return UI.toast('草稿状态的 PR 不能合并，请先标记为可评审');
+      if (pr.draft) return UI.toast(window.I18n.t("草稿状态的 PR 不能合并，请先标记为可评审"));
 
       var st = pr.mergeable_state || '';
       var warn = '';
@@ -352,14 +352,14 @@
         var s = UI.$('#rvsum', box); if (!s) return;
         var pc = pendingCount(full, n);
         s.innerHTML = h + (pc ? '<div class="fnote">' + window.icon('comment', 12) +
-          '有 <b>' + pc + '</b> 条行内评论待提交' +
+          window.I18n.t("有 <b>") + pc + window.I18n.t("</b> 条行内评论待提交") +
           '　<button class="btn sm" id="rv-sub">提交评审</button>' +
           '　<button class="btn sm" id="rv-clr">清空</button></div>' : '');
         var sb = UI.$('#rv-sub', s);
         if (sb) sb.onclick = function () { reviewPR(full, n, it); };
         var cb = UI.$('#rv-clr', s);
         if (cb) cb.onclick = function () {
-          UI.confirm(window.I18n.t('清空未提交的评论？'), window.I18n.t('这 ') + pc + ' 条意见还没发给任何人，清空后需要重新写。', window.I18n.t('清空'), true)
+          UI.confirm(window.I18n.t('清空未提交的评论？'), window.I18n.t('这 ') + pc + window.I18n.t(" 条意见还没发给任何人，清空后需要重新写。"), window.I18n.t('清空'), true)
             .then(function (ok) { if (ok) { pending.list = []; UI.toast(window.I18n.t('已清空')); window.Router.reload(); } });
         };
       });
@@ -472,18 +472,18 @@
   }
 
   function deleteComment(full, id) {
-    UI.confirm(window.I18n.t('删除评论？'), '删除后无法恢复。如果是误发的内容，编辑一下通常比删除更好。', window.I18n.t('删除'), true)
+    UI.confirm(window.I18n.t('删除评论？'), window.I18n.t("删除后无法恢复。如果是误发的内容，编辑一下通常比删除更好。"), window.I18n.t('删除'), true)
       .then(function (ok) {
         if (!ok) return;
         UI.loading(true);
         window.API.del('/repos/' + full + '/issues/comments/' + id)
           .then(function () {
-            UI.loading(false); UI.toast('评论已删除');
+            UI.loading(false); UI.toast(window.I18n.t("评论已删除"));
             window.Router.reload();
           })
           .catch(function (e) {
             UI.loading(false);
-            UI.toast(window.I18n.t('删除失败：') + (e.status === 403 ? '没有权限删除这条评论' : e.message));
+            UI.toast(window.I18n.t('删除失败：') + (e.status === 403 ? window.I18n.t("没有权限删除这条评论") : e.message));
           });
       });
   }
@@ -493,24 +493,24 @@
     var ico = 'dot-fill', text = '';
     switch (e.event) {
       case 'labeled': ico = 'tag'; text = '添加了标签 <span class="label" style="' + U.labelStyle(e.label.color) + '">' + U.esc(e.label.name) + '</span>'; break;
-      case 'unlabeled': ico = 'tag'; text = '移除了标签 ' + U.esc(e.label.name); break;
-      case 'closed': ico = 'issue-closed'; text = '关闭了该议题'; break;
+      case 'unlabeled': ico = 'tag'; text = window.I18n.t("移除了标签 ") + U.esc(e.label.name); break;
+      case 'closed': ico = 'issue-closed'; text = window.I18n.t("关闭了该议题"); break;
       case 'reopened': ico = 'issue-opened'; text = window.I18n.t('重新打开'); break;
       case 'merged': ico = 'git-merge'; text = '合并了提交 <span class="mono">' + U.esc((e.commit_id || '').substring(0, 7)) + '</span>'; break;
       case 'assigned': ico = 'person'; text = '指派给 <a href="#/' + U.esc(e.assignee.login) + '">' + U.esc(e.assignee.login) + '</a>'; break;
-      case 'unassigned': ico = 'person'; text = '取消指派 ' + U.esc(e.assignee ? e.assignee.login : ''); break;
-      case 'referenced': ico = 'cross-reference'; text = '引用了该议题'; break;
-      case 'cross-referenced': ico = 'cross-reference'; text = '被引用'; break;
-      case 'renamed': ico = 'pencil'; text = '修改标题：' + U.esc(e.rename.from) + ' → ' + U.esc(e.rename.to); break;
-      case 'review_requested': ico = 'eye'; text = '请求 ' + U.esc(e.requested_reviewer ? e.requested_reviewer.login : '') + ' 评审'; break;
+      case 'unassigned': ico = 'person'; text = window.I18n.t("取消指派 ") + U.esc(e.assignee ? e.assignee.login : ''); break;
+      case 'referenced': ico = 'cross-reference'; text = window.I18n.t("引用了该议题"); break;
+      case 'cross-referenced': ico = 'cross-reference'; text = window.I18n.t("被引用"); break;
+      case 'renamed': ico = 'pencil'; text = window.I18n.t("修改标题：") + U.esc(e.rename.from) + ' → ' + U.esc(e.rename.to); break;
+      case 'review_requested': ico = 'eye'; text = window.I18n.t("请求 ") + U.esc(e.requested_reviewer ? e.requested_reviewer.login : '') + window.I18n.t(" 评审"); break;
       case 'reviewed':
         // timeline 里的是小写状态；具体意见在上方「评审」区展示，这里只记一笔动作
         if (e.state === 'approved') { ico = 'check-circle-fill'; text = window.I18n.t('批准了这些改动'); }
         else if (e.state === 'changes_requested') { ico = 'x-circle-fill'; text = window.I18n.t('请求修改'); }
         else { ico = 'comment'; text = window.I18n.t('发表了评审意见'); }
         break;
-      case 'head_ref_force_pushed': ico = 'git-commit'; text = '强制推送了分支'; break;
-      case 'milestoned': ico = 'milestone'; text = '加入了里程碑 ' + U.esc(e.milestone.title); break;
+      case 'head_ref_force_pushed': ico = 'git-commit'; text = window.I18n.t("强制推送了分支"); break;
+      case 'milestoned': ico = 'milestone'; text = window.I18n.t("加入了里程碑 ") + U.esc(e.milestone.title); break;
       default: text = U.esc(e.event);
     }
     return '<div class="event"><div class="event-ico">' + window.icon(ico, 16) + '</div>' +
@@ -537,14 +537,14 @@
     var root = document.getElementById('sheet-root');
     var text = quote ? quote.split('\n').map(function (l) { return '> ' + l; }).join('\n') + '\n\n' : '';
     UI.sheet({
-      title: '发表评论',
+      title: window.I18n.t("发表评论"),
       body: '<div class="rowflex" style="gap:4px;margin-bottom:8px">' + ['bold', 'italic', 'quote', 'code', 'link', 'list-unordered'].map(function (i) {
-        var t = i === 'link' ? ' title="上传附件"' : '';
+        var t = i === 'link' ? ' title=window.I18n.t("上传附件")' : '';
         return '<button class="btn sm" data-md="' + i + '"' + t + '>' + window.icon(i, 14) + '</button>';
       }).join('') +
-        '<button class="btn sm" data-md="attach" title="插入图片或视频">' + window.icon('image', 14) + '</button>' +
+        '<button class="btn sm" data-md="attach" title=window.I18n.t("插入图片或视频")>' + window.icon('image', 14) + '</button>' +
         '<button class="btn sm" data-md="preview" style="margin-left:auto">预览</button></div>' +
-        '<textarea class="textarea" id="cb" style="min-height:160px" placeholder="支持 Markdown，可使用 @ 提及他人">' + U.esc(text) + '</textarea>' +
+        '<textarea class="textarea" id="cb" style="min-height:160px" placeholder=window.I18n.t("支持 Markdown，可使用 @ 提及他人")>' + U.esc(text) + '</textarea>' +
         '<div id="prev" class="card" hidden style="padding:12px;margin-top:10px"></div>',
       foot: '<button class="btn" data-no>取消</button><button class="btn primary" data-yes>提交评论</button>',
       onMount: function () {
@@ -565,17 +565,17 @@
             var k = b.getAttribute('data-md');
             if (k === 'attach') {
               // 图片按钮：选图片/视频 → 传上去 → 把 Markdown 链接贴到光标处
-              doUpload(b, 'image/*,video/*', '请选择图片或视频');
+              doUpload(b, 'image/*,video/*', window.I18n.t("请选择图片或视频"));
               return;
             }
             if (k === 'link') {
               // 链条按钮：上传任意附件（不再是插入空的 [](链接) 语法）
-              doUpload(b, '*/*', '请选择要上传的文件');
+              doUpload(b, '*/*', window.I18n.t("请选择要上传的文件"));
               return;
             }
             if (k === 'preview') {
               var pv = root.querySelector('#prev'); pv.hidden = !pv.hidden;
-              if (!pv.hidden) window.MD.mount(pv, ta.value || '（无内容）', { repo: full });
+              if (!pv.hidden) window.MD.mount(pv, ta.value || window.I18n.t("（无内容）"), { repo: full });
               return;
             }
             window.wrapSelection(ta, k);
@@ -586,7 +586,7 @@
           if (!v) return UI.toast(window.I18n.t('请输入内容'));
           UI.loading(true);
           window.API.post('/repos/' + full + '/issues/' + n + '/comments', { body: v }).then(function () {
-            UI.loading(false); UI.closeSheet(); UI.toast('评论已发布'); window.Router.reload();
+            UI.loading(false); UI.closeSheet(); UI.toast(window.I18n.t("评论已发布")); window.Router.reload();
           }).catch(function (e) { UI.loading(false); UI.toast(window.I18n.t('发布失败：') + e.message); });
         };
         root.querySelector('[data-no]').onclick = function () { UI.closeSheet(); };
@@ -607,10 +607,10 @@
         var pc = pendingCount(full, n);
         b.innerHTML =
           (reviewable ? '<div class="fnote">' + window.icon('comment', 12) +
-            '点任意一行可写行内评论' + (pc ? '，已攒 <b>' + pc + '</b> 条' : '') +
+            window.I18n.t("点任意一行可写行内评论") + (pc ? window.I18n.t("，已攒 <b>") + pc + window.I18n.t("</b> 条") : '') +
             (pc ? '　<button class="btn sm" id="sub-rv">去提交评审</button>' : '') + '</div>' : '') +
           (files.length ? files.map(function (f) { return diffFile(f, { reviewable: reviewable }); }).join('')
-            : UI.empty('file-diff', '没有文件改动', ''));
+            : UI.empty('file-diff', window.I18n.t("没有文件改动"), ''));
         if (!reviewable) return;
         UI.$$('.diff-body [data-cl]', b).forEach(function (row) {
           row.onclick = function () { inlineComment(full, n, row); };
@@ -641,7 +641,7 @@
          * 以前直接 r.data.head.sha 会把整个 checks 页带崩。 */
         var head = r.data && r.data.head;
         var sha = head && head.sha;
-        if (!sha) throw new Error('取不到这次提交的校验值，可能分支已被删除');
+        if (!sha) throw new Error(window.I18n.t("取不到这次提交的校验值，可能分支已被删除"));
         return Promise.all([
           window.API.get('/repos/' + full + '/commits/' + sha + '/check-runs', { per_page: 100 }).catch(function () { return { data: { check_runs: [] } }; }),
           window.API.get('/repos/' + full + '/commits/' + sha + '/status', {}).catch(function () { return { data: { statuses: [] } }; })
@@ -669,7 +669,7 @@
                 '<span class="row-main"><span class="row-title tiny">' + U.esc(r2.name) + '</span>' +
                 '<span class="row-desc">' + U.esc((r2.output && r2.output.title) || c) + '</span></span>' +
                 (r2.html_url ? '<button class="btn sm" data-web="' + U.esc(r2.html_url || '') + '">查看</button>' : '') + '</div>';
-            }).join('') + '</div>' : (html ? '' : UI.empty('check', '没有检查记录', '该提交未触发任何 CI 检查'));
+            }).join('') + '</div>' : (html ? '' : UI.empty('check', window.I18n.t("没有检查记录"), window.I18n.t("该提交未触发任何 CI 检查")));
           b.innerHTML = html;
           UI.$$('[data-web]', b).forEach(function (x) {
             x.onclick = function () { NativeBridge.openExternal ? NativeBridge.openExternal(x.getAttribute('data-web')) : window.open(x.getAttribute('data-web'), '_blank'); };
@@ -749,10 +749,10 @@
     var old = idx >= 0 ? list[idx].body : '';
     var root = document.getElementById('sheet-root');
     UI.sheet({
-      title: '评论 ' + path + ' 第 ' + line + window.I18n.t(' 行'),
+      title: window.I18n.t("评论 ") + path + window.I18n.t(" 第 ") + line + window.I18n.t(' 行'),
       body: '<div class="mono tiny" style="padding:6px 8px;background:var(--diff-hunk-bg);border-radius:6px;white-space:pre-wrap;word-break:break-all">' +
         U.esc(text) + '</div>' +
-        '<div class="field"><textarea class="textarea" id="ic" style="min-height:110px" placeholder="写下你的意见">' + U.esc(old) + '</textarea></div>' +
+        '<div class="field"><textarea class="textarea" id="ic" style="min-height:110px" placeholder=window.I18n.t("写下你的意见")>' + U.esc(old) + '</textarea></div>' +
         '<div class="muted tiny">提交后会随本次评审一起发出（现在还不会发给对方）。</div>' +
         (idx >= 0 ? '<button class="btn danger" id="icdel" style="margin-top:8px">删除这条评论</button>' : ''),
       foot: '<button class="btn" data-no>取消</button><button class="btn primary" data-yes>加入评审</button>',
@@ -768,7 +768,7 @@
           var item = { path: path, line: line, side: side, body: v };
           if (idx >= 0) list[idx] = item; else list.push(item);
           UI.closeSheet();
-          UI.toast('已加入评审，共 ' + list.length + window.I18n.t(' 条'));
+          UI.toast(window.I18n.t("已加入评审，共 ") + list.length + window.I18n.t(' 条'));
           window.Router.reload();
         };
         root.querySelector('[data-no]').onclick = function () { UI.closeSheet(); };
@@ -812,22 +812,22 @@
     var ev = 'COMMENT';
     var body = '<div class="field"><label>评审结论</label>' +
       UI.seg('rseg', [
-        { key: 'COMMENT', label: '仅评论' },
-        { key: 'APPROVE', label: '批准' },
+        { key: 'COMMENT', label: window.I18n.t("仅评论") },
+        { key: 'APPROVE', label: window.I18n.t("批准") },
         { key: 'REQUEST_CHANGES', label: window.I18n.t('请求修改') }
       ], 'COMMENT') +
-      '</div><div class="field"><label>总体说明</label><textarea class="textarea" id="rb" style="min-height:110px" placeholder="可选。仅评论时建议填写具体意见"></textarea></div>' +
+      '</div><div class="field"><label>总体说明</label><textarea class="textarea" id="rb" style="min-height:110px" placeholder=window.I18n.t("可选。仅评论时建议填写具体意见")></textarea></div>' +
       (list.length ? '<div class="card"><div class="section-title">' + window.icon('comment', 14) + ' 随本次评审提交的 ' + list.length + ' 条行内评论</div>' +
         '<div class="list">' + list.map(function (c, i) {
           return '<div class="list-row static"><span class="row-main"><span class="row-title mono tiny">' +
-            U.esc(c.path) + ':' + c.line + ' (' + (c.side === 'LEFT' ? '旧' : '新') + ')</span>' +
+            U.esc(c.path) + ':' + c.line + ' (' + (c.side === 'LEFT' ? window.I18n.t("旧") : window.I18n.t("新")) + ')</span>' +
             '<span class="row-desc">' + U.esc(String(c.body).substring(0, 100)) + '</span></span>' +
             '<button class="btn sm" data-rm="' + i + '">移除</button></div>';
         }).join('') + '</div></div>' : '<div class="muted tiny">没有行内评论。可在「文件改动」里点任意一行添加。</div>') +
       '<div class="muted tiny" style="margin-top:8px">' +
-      (ev === 'COMMENT' ? '仅评论不会改变该 PR 的评审状态。' : '') + '</div>';
+      (ev === 'COMMENT' ? window.I18n.t("仅评论不会改变该 PR 的评审状态。") : '') + '</div>';
     UI.sheet({
-      title: '评审拉取请求', body: body,
+      title: window.I18n.t("评审拉取请求"), body: body,
       foot: '<button class="btn" data-no>取消</button><button class="btn primary" data-yes>提交评审</button>',
       onMount: function () {
         UI.$$('#rseg button', root).forEach(function (b) {
@@ -841,13 +841,13 @@
           b.onclick = function () {
             list.splice(+b.getAttribute('data-rm'), 1);
             UI.closeSheet();
-            UI.toast('已移除，剩 ' + list.length + window.I18n.t(' 条'));
+            UI.toast(window.I18n.t("已移除，剩 ") + list.length + window.I18n.t(' 条'));
             reviewPR(full, n, it);   // 重开面板刷新列表
           };
         });
         root.querySelector('[data-yes]').onclick = function () {
           var txt = root.querySelector('#rb').value.trim();
-          if (ev === 'COMMENT' && !txt && !list.length) return UI.toast('写点什么再提交，或先去文件改动里加行内评论');
+          if (ev === 'COMMENT' && !txt && !list.length) return UI.toast(window.I18n.t("写点什么再提交，或先去文件改动里加行内评论"));
           UI.loading(true);
           // commit_id 必填：把意见钉在某个提交上，之后强制推送也不会错位
           var payload = { body: txt || '', event: ev };
@@ -858,13 +858,13 @@
           window.API.post('/repos/' + full + '/pulls/' + n + '/reviews', payload).then(function () {
             pending.list = [];
             UI.loading(false); UI.closeSheet();
-            UI.toast(ev === 'APPROVE' ? '已批准' : ev === 'REQUEST_CHANGES' ? '已请求修改' : '评审已提交');
+            UI.toast(ev === 'APPROVE' ? window.I18n.t("已批准") : ev === 'REQUEST_CHANGES' ? window.I18n.t("已请求修改") : window.I18n.t("评审已提交"));
             window.Router.reload();
           }).catch(function (e) {
             UI.loading(false);
             // 行内评论最常见的坑：行号不在本次 diff 范围内
             if (list.length && /line|position|diff/i.test(e.message || '')) {
-              UI.toast('行内评论提交失败（' + e.message + '），可能该行已变更：请删掉后重新添加');
+              UI.toast(window.I18n.t("行内评论提交失败（") + e.message + window.I18n.t("），可能该行已变更：请删掉后重新添加"));
             } else UI.toast(window.I18n.t('提交失败：') + e.message);
           });
         };
@@ -890,13 +890,13 @@
           '<div class="detail-title" style="font-size:17px">' + U.esc((c.commit.message || '').split('\n')[0]) + '</div>' +
           '<div class="detail-sub">' +
           (c.author && c.author.avatar_url ? UI.avatar(c.author.login, c.author.avatar_url, 20, false, true) : '') +
-          '<span><b>' + U.esc((c.author && c.author.login) || c.commit.author.name) + '</b> 提交于 ' + U.timeAgo(c.commit.author.date) + '</span>' +
+          '<span><b>' + U.esc((c.author && c.author.login) || c.commit.author.name) + window.I18n.t("</b> 提交于 ") + U.timeAgo(c.commit.author.date) + '</span>' +
           '<span class="mono">' + U.esc(c.sha) + '</span></div>' +
           '<div class="row-meta">' +
-          '<span>' + window.icon('file-diff', 13) + (c.files ? c.files.length : 0) + ' 个文件</span>' +
+          '<span>' + window.icon('file-diff', 13) + (c.files ? c.files.length : 0) + window.I18n.t(" 个文件</span>") +
           '<span class="diff-add">+' + (c.stats ? c.stats.additions : 0) + '</span>' +
           '<span class="diff-del">-' + (c.stats ? c.stats.deletions : 0) + '</span>' +
-          '<span>' + window.icon('git-commit', 13) + (c.parents ? c.parents.length : 0) + ' 个父提交</span>' +
+          '<span>' + window.icon('git-commit', 13) + (c.parents ? c.parents.length : 0) + window.I18n.t(" 个父提交</span>") +
           '</div></div>' +
           ((c.commit.message || '').split('\n').length > 1 ? '<div class="card" style="margin:12px"><div class="md" style="padding:12px">' +
             U.esc((c.commit.message || '').split('\n').slice(1).join('\n').trim()) + '</div></div>' : '') +
@@ -904,13 +904,13 @@
         var b = UI.$('#cbody', host);
         if (c.files && c.files.length) {
           b.innerHTML = '<div class="section-title">变更文件</div>' + c.files.map(diffFile).join('');
-        } else b.innerHTML = UI.empty('file', '没有文件变更', '');
+        } else b.innerHTML = UI.empty('file', window.I18n.t("没有文件变更"), '');
         window.App.setActions([{
           icon: 'kebab-horizontal', onClick: function () {
             UI.menu(window.I18n.t('操作'), [
-              { icon: 'copy', label: '复制 SHA', key: 'sha' },
+              { icon: 'copy', label: window.I18n.t("复制 SHA"), key: 'sha' },
               { icon: 'link-external', label: window.I18n.t('在浏览器打开'), key: 'web' },
-              { icon: 'git-commit', label: '浏览此版本的文件', key: 'tree' }
+              { icon: 'git-commit', label: window.I18n.t("浏览此版本的文件"), key: 'tree' }
             ]).then(function (k) {
               if (k === 'sha') UI.copy(c.sha, window.I18n.t('已复制'));
               if (k === 'web') NativeBridge.openExternal ? NativeBridge.openExternal(c.html_url) : window.open(c.html_url, '_blank');
@@ -981,7 +981,7 @@
             '<td class="fp-val"><code>' + U.esc(it.val) + '</code></td>' +
             '<td class="fp-act">' +
               '<button class="fp-copy" data-fp="' + U.esc(it.val) + '" ' +
-              'title="复制这枚指纹" aria-label="复制' + U.esc(k.name) + '">' +
+              'title=window.I18n.t("复制这枚指纹") aria-label="复制' + U.esc(k.name) + '">' +
               window.icon('copy', 14) + '</button>' +
             '</td>' +
             '</tr>';
@@ -1003,7 +1003,7 @@
   };
 
   P.release = {
-    title: '发布详情',
+    title: window.I18n.t("发布详情"),
     render: function (ctx, host) {
       var full = ctx.owner + '/' + ctx.repo;
       /* tag 可能来自 ?tag=（解析 GitHub 链接那条路走这个），也可能来自路径第 4 段。
@@ -1025,7 +1025,7 @@
           '<div class="detail-title">' + U.esc(rel.name || rel.tag_name) + '</div>' +
           '<div class="detail-sub">' +
           (rel.author ? UI.avatar(rel.author.login, rel.author.avatar_url, 20, false, true) + '<span>' + U.esc(rel.author.login) + '</span>' : '') +
-          '<span>发布于 ' + U.date(rel.published_at) + '</span>' +
+          window.I18n.t("<span>发布于 ") + U.date(rel.published_at) + '</span>' +
           '<span class="chip mono">' + window.icon('tag', 12) + U.esc(rel.tag_name) + '</span>' +
           (rel.prerelease ? '<span class="chip">预览版</span>' : '') + '</div></div>' +
           '<div class="card"><div class="md" style="padding:14px" id="rbody"></div></div>' +
@@ -1051,7 +1051,7 @@
             if (/\.apk$/i.test(name || '')) {
               if (installTracked(url, name, rel.tag_name, name,
                     b.getAttribute('data-repo'))) {
-                UI.toast(window.I18n.t('开始下载 ') + name + '，装完自动加入应用库');
+                UI.toast(window.I18n.t('开始下载 ') + name + window.I18n.t("，装完自动加入应用库"));
                 return;
               }
             }
@@ -1079,7 +1079,7 @@
 
   /* =================== Actions 运行详情 =================== */
   P.run = {
-    title: '运行详情',
+    title: window.I18n.t("运行详情"),
     render: function (ctx, host) {
       var full = ctx.owner + '/' + ctx.repo;
       host.innerHTML = '<div class="card flat" style="border:0">' + UI.skeleton(4) + '</div>';
@@ -1129,7 +1129,7 @@
                 (s === 'failure' || s === 'in_progress' ? '<button class="btn sm" data-rerun="' + j.id + '">重新运行</button>' : '') +
                 '<button class="btn sm" data-web="' + U.esc(j.html_url || run.html_url) + '">' + window.icon('link-external', 13) + ' 网页</button>' +
                 '</div></div>';
-            }).join('') + '</div>' : UI.empty('workflow', '暂无作业', '')) +
+            }).join('') + '</div>' : UI.empty('workflow', window.I18n.t("暂无作业"), '')) +
 
           /* ---- 构建产物（artifacts）：APK 就是从这里下载的 ---- */
           artifactsBlock(artifacts, artFail);
@@ -1142,38 +1142,38 @@
             var jid = b.getAttribute('data-log');
             var j = jobs.filter(function (x) { return String(x.id) === jid; })[0];
             window.openRunLogs(full, 'job', jid,
-              (j && j.name) || ('作业 ' + String(jid)),
+              (j && j.name) || (window.I18n.t("作业 ") + String(jid)),
               (j && j.html_url) || run.html_url);
           };
         });
         UI.$$('[data-rerun]', host).forEach(function (b) {
           b.onclick = function () {
             window.API.post('/repos/' + full + '/actions/jobs/' + b.getAttribute('data-rerun') + '/rerun', {}).then(function () {
-              UI.toast('已触发重新运行');
+              UI.toast(window.I18n.t("已触发重新运行"));
             }).catch(function (e) { UI.toast(window.I18n.t('操作失败：') + e.message); });
           };
         });
         window.App.setActions([{
           icon: 'kebab-horizontal', onClick: function () {
             UI.menu(window.I18n.t('操作'), [
-              { icon: 'terminal', label: '查看完整日志', key: 'logs' },
-              { icon: 'sync', label: '重新运行全部作业', key: 'rerun' },
-              { icon: 'stop', label: '取消运行', key: 'cancel' },
+              { icon: 'terminal', label: window.I18n.t("查看完整日志"), key: 'logs' },
+              { icon: 'sync', label: window.I18n.t("重新运行全部作业"), key: 'rerun' },
+              { icon: 'stop', label: window.I18n.t("取消运行"), key: 'cancel' },
               { icon: 'link-external', label: window.I18n.t('在浏览器打开'), key: 'web' },
               '-',
               { icon: 'trash', label: window.I18n.t('删除运行记录'), key: 'del' }
             ]).then(function (k) {
               if (k === 'logs') window.openRunLogs(full, 'run', ctx.id,
                 run.display_title || run.name || window.I18n.t('运行日志'), run.html_url);
-              if (k === 'rerun') window.API.post('/repos/' + full + '/actions/runs/' + ctx.id + '/rerun', {}).then(function () { UI.toast('已触发'); }).catch(function (e) { UI.toast(e.message); });
+              if (k === 'rerun') window.API.post('/repos/' + full + '/actions/runs/' + ctx.id + '/rerun', {}).then(function () { UI.toast(window.I18n.t("已触发")); }).catch(function (e) { UI.toast(e.message); });
               if (k === 'cancel') window.API.post('/repos/' + full + '/actions/runs/' + ctx.id + '/cancel', {}).then(function () { UI.toast(window.I18n.t('已取消')); window.Router.reload(); }).catch(function (e) { UI.toast(e.message); });
               if (k === 'web') NativeBridge.openExternal ? NativeBridge.openExternal(run.html_url) : window.open(run.html_url, '_blank');
               if (k === 'del') {
                 /* 删除逻辑写在 page-repo.js 里（那边行尾的 ⋮ 也要用同一个函数）。
-                   正常两个文件是一起加载的，这里防御的是"详情页先于仓库页就绪"
+                   正常两个文件是一起加载的，这里防御的是window.I18n.t("详情页先于仓库页就绪")
                    这类极端情况——不判断的话点了就是毫无反应，看起来像卡死。 */
                 if (typeof window.actionsDeleteRun !== 'function') {
-                  UI.toast('删除功能暂不可用，请回到仓库的 Actions 页再试');
+                  UI.toast(window.I18n.t("删除功能暂不可用，请回到仓库的 Actions 页再试"));
                   return;
                 }
                 window.actionsDeleteRun(full, ctx.id, function () { window.Router.go('/' + full + '/actions'); });
@@ -1276,7 +1276,7 @@
       '<div style="display:flex;flex-direction:column;height:100%">' +
       '<div id="lg-steps" style="display:none;gap:6px;padding:8px 12px;overflow-x:auto;flex:none"></div>' +
       '<div style="display:flex;gap:6px;align-items:center;padding:0 12px 8px;flex:none">' +
-      '<input class="input" id="lg-q" placeholder="搜索日志内容" autocomplete="off" ' +
+      '<input class="input" id="lg-q" placeholder=window.I18n.t("搜索日志内容") autocomplete="off" ' +
       'autocapitalize="none" spellcheck="false" style="flex:1;min-width:0">' +
       '<button class="btn sm" id="lg-copy" style="flex:none">' + window.icon('copy', 13) + '复制</button>' +
       '</div>' +
@@ -1311,7 +1311,7 @@
           out.innerHTML = lines.length
             ? logSearchHtml(lines, state.q)
             : '<span class="muted">没有匹配「' + U.esc(state.q) + '」的行</span>';
-          meta.textContent = f.label + ' · 命中 ' + lines.length + window.I18n.t(' 行');
+          meta.textContent = f.label + window.I18n.t(" · 命中 ") + lines.length + window.I18n.t(' 行');
         }
 
         function paintSteps() {
@@ -1336,7 +1336,7 @@
 
         UI.$('#lg-copy', box).onclick = function () {
           var f = state.files[state.idx];
-          if (f) UI.copy(f.text, '日志已复制');
+          if (f) UI.copy(f.text, window.I18n.t("日志已复制"));
         };
 
         out.innerHTML = '<span class="muted tiny">正在读取日志…</span>';
@@ -1346,14 +1346,14 @@
           state.files = files.map(function (f) {
             var n = String(f.name || '').replace(/\.txt$/i, '');
             n = n.replace(/^\d+_/, '');
-            return { label: n || '日志', text: f.text || '' };
+            return { label: n || window.I18n.t("日志"), text: f.text || '' };
           });
           if (!state.files.length) {
             out.innerHTML = '<span class="muted">这次运行没有可显示的日志。</span>';
             return;
           }
           if (d && d.truncated) {
-            meta.textContent = '日志过长，已截断显示';
+            meta.textContent = window.I18n.t("日志过长，已截断显示");
           }
           paintSteps();
           paint();
@@ -1395,16 +1395,16 @@
   */
   function artifactsBlock(artifacts, artFail) {
     var head = '<div class="section-title">' +
-      window.icon('package', 14) + ' 构建产物</div>';
+      window.icon('package', 14) + window.I18n.t(" 构建产物</div>");
     if (artFail) {
       return head + '<div class="set-note" style="padding:8px 12px">' +
-        '没查到产物列表（请求失败）。可能是没登录、权限不够，或网络问题。</div>';
+        window.I18n.t("没查到产物列表（请求失败）。可能是没登录、权限不够，或网络问题。</div>");
     }
     if (!artifacts.length) {
       return head + '<div class="set-note" style="padding:8px 12px">' +
-        '这次运行没有构建产物。<br>' +
-        '只有工作流里用了 <code>actions/upload-artifact</code> 才会出现在这里；' +
-        '把文件提交到分支或发到 Release 是不会显示的。</div>';
+        window.I18n.t("这次运行没有构建产物。<br>") +
+        window.I18n.t("只有工作流里用了 <code>actions/upload-artifact</code> 才会出现在这里；") +
+        window.I18n.t("把文件提交到分支或发到 Release 是不会显示的。</div>");
     }
     head = '<div class="section-title">' + window.icon('package', 14) +
       window.I18n.t(' 构建产物（') + artifacts.length + '）</div>';
@@ -1429,8 +1429,8 @@
             window.icon('download', 16) + '</span></span>') + '</button>';
       }).join('') + '</div>' +
       '<div class="set-note" style="padding:8px 12px">' +
-      '点整行或第一个图标：下载后自动解压出 APK 并直接安装；' +
-      '点第二个图标：只下载 ZIP 原包。</div>';
+      window.I18n.t("点整行或第一个图标：下载后自动解压出 APK 并直接安装；") +
+      window.I18n.t("点第二个图标：只下载 ZIP 原包。</div>");
   }
 
   /** 绑定构建产物的下载事件。repoFull 是本页的 owner/repo，挂到按钮上 */
@@ -1442,8 +1442,8 @@
         var url = b.getAttribute('data-art');
         var name = b.getAttribute('data-n') || 'artifact.zip';
         var mode = b.getAttribute('data-mode') || 'zip';
-        if (!url) return UI.toast('该产物已过期，无法下载');
-        if (!window.Session.isLogin) return UI.toast('下载构建产物需要登录');
+        if (!url) return UI.toast(window.I18n.t("该产物已过期，无法下载"));
+        if (!window.Session.isLogin) return UI.toast(window.I18n.t("下载构建产物需要登录"));
         if (mode === 'install') {
           /* 来源同样从按钮自己带的 data-repo 读 */
           if (installTracked(url, name, '', '', b.getAttribute('data-repo'))) {
