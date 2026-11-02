@@ -32,8 +32,8 @@
    * 老用户升级后行为跟以前完全一致。
    * 各引擎会把它换成自己的格式：有道 zh-CHS、Google zh-CN、DeepL ZH… */
   var TARGETS = [
-    { key: 'zh-Hans', label: '简体中文', short: '中文' },
-    { key: 'en', label: 'English（英文）', short: '英文' }
+    { key: 'zh-Hans', label: window.I18n.t("简体中文"), short: window.I18n.t("中文") },
+    { key: 'en', label: window.I18n.t("English（英文）"), short: window.I18n.t("英文") }
   ];
   var TARGET_DEFAULT = 'zh-Hans';
   var KEY_TARGET = 'gh_tr_target';
@@ -212,7 +212,7 @@
 
       msg 最终走 UI.toast，而 UI.toast 现在统一筛「出错类提示」并记进
       错误日志（见 ui.js 的 UI.logTrouble）。这里再记一遍就是同一件事
-      留两行，还会因为措辞不同（"翻译：xxx" vs "界面提示：xxx"）绕过去重。
+      留两行，还会因为措辞不同（window.I18n.t("翻译：xxx") vs window.I18n.t("界面提示：xxx")）绕过去重。
     */
     if (window.UI && window.UI.toast) window.UI.toast(msg);
     else console.log('[translate] ' + msg);
@@ -226,8 +226,8 @@
       try { var s = window.icon(name, size || 20); if (s) return s; } catch (e) {}
     }
     // 没有图标库时（浏览器 Demo）用文字兜底
-    if (name === 'globe') return '译';
-    if (name === 'x') return '原';
+    if (name === 'globe') return window.I18n.t("译");
+    if (name === 'x') return window.I18n.t("原");
     return '';
   }
 
@@ -352,7 +352,7 @@
       })
       : fetchHttp(method, url, body, headers);
     return Promise.race([run, new Promise(function (_, rej) {
-      setTimeout(function () { rej(new Error('请求超时')); }, REQ_TIMEOUT);
+      setTimeout(function () { rej(new Error(window.I18n.t("请求超时"))); }, REQ_TIMEOUT);
     })]);
   }
 
@@ -362,14 +362,14 @@
     return new Promise(function (resolve, reject) {
       var name = '__tr_jsonp_' + (++jsonpSeq);
       var s = document.createElement('script');
-      var timer = setTimeout(function () { cleanup(); reject(new Error('JSONP 超时')); }, JSONP_TIMEOUT);
+      var timer = setTimeout(function () { cleanup(); reject(new Error(window.I18n.t("JSONP 超时"))); }, JSONP_TIMEOUT);
       function cleanup() {
         clearTimeout(timer);
         try { delete window[name]; } catch (e) { window[name] = undefined; }
         if (s.parentNode) s.parentNode.removeChild(s);
       }
       window[name] = function (data) { cleanup(); resolve(data); };
-      s.onerror = function () { cleanup(); reject(new Error('JSONP 加载失败')); };
+      s.onerror = function () { cleanup(); reject(new Error(window.I18n.t("JSONP 加载失败"))); };
       s.src = url + (url.indexOf('?') >= 0 ? '&' : '?') + (param || 'callback') + '=' + name;
       document.head.appendChild(s);
     });
@@ -394,7 +394,7 @@
     } catch (e) { return false; }
   }
   ENGINES.ondevice = {
-    label: '设备端翻译（离线，系统内置）',
+    label: window.I18n.t("设备端翻译（离线，系统内置）"),
     batch: false,
     share: 2,
     /* 能不能用取决于系统有没有下载语言包，而且 availability() 本身
@@ -406,7 +406,7 @@
     translate: function (texts, opts) {
       var abort = opts && opts.abort;
       var T = window.Translator;
-      if (!T || typeof T.create !== 'function') return Promise.reject(new Error('不支持设备端翻译'));
+      if (!T || typeof T.create !== 'function') return Promise.reject(new Error(window.I18n.t("不支持设备端翻译")));
       // 设备端翻译不支持 auto，源语言必须给死；绝大多数 GitHub 内容是英文
       var src = (FROM || 'en').split('-')[0];
       var tgt = TO === 'zh-Hans' ? 'zh' : TO.split('-')[0];
@@ -414,7 +414,7 @@
       // 手动选中这个引擎时没有任何探测保护，不超时就直接把 busy 卡死 —— 全链路 race。
       var withTimeout = function (pr) {
         return Promise.race([Promise.resolve(pr), new Promise(function (_, rej) {
-          setTimeout(function () { rej(new Error('设备端翻译无响应')); }, REQ_TIMEOUT);
+          setTimeout(function () { rej(new Error(window.I18n.t("设备端翻译无响应"))); }, REQ_TIMEOUT);
         })]);
       };
       return withTimeout(T.create({ sourceLanguage: src, targetLanguage: tgt }))
@@ -447,16 +447,16 @@
     return request('GET', 'https://edge.microsoft.com/translate/auth', null, {})
       .then(function (t) {
         t = String(t || '').trim();
-        if (!t) throw new Error('取不到 Edge 令牌');
+        if (!t) throw new Error(window.I18n.t("取不到 Edge 令牌"));
         edgeJwt = { v: t, t: Date.now() };
         return t;
       });
   }
   ENGINES.edge = {
-    label: '微软 Edge（免费）',
+    label: window.I18n.t("微软 Edge（免费）"),
     batch: true,
     retired: true,                                   // 见上方说明：官方接口已 404
-    retiredWhy: '已关闭免费接口，不再可用',
+    retiredWhy: window.I18n.t("已关闭免费接口，不再可用"),
     translate: function (texts) {
       return edgeAuth().then(function (jwt) {
         var url = 'https://api-edge.cognitive.microsofttranslator.com/translate?api-version=3.0&to=' +
@@ -467,7 +467,7 @@
           'Content-Type': 'application/json'
         }).then(function (s) {
           var arr = JSON.parse(s);
-          if (!Array.isArray(arr) || arr.length !== texts.length) throw new Error('返回结构不符');
+          if (!Array.isArray(arr) || arr.length !== texts.length) throw new Error(window.I18n.t("返回结构不符"));
           return arr.map(function (it, i) {
             var t = it && it.translations && it.translations[0] && it.translations[0].text;
             return t || texts[i];
@@ -492,12 +492,12 @@
           if (seg[i] && typeof seg[i][0] === 'string') out += seg[i][0];
         }
       }
-      if (!out) throw new Error('空译文');
+      if (!out) throw new Error(window.I18n.t("空译文"));
       return out;
     });
   }
   ENGINES.google = {
-    label: 'Google（免费）',
+    label: window.I18n.t("Google（免费）"),
     batch: true,
     share: 3,
     /* 需要海外网络。它**默认不进自动协作池**：在国内它不是一个「慢引擎」，
@@ -872,13 +872,13 @@
     return new Promise(function (res) { setTimeout(res, w); });
   }
   function youdaoRequest(q, abort) {
-    if (abort && abort()) return Promise.reject(new Error('已放弃（换页）'));
+    if (abort && abort()) return Promise.reject(new Error(window.I18n.t("已放弃（换页）")));
     return youdaoAcquire()
       .then(youdaoWaitCool)
       .then(function () {
         /* 拿到名额、也等过合闸期之后再问一次：请求可能是换页**之前**排进来的，
          * 也可能是合闸期间排进来的（那时候还没轮到发） */
-        if (abort && abort()) throw new Error('已放弃（换页）');
+        if (abort && abort()) throw new Error(window.I18n.t("已放弃（换页）"));
         return request('POST', 'https://aidemo.youdao.com/trans',
           'q=' + encodeURIComponent(q) +
           '&from=' + (FROM || 'auto') +
@@ -900,10 +900,10 @@
              * 这时候每一次「再试一次」都是纯亏，还会把惩罚拖得更长。 */
             youdaoTrip();
           }
-          throw new Error('有道错误 ' + code + (d.msg ? ' ' + d.msg : ''));
+          throw new Error(window.I18n.t("有道错误 ") + code + (d.msg ? ' ' + d.msg : ''));
         }
         var v = d && d.translation && d.translation[0];
-        if (!v || !String(v).trim()) throw new Error('空译文');
+        if (!v || !String(v).trim()) throw new Error(window.I18n.t("空译文"));
         /* 顺利拿到译文 —— 风头正在过去，记一笔「连续成功」。
          * 攒够 YOUDAO_OK_RESET 次才把熔断计数清零：一次成功可能是漏网，
          * 连续十次才是真的通了。
@@ -1023,7 +1023,7 @@
     });
   }
   ENGINES.youdao = {
-    label: '有道翻译（免费，国内直连）',
+    label: window.I18n.t("有道翻译（免费，国内直连）"),
     batch: true,
     maxItems: YOUDAO_BATCH_LINES,   // 一组 = 一条请求，别再让引擎自己切第二刀
     parallel: 6,                    // 组并发：有道有名额池兜底，不必压到默认的 3
@@ -1098,12 +1098,12 @@
         var d = JSON.parse(s);
         if (d && d.error) throw new Error('DeepL ' + (d.error.code || '') + ' ' + (d.error.message || ''));
         var v = norm(d && d.result && d.result.texts && d.result.texts[0] && d.result.texts[0].text);
-        if (!v) throw new Error('空译文');
+        if (!v) throw new Error(window.I18n.t("空译文"));
         return v;
       });
   }
   ENGINES.deepl = {
-    label: 'DeepL（免费，质量最佳）',
+    label: window.I18n.t("DeepL（免费，质量最佳）"),
     batch: false,
     share: 4,
     timeoutMs: SLOW_TIMEOUT,
@@ -1175,7 +1175,7 @@
   }
 
   ENGINES.mymemory = {
-    label: 'MyMemory（兜底，有日限额）',
+    label: window.I18n.t("MyMemory（兜底，有日限额）"),
     batch: false,
     share: 1,                       // 有日配额，永远只分最少的一份
     /* 注意：配额记忆【不】写在这里的 ready()。
@@ -1200,7 +1200,7 @@
           // 配额用完时它会把警告当成译文返回，这种要当失败处理
           if (!r || /MYMEMORY WARNING/i.test(r)) {
             mmQuotaHit();
-            throw new Error('无配额');
+            throw new Error(window.I18n.t("无配额"));
           }
           return norm(r);
         }, function (err) {
@@ -1218,7 +1218,7 @@
    * 协议：POST JSON {"q":["..."],"from":"auto","to":"zh-Hans"}
    *      返回 {"translations":["..."]} 或直接是字符串数组 */
   ENGINES.custom = {
-    label: '自定义接口',
+    label: window.I18n.t("自定义接口"),
     batch: true,
     needUrl: true,
     /* 以前漏了 maxItems，于是回落成默认 MAX_CHARS=5000 / MAX_ITEMS=40：
@@ -1232,12 +1232,12 @@
       var abort = opts && opts.abort;
       if (abort && abort()) return Promise.resolve(texts.slice());
       var url = prefGet(KEY_CUSTOM, '');
-      if (!url) return Promise.reject(new Error('还没填自定义接口地址'));
+      if (!url) return Promise.reject(new Error(window.I18n.t("还没填自定义接口地址")));
       return request('POST', url, JSON.stringify({ q: texts, from: FROM || 'auto', to: TO }),
         { 'Content-Type': 'application/json' }).then(function (s) {
           var d = JSON.parse(s);
           var arr = Array.isArray(d) ? d : (d.translations || d.data || d.result);
-          if (!Array.isArray(arr) || arr.length !== texts.length) throw new Error('返回结构不符');
+          if (!Array.isArray(arr) || arr.length !== texts.length) throw new Error(window.I18n.t("返回结构不符"));
           return arr.map(function (x, i) { return (typeof x === 'string' ? norm(x) : '') || texts[i]; });
         });
     }
@@ -1291,7 +1291,7 @@
   }
   function baiduRequest(arr, abort) {
     var appid = prefGet(KEY_BAIDU_APPID, ''), key = prefGet(KEY_BAIDU_KEY, '');
-    if (!appid || !key) return Promise.reject(new Error('还没填百度翻译的 appid / 密钥'));
+    if (!appid || !key) return Promise.reject(new Error(window.I18n.t("还没填百度翻译的 appid / 密钥")));
     var q = arr.join('\n');
     var salt = String(Date.now()) + Math.floor(Math.random() * 1000);
     var sign = md5hex(appid + q + salt + key);
@@ -1311,15 +1311,15 @@
           if (code === '54003' || code === '54005') {
             baiduGap = Math.min(6000, baiduGap * 2);
           }
-          throw new Error('百度 ' + code + ' ' + (d.error_msg || ''));
+          throw new Error(window.I18n.t("百度 ") + code + ' ' + (d.error_msg || ''));
         }
         var tr = d && d.trans_result;
-        if (!tr || tr.length !== arr.length) throw new Error('百度返回条数不符');
+        if (!tr || tr.length !== arr.length) throw new Error(window.I18n.t("百度返回条数不符"));
         return tr.map(function (x) { return norm(x && x.dst); });
       });
   }
   ENGINES.baidu = {
-    label: '百度翻译（国内，需填密钥）',
+    label: window.I18n.t("百度翻译（国内，需填密钥）"),
     batch: true,
     maxItems: 60,
     maxChars: BAIDU_MAX_BYTES,
@@ -1376,7 +1376,7 @@
   var YD_OPEN_MAX_BYTES = 4800;
   function ydOpenRequest(arr, abort) {
     var appKey = prefGet(KEY_YD_APPKEY, ''), secret = prefGet(KEY_YD_SECRET, '');
-    if (!appKey || !secret) return Promise.reject(new Error('还没填有道开放平台的 appKey / 密钥'));
+    if (!appKey || !secret) return Promise.reject(new Error(window.I18n.t("还没填有道开放平台的 appKey / 密钥")));
     var q = arr.join('\n');
     var salt = String(Date.now()) + Math.floor(Math.random() * 1000);
     var curtime = String(Math.floor(Date.now() / 1000));
@@ -1392,17 +1392,17 @@
       { 'Content-Type': 'application/x-www-form-urlencoded' }).then(function (s) {
         var d = JSON.parse(s);
         if (d && d.errorCode && String(d.errorCode) !== '0') {
-          throw new Error('有道 ' + d.errorCode);
+          throw new Error(window.I18n.t("有道 ") + d.errorCode);
         }
         var v = d && d.translation && d.translation[0];
-        if (!v) throw new Error('有道空译文');
+        if (!v) throw new Error(window.I18n.t("有道空译文"));
         var lines = String(v).split('\n');
-        if (lines.length !== arr.length) throw new Error('有道返回条数不符');
+        if (lines.length !== arr.length) throw new Error(window.I18n.t("有道返回条数不符"));
         return lines.map(norm);
       });
   }
   ENGINES.youdaoOpen = {
-    label: '有道开放平台（国内，需填密钥）',
+    label: window.I18n.t("有道开放平台（国内，需填密钥）"),
     batch: true,
     maxItems: 40,
     maxChars: YD_OPEN_MAX_BYTES,
@@ -1440,7 +1440,7 @@
    * 免费额度不如上面两家，所以权重给得低 —— 用它当「第三路分流」最合适。 */
   function niuOne(text) {
     var key = prefGet(KEY_NIU_KEY, '');
-    if (!key) return Promise.reject(new Error('还没填小牛翻译的 apikey'));
+    if (!key) return Promise.reject(new Error(window.I18n.t("还没填小牛翻译的 apikey")));
     return request('POST', 'https://api.niutrans.com/NiuTransServer/translation',
       'src_text=' + encodeURIComponent(text) +
       '&from=' + (FROM || 'auto') +
@@ -1449,15 +1449,15 @@
       { 'Content-Type': 'application/x-www-form-urlencoded' }).then(function (s) {
         var d = JSON.parse(s);
         if (d && d.error_code && String(d.error_code) !== '0') {
-          throw new Error('小牛 ' + d.error_code + ' ' + (d.error_msg || ''));
+          throw new Error(window.I18n.t("小牛 ") + d.error_code + ' ' + (d.error_msg || ''));
         }
         var v = norm(d && (d.tgt_text || d.tgtText));
-        if (!v) throw new Error('小牛空译文');
+        if (!v) throw new Error(window.I18n.t("小牛空译文"));
         return v;
       });
   }
   ENGINES.niutrans = {
-    label: '小牛翻译（国内，需填 apikey）',
+    label: window.I18n.t("小牛翻译（国内，需填 apikey）"),
     batch: false,
     parallel: 3,
     share: 7,
@@ -1498,9 +1498,9 @@
   var ORDER = ['youdaoOpen', 'niutrans', 'baidu',
                'youdao', 'deepl', 'google', 'ondevice', 'mymemory',
                'custom'];
-  var SHORT = { ondevice: '设备端', edge: '微软', youdao: '有道', deepl: 'DeepL',
-                google: 'Google', mymemory: 'MyMemory', custom: '自定义',
-                baidu: '百度', youdaoOpen: '有道平台', niutrans: '小牛' };
+  var SHORT = { ondevice: window.I18n.t("设备端"), edge: window.I18n.t("微软"), youdao: '有道', deepl: 'DeepL',
+                google: 'Google', mymemory: 'MyMemory', custom: window.I18n.t("自定义"),
+                baidu: window.I18n.t("百度"), youdaoOpen: window.I18n.t("有道平台"), niutrans: window.I18n.t("小牛") };
 
   /* ================= 引擎是否可用 / 多引擎协作 ================= */
 
@@ -1541,29 +1541,12 @@
   function resetPool() {
     poolWheel = [];
     poolHealth = {};
-    resetJunk();          // 换页重新接纳，别让上一页的账带到这一页
   }
   function poolOk(name) {
     var h = poolHealth[name] || (poolHealth[name] = { ok: 0, fail: 0, down: false });
     h.ok++; h.fail = 0;
     if (h.ok >= 4) h.down = false;      // 缓过来了：重新接纳它
   }
-  /*
-    回垃圾也要记账。
-
-    它跟「请求失败」不是一回事：失败走 catch，引擎会被 poolFail 摘出去；
-    而垃圾是**成功响应**，走的是 poolOk —— 于是那个一直在返回升级提示的
-    引擎反而被判成「很健康」，每一批都优先派给它，每一批都拿回一段垃圾，
-    别的引擎干等着。所以这里单独记一笔，够了就照样摘出去。
-  */
-  var junkHealth = {};          // name -> 连续回垃圾的次数
-  function noteJunk(name) {
-    if (!name) return;
-    junkHealth[name] = (junkHealth[name] || 0) + 1;
-    if (junkHealth[name] >= 3) poolFail(name);
-  }
-  function resetJunk() { junkHealth = {}; }
-
   /** 连续失败 3 次就判它这一轮不行了，剩下的批交给别人 */
   function poolFail(name) {
     var h = poolHealth[name] || (poolHealth[name] = { ok: 0, fail: 0, down: false });
@@ -1736,7 +1719,7 @@
         if (k_mmQuotaRelaxed()) clearMmQuota();
         try {
           if (window.API && window.API.logNote) {
-            window.API.logNote('翻译池见底，已放宽软条件重试：' + list.join('/'));
+            window.API.logNote(window.I18n.t("翻译池见底，已放宽软条件重试：") + list.join('/'));
           }
         } catch (e) {}
       }
@@ -1815,7 +1798,7 @@
 
   function realProbe(e, ms) {
     var timeout = new Promise(function (_, rej) {
-      setTimeout(function () { rej(new Error('探测超时')); }, ms || PROBE_TIMEOUT);
+      setTimeout(function () { rej(new Error(window.I18n.t("探测超时"))); }, ms || PROBE_TIMEOUT);
     });
     return Promise.race([
       e.translate(['Hello, world!']).then(function (r) {
@@ -1842,7 +1825,7 @@
       av = Promise.resolve(window.Translator.availability({ sourceLanguage: 'en', targetLanguage: 'zh' }));
     } catch (e) { return Promise.resolve(false); }
     var timeout = new Promise(function (_, rej) {
-      setTimeout(function () { rej(new Error('探测超时')); }, ms || PROBE_TIMEOUT);
+      setTimeout(function () { rej(new Error(window.I18n.t("探测超时"))); }, ms || PROBE_TIMEOUT);
     });
     return Promise.race([
       av.then(function (a) { return a === 'available' ? realProbe(ENGINES.ondevice) : false; },
@@ -1871,8 +1854,8 @@
       }
       if (!ensureEngine._told[cur]) {
         ensureEngine._told[cur] = true;
-        toast('「' + (SHORT[cur] || cur) + '」' + (ENGINES[cur].retiredWhy || '已不可用') +
-          '，已自动改用其他引擎');
+        toast('「' + (SHORT[cur] || cur) + '」' + (ENGINES[cur].retiredWhy || window.I18n.t("已不可用")) +
+          window.I18n.t("，已自动改用其他引擎"));
       }
       cur = 'auto';
     }
@@ -1949,11 +1932,8 @@
   var cache = prefGet(KEY_CACHE, {}) || {};
   /* 缓存版本：历史上失败兜底曾把"原文"当译文写进缓存（v1 的 bug），
    * 命中原文的缓存会让页面永远停在英文。升版本号触发一次全清，老用户
-   * 升级后即自愈，不用手动清缓存。
-   *
-   * v3：清掉被「引擎升级提示」污染过的缓存。那段垃圾当年是以正常译文的
-   * 身份写进去的，读出来照样是垃圾，不清就一直跟着用户。 */
-  var CACHE_VER = 3;
+   * 升级后即自愈，不用手动清缓存。 */
+  var CACHE_VER = 2;
   if (prefGet('gh_tr_cache_ver', 1) !== CACHE_VER) {
     cache = {};                       // 旧版本缓存一律作废
     prefSet(KEY_CACHE, cache);
@@ -2087,37 +2067,7 @@
   }
 
   /* ================= 文本收集 ================= */
-  /*
-   * 不翻译的东西。除了代码块，还有一批「看着像文字、其实不是内容」的：
-   *   · LOGO / 品牌区 —— 站点标识，翻了就不是那个站了
-   *   · 头像（.avatar / .av-link）—— 用户名旁边的圆形图，它旁边的文字
-   *     是用户名，本来就被 RE_PATH 挡着，但容器里夹的说明文字不挡就会乱
-   *   · 图标容器（.ico / .icon）—— 里面是 svg，svg 已跳，但容器自身的
-   *     空文本节点和角标数字不该被送去翻
-   *   · img —— 图片没有文本节点，但它的容器可能有，一并挡住更保险
-   */
-  var SKIP_SEL = 'pre, code, svg, script, style, textarea, noscript, [data-no-translate], .no-translate, .hljs, .tr-skip, ' +
-    'img, .avatar, .av-link, .ico, .icon, .logo, [class*="logo"], .brand, .row-badge';
-
-  /* 不在 SKIP_SEL 里、但要单独按 class 判断的（老 WebView 没有 closest 的兜底路径用） */
-  /* 注意没有 chip：徽章里装的是 milestone 标题这类**真该翻**的内容，
-     一刀切跳过去会漏翻整片。它里面的图标本身是 svg，已经被挡住了。 */
-  var SKIP_CLASSES = ['avatar', 'av-link', 'ico', 'icon', 'logo', 'brand', 'row-badge',
-                      'no-translate', 'tr-skip', 'hljs'];
-
-  function hasSkipClass(el) {
-    var c = el && el.getAttribute && el.getAttribute('class');
-    if (!c) return false;
-    for (var i = 0; i < SKIP_CLASSES.length; i++) {
-      var k = SKIP_CLASSES[i];
-      if (c === k) return true;
-      if (c.indexOf(k + ' ') === 0) return true;
-      if (c.indexOf(' ' + k + ' ') >= 0) return true;
-      if (c.indexOf(' ' + k) === c.length - k.length - 1) return true;
-    }
-    /* [class*="logo"]：logo-main、site-logo 这类派生名也一起挡住 */
-    return c.indexOf('logo') >= 0;
-  }
+  var SKIP_SEL = 'pre, code, svg, script, style, textarea, noscript, [data-no-translate], .no-translate, .hljs, .tr-skip';
 
   function inSkip(node) {
     var p = node.parentElement;
@@ -2126,10 +2076,8 @@
     // 老 WebView 没有 closest 时手动向上找
     while (p) {
       if (p.nodeName === 'PRE' || p.nodeName === 'CODE' || p.nodeName === 'SVG' ||
-          p.nodeName === 'SCRIPT' || p.nodeName === 'STYLE' || p.nodeName === 'TEXTAREA' ||
-          p.nodeName === 'IMG') return true;
+          p.nodeName === 'SCRIPT' || p.nodeName === 'STYLE' || p.nodeName === 'TEXTAREA') return true;
       if (p.getAttribute && p.getAttribute('data-no-translate') !== null) return true;
-      if (hasSkipClass(p)) return true;
       p = p.parentElement;
     }
     return false;
@@ -2202,54 +2150,6 @@
       if (id) { counts[id]++; letters++; }
     }
     return { counts: counts, letters: letters };
-  }
-
-  /* ================= 垃圾译文识别 =================
-   *
-   * 免费端点被滥用 / 被要求升级时，会返一段「提示」而不是译文：
-   * HTTP 状态码照样 200、result.texts[0].text 照样有内容，引擎那一层看
-   * 不出任何异常 —— 于是这段提示被当成译文写进页面、还写进了缓存。
-   *
-   * 之后的每一轮都从缓存「秒出」这段提示：用户明明选的是有道，屏幕上
-   * 却是另一家的升级提示，而且怎么清都清不掉 —— 缓存里存的就是它。
-   * 表现是一整块文字变成十几种语言各写一遍的长句子，把版面撑烂。
-   *
-   * 所以译文在上屏 / 进缓存之前必须先过这一关。判据只挑「正常译文绝不会
-   * 有的特征」，宁可漏判也别误杀 —— 误杀等于这段永远停在原文。
-   */
-
-  /* 引擎在译文里自报家门：翻译引擎不会在自己译出的句子里给自己打广告 */
-  var RE_ENGINE_BRAND = /(deepl|mymemory|youdao|\u6709\u9053|\u767e\u5ea6|baidu|niutrans|\u5c0f\u725b)/i;
-
-  /** 一段文本里出现了几种书写系统（用来认「多语言拼盘」） */
-  function scriptKinds(s) {
-    var m = scriptMixed(s);
-    if (!m.letters) return 0;
-    var n = 0;
-    for (var k in m.counts) {
-      if (Object.prototype.hasOwnProperty.call(m.counts, k) && m.counts[k] > 0) n++;
-    }
-    return n;
-  }
-
-  /**
-   * 这是不是一段「引擎回的提示」而不是译文。
-   *
-   * 两条判据，各自都只在极端情况下才成立：
-   *   1) 原文没提引擎名，译文里却冒出来了 —— 出现必然是它把状态提示
-   *      当译文发回来了。
-   *   2) 原文只是一两种文字，译文却同时出现三种以上书写系统 ——
-   *      那不是翻译，是把同一句话用十几种语言各写了一遍。
-   *      正常译文最多是「中文 + 夹着的英文专有名词」= 2 种。
-   *
-   * 第 2 条只在**原文干净**时才判：GitHub 上多语种 README 是常态，
-   * 那种原文自己就有三四种书写系统，按绝对数量判会整篇误杀。
-   */
-  function looksJunk(src, out) {
-    if (!src || !out) return false;
-    if (RE_ENGINE_BRAND.test(out) && !RE_ENGINE_BRAND.test(src)) return true;
-    if (scriptKinds(src) <= 2 && scriptKinds(out) >= 3) return true;
-    return false;
   }
 
   /** 这段文本主要是哪种书写系统（没有可识别文字则返回 ''） */
@@ -2338,17 +2238,6 @@
      * 「中文里掺英文」「英文里掺中文」都属于这一类，以前会被直接跳过。 */
     return !hasForeignWord(s, want);
   }
-  /* 产品名 / 技术名词：中文语境里本来就说英文 —— Gist、Wiki、Actions、
-   * Codespaces、README、OAuth 这些，翻成中文反而没人认得。
-   *
-   * 更要紧的是：它们送进引擎后**原样返回**（引擎也翻不出别的花样），
-   * 于是这一轮一段都没写成 → 引擎被判「不可用」标进黑名单 → 下一轮换一家
-   * 还是原样 → 几家挨个被标黑 → 最后弹「所有翻译引擎都不可用」，
-   * 而右上角那个球从头转到尾。用户看到的就是「Gist 死活翻不动」。
-   *
-   * 只认「整段就等于这个词」—— 长句里夹着 Gist 是该翻的，不能一刀切。 */
-  var RE_KEEP = /^(gists?|wiki|actions|codespaces|sponsors|packages|github|gitlab|gitee|git|readme|license|licence|changelog|contributing|oauth2?|sso|graphql|json|yaml|yml|toml|markdown|apk|ipa|ssh|https?|url|api|sdk|cli|ui|gui|jwt|linux|android|ios|macos|windows|docker|npm|pnpm|gradle|maven|adb|fastboot|termux|magisk|xposed|lsposed|twrp|bootloader|recovery|busybox|frida|gpg|pgp|ftp|smtp|imap|tcp|udp|dns|cdn|vpn|ipv4|ipv6)$/i;
-
   /* 编程语言名：探索页的语言标签整段就是 "TypeScript"，送去翻会变成「打印稿」
    * 这种笑话，还白耗一次请求。整段等于语言名的一律跳过。 */
   var RE_LANG = /^(actionscript|ada|assembly|bash|c|c\+\+|c#|clojure|cmake|cobol|coffee(script)?|crystal|css|d|dart|dockerfile|elixir|erlang|f#|fortran|go|gradle|groovy|haskell|html|java|javascript|julia|jupyter(\s?notebook)?|kotlin|lua|matlab|nim|nix|objective-c|ocaml|pascal|perl|php|powershell|prolog|python|r|racket|ruby|rust|scala|scheme|shell|smalltalk|solidity|sql|svelte|swift|tcl|typescript|vb\.?net|vue|vue\.js|zig)$/i;
@@ -2372,7 +2261,6 @@
      * "jupyter notebook"（16 字符）这一档。先按长度剪一刀，长句根本不进去——
      * 探索页一屏几百个候选，这里省下来的是最贵的一笔。 */
     if (s.length <= 20 && RE_LANG.test(s)) return false;
-    if (s.length <= 24 && RE_KEEP.test(s)) return false;
     /* 这里原本还有一句 if (/^\W+$/) return false —— 本意是「纯标点就不翻」。
      * 但 JS 的 \W 是 [^A-Za-z0-9_]，中文、日文、俄文全都被算成 \W，
      * 于是这一句会把所有非拉丁文本当成「纯符号」直接跳过。
@@ -2510,7 +2398,7 @@
     opts = opts || {};
     if (opts.abort && opts.abort()) return Promise.resolve(texts.slice());
     return engine.translate(texts, opts).then(function (out) {
-      if (!out || out.length !== texts.length) throw new Error('返回条数不符');
+      if (!out || out.length !== texts.length) throw new Error(window.I18n.t("返回条数不符"));
       return out;
     }).catch(function (e) {
       if (texts.length <= 1 || depth >= 3) throw e;
@@ -2577,7 +2465,7 @@
   function translatePage(silent, tried, opts) {
     tried = tried || [];
     opts = opts || {};
-    if (state.busy) { if (!silent) toast('正在翻译，稍等一下'); return Promise.resolve(); }
+    if (state.busy) { if (!silent) toast(window.I18n.t("正在翻译，稍等一下")); return Promise.resolve(); }
     invalidateCollect();                     // 真要开翻了：丢掉「只是问问」留下的旧答案
     /* 直接给了清单就别再扫一遍 DOM。
      * 整篇推进时每块都重新 collect 一次是笔昂贵的账：collect 要遍历整篇
@@ -2590,7 +2478,7 @@
     /* 整篇模式：这一轮只翻前 WHOLE_CHUNK 段，剩下的留给下一块。
      * collect 已经按「离视口中心多远」排好序，所以切掉的是最远的那部分。 */
     var mine = opts.whole ? nodes.slice(0, WHOLE_CHUNK) : nodes;
-    if (!mine.length) { if (!silent) toast('这一页没有需要翻译的英文'); return Promise.resolve(); }
+    if (!mine.length) { if (!silent) toast(window.I18n.t("这一页没有需要翻译的英文")); return Promise.resolve(); }
 
     var mySeq = ++state.seq;
     var t0 = Date.now();
@@ -2598,12 +2486,12 @@
     state.okCount = 0;              // 实际写出译文的段数，用来判断引擎是不是整体不可用
     state.lastErr = '';             // 首个批次错误（HTTP 403/超时之类），提示里带上便于自查
     setBusy(true);
-    if (!silent) toast('正在翻译 ' + mine.length + ' 段…');
+    if (!silent) toast(window.I18n.t("正在翻译 ") + mine.length + window.I18n.t(" 段…"));
     /* 记一笔「开始翻译」到错误日志：真出问题时，
      * 前面有这一行才好还原「用户当时点了什么、翻多少段」。 */
     try {
       if (window.API && window.API.logNote) {
-        window.API.logNote('开始翻译本页（' + mine.length + ' 段）');
+        window.API.logNote(window.I18n.t("开始翻译本页（") + mine.length + window.I18n.t(" 段）"));
       }
     } catch (e) {}
     /* 顺手在后台探一遍「还没验证过」的海外 / 设备端引擎。
@@ -2615,13 +2503,13 @@
     var watchdog = setTimeout(function () {
       if (mySeq !== state.seq || !state.busy) return;
       state.busy = false; setBusy(false);
-      toast('翻译卡住了，当前引擎可能不可用，建议长按图标换回自动选择');
+      toast(window.I18n.t("翻译卡住了，当前引擎可能不可用，建议长按图标换回自动选择"));
     }, prefGet('gh_tr_busy_timeout', 45000) | 0 || 45000);
 
     var engName = '';   // 引擎名存到外层：完成提示在外层 then 里，直接写 name
                         // 会命中全局 window.name（空字符串），提示就变成「」了
     return Promise.resolve(planPool(tried)).then(function (plan) {
-      if (!plan || !plan.wheel.length) throw new Error('所有引擎都不可用');
+      if (!plan || !plan.wheel.length) throw new Error(window.I18n.t("所有引擎都不可用"));
       engName = plan.primary;
       state.engine = plan.primary;
       /* 多引擎一起上的时候，组按通用上限切（40 段 / 5000 字符），
@@ -2683,9 +2571,7 @@
            * 不同引擎的译文都写在共享 key 上，谁都能接着用。 */
           var c = cacheGet(name + '|' + TO + '|' + hash(t)) ||
                   cacheGet('*|' + TO + '|' + hash(t));
-          /* 读出来是垃圾就当没命中，重新翻 —— 光靠升 CACHE_VER 只能救
-             升级之后新写的，老用户没升级前存下的那些还得靠这一句挡。 */
-          if (c && c !== t && !looksJunk(t, c)) results[k] = c; else miss.push(k);
+          if (c && c !== t) results[k] = c; else miss.push(k);
         });
         if (!miss.length) { apply(g.items, results, name); return Promise.resolve(); }
         var payload = miss.map(function (k) { return texts[k]; });
@@ -2703,14 +2589,6 @@
            * 误判成「翻不出来」，于是整轮都不再重试 —— 那才是真的翻不出来了。
            * 记账只放在引擎明确收到成功响应的那一支（见 youdaoChunk）。 */
           if (!s || s === src) return null;
-          /*
-            垃圾译文必须在这儿拦住 —— 它是唯一的上屏 + 入缓存入口。
-            拦在这儿的收益不只是「这一屏不显示乱码」：它同时挡住了写进
-            缓存的那一步。写进去之后，接下来每一轮都是缓存「秒出」，
-            换哪个引擎都是同一段垃圾，用户根本没办法靠换引擎摆脱。
-            返回 null 让这段留在 pending 里，交给下一个引擎接力。
-          */
-          if (looksJunk(src, s)) { noteJunk(name); return null; }
           var k = miss[j];
           results[k] = s;
           /* 写共享 key：本轮换引擎接力时，别人译过的段不用重复请求。 */
@@ -2761,7 +2639,7 @@
           if (engine.timeoutMs) {
             pr = Promise.race([pr, new Promise(function (_, rej) {
               setTimeout(function () {
-                rej(new Error('引擎无响应（' + (engine.label || engineName) + '）'));
+                rej(new Error(window.I18n.t("引擎无响应（") + (engine.label || engineName) + '）'));
               }, engine.timeoutMs);
             })]);
           }
@@ -2789,26 +2667,6 @@
          * 剩下的交给下一个引擎补 —— 这才有「互相配合」的样子：
          * 不是谁替谁重翻一遍，而是各家把自己能翻的那部分补上。 */
         var used = [];
-
-        /** 接力链走完还剩几段：能确定是「翻不出来」的就记一笔，
-         *  别让它们吊着把重试循环和转圈一起拖住。
-         *
-         *  只认「短的单词」：产品名、专有名词就长这样，引擎原样返回是
-         *  **正确的**结果。整句原样回来多半是引擎半瘫 / 被限流 —— 那种
-         *  绝不能记账，记了它就再也不会重试，页面从此钉死在英文。
-         *  另一道闸：这一组必须真的译出过东西，否则「引擎挂了」和
-         *  「这段没得翻」分不清，一律按前者处理（不记账、留给重试）。 */
-        function settleNoop() {
-          if (!pending.length) return;
-          var got = 0;
-          for (var i2 = 0; i2 < results.length; i2++) { if (results[i2]) got++; }
-          if (!got) return;
-          pending.forEach(function (j) {
-            var src = payload[j];
-            if (src.length <= 24 && !/\s/.test(src)) markNoop(src);
-          });
-        }
-
         function attempt(engineName) {
           if (!engineName || staled()) return Promise.resolve();
           var handing = pending.length;
@@ -2840,11 +2698,10 @@
               var gotA = rs[0] || 0, gotB = rs[1] || 0;
               var got = Math.max(gotA, gotB);
               if (got > 0) poolResult(gotA >= gotB ? ra : rb, got, payload.length);
-              settleNoop();
             });
           }
         }
-        return attempt(pickFor(gi, used)).then(settleNoop);
+        return attempt(pickFor(gi, used));
       }
 
       return mapLimit(groups, par, runGroup);
@@ -2898,22 +2755,10 @@
         // 新内容）静默完成——探索页每隔一会儿自己刷新一次时间戳，不静默的话
         // 「已翻译 58 段」会一遍遍往外蹦。
         if (!silent) {
-          var how = state.ms < 100 ? '缓存秒出' : (state.ms / 1000).toFixed(1) + ' 秒';
-          toast('已翻译 ' + state.okCount + ' 段 · ' + how + ' · ' +
-            (SHORT[engName] || engName || '缓存'));
+          var how = state.ms < 100 ? window.I18n.t("缓存秒出") : (state.ms / 1000).toFixed(1) + window.I18n.t(" 秒");
+          toast(window.I18n.t("已翻译 ") + state.okCount + window.I18n.t(" 段 · ") + how + ' · ' +
+            (SHORT[engName] || engName || window.I18n.t("缓存")));
         }
-        return Promise.resolve();
-      }
-      /* 这一轮收上来的全是「单词级」内容（产品名、专有名词）：引擎原样
-       * 返回是**正确**结果，不是它坏了。
-       *
-       * 以前照样走下面的降级：把有道标黑两分钟、换下一家、下一家也原样
-       * 返回也标黑……最后弹「所有翻译引擎都不可用」，而实际上每一家都没坏。
-       * 这里直接记账收工，不冤枉任何一家。 */
-      if (mine.length && mine.every(function (it) {
-        return it.text.length <= 24 && !/\s/.test(it.text);
-      })) {
-        mine.forEach(function (it) { markNoop(it.text); });
         return Promise.resolve();
       }
       /* ===== 一段都没翻成：自动降级，别把用户晾在英文页上 =====
@@ -2935,7 +2780,7 @@
           badUntil = {};
           probeFailUntil = {};
           resetPool();
-          if (!silent) toast('引擎暂时不可用，重新探测中…');
+          if (!silent) toast(window.I18n.t("引擎暂时不可用，重新探测中…"));
           probing = null;
           probeCoolUntil = 0;
           /*
@@ -2955,7 +2800,7 @@
           });
         }
         translatePage._retriedAll = false;
-        if (!silent) toast('所有翻译引擎都不可用，已保持原文（可长按图标换引擎或稍后再试）');
+        if (!silent) toast(window.I18n.t("所有翻译引擎都不可用，已保持原文（可长按图标换引擎或稍后再试）"));
         /* 全军覆没也要排队重试：真机上常见的是「抖一下」——弱网、限流、
          * 系统刚唤醒。用户滑到这里看到的是英文，不重试他就得手动再滑一次
          * 才可能翻出来。等 4 秒再试，最多 3 轮，试不出来就收工。 */
@@ -2963,12 +2808,12 @@
         return Promise.resolve();
       }
       translatePage._retriedAll = false;
-      if (!silent) toast('「' + (SHORT[engName] || engName) + '」不可用' +
-        (state.lastErr ? '（' + state.lastErr + '）' : '') + '，自动换用其他引擎…');
+      if (!silent) toast('「' + (SHORT[engName] || engName) + window.I18n.t("」不可用") +
+        (state.lastErr ? '（' + state.lastErr + '）' : '') + window.I18n.t("，自动换用其他引擎…"));
       return translatePage(true, triedNow).then(function () {
         // 降级成功且是用户亲手点的这轮：提一句谁接了班
         if (!silent && state.okCount && state.engine !== triedNow[0]) {
-          toast('已改用「' + (SHORT[state.engine] || state.engine) + '」翻译');
+          toast(window.I18n.t("已改用「") + (SHORT[state.engine] || state.engine) + window.I18n.t("」翻译"));
         }
       });
     }).catch(function (e) {
@@ -2997,7 +2842,7 @@
         probing = null;
         clearMmQuota();
         resetPool();
-        if (!silent) toast('引擎暂时不可用，重新探测中…');
+        if (!silent) toast(window.I18n.t("引擎暂时不可用，重新探测中…"));
         return translatePage(silent, []).then(function (r) {
           translatePage._poolRetried = false;
           return r;
@@ -3011,9 +2856,9 @@
         /* 真·一个引擎都配不出来时，提示要指一条明路：
          * 「所有引擎都不可用」没告诉用户能做什么，改成提示去填密钥。 */
         var tip = /所有引擎都不可用/.test(msg)
-          ? '没有可用的翻译引擎，可在「设置 → 翻译引擎」里填一个平台的密钥'
+          ? window.I18n.t("没有可用的翻译引擎，可在「设置 → 翻译引擎」里填一个平台的密钥")
           : msg;
-        toast('翻译失败：' + tip);
+        toast(window.I18n.t("翻译失败：") + tip);
       } else if (typeof console !== 'undefined') console.log('[translate] 翻译失败', msg);
       // 异常退出同样排队重试（理由同上：抖一下不该让页面停在英文）
       if (prefGet(KEY_AUTO, false)) retryLoop(mySeq, 1);
@@ -3036,25 +2881,8 @@
   /* 手动点翻译时的补翻节奏：第一轮很快就到（多数情况只是抖了一下），
    * 往后拉长到 4 秒 —— 有道合闸最长 10 秒，太快来第二轮还是撞墙。 */
   var MOP_DELAYS = [400, 1500, 4000];
-  /**
-   * 重试轮次用完了还剩几段 —— 到此为止，把它们记成「翻不出来」。
-   *
-   * 不记的后果比记错严重得多：页面里任何一次 DOM 变动都会触发 watchView
-   * （260ms 一拍，列表刷新、时间刷新都算），它看到还有段没翻就再开一轮，
-   * 于是转圈从头转到尾 ——「我的」页那个 Gist 就是这样转了十几分钟，
-   * 期间几个引擎被挨个标黑，最后还弹「所有翻译引擎都不可用」。
-   *
-   * 记账的代价只是「这一页不再重试」，换个页面（resetNoop）就恢复。
-   */
-  function giveUpRest() {
-    try {
-      var list = collect(root(), true);
-      for (var i = 0; i < list.length; i++) markNoop(list[i].text);
-    } catch (e) { /* 收集失败就算了，别把翻译模块拖崩 */ }
-  }
-
   function retryLoop(mySeq, round) {
-    if (round >= RETRY_DELAYS.length) { giveUpRest(); return; }
+    if (round >= RETRY_DELAYS.length) return;
     setTimeout(function () {
       if (mySeq !== state.seq) return;                     // 换页了
       if (!prefGet(KEY_AUTO, false)) return;               // 关了
@@ -3138,7 +2966,6 @@
       if (!needTranslate(s)) continue;
       var c = cacheGet(name + '|' + TO + '|' + hash(s));
       if (!c || c === s) continue;
-      if (looksJunk(s, c)) continue;      // 缓存里的垃圾不上屏
       toWrite.push({ node: n, text: s, out: c });
     }
     toWrite.forEach(function (it) {
@@ -3169,7 +2996,7 @@
     state.nodes = [];
     state.done = false;
     // 切目标语言时内部会先还原一次，那是流程的一部分，不该弹「已还原原文」
-    if (n && !silently) toast('已还原原文');
+    if (n && !silently) toast(window.I18n.t("已还原原文"));
   }
 
   /**
@@ -3187,9 +3014,9 @@
       prefSet(KEY_AUTO, false);
       restorePage();
       setOn(false);
-      toast(wasBusy ? '已停止翻译，已翻的内容已还原' : '翻译已关闭');
+      toast(wasBusy ? window.I18n.t("已停止翻译，已翻的内容已还原") : window.I18n.t("翻译已关闭"));
     } else {
-      if (state.busy) { toast('正在翻译，稍等一下'); return; }
+      if (state.busy) { toast(window.I18n.t("正在翻译，稍等一下")); return; }
       prefSet(KEY_AUTO, true);
       setOn(true);
       translatePage();
@@ -3208,8 +3035,8 @@
     if (!btn) return;
     btn.classList.toggle('on', !!on);
     btn.innerHTML = icon('globe', 20);
-    btn.setAttribute('aria-label', on ? '关闭翻译' : '开启翻译');
-    btn.title = on ? '翻译已开启（点一下关闭）' : '开启翻译';
+    btn.setAttribute('aria-label', on ? window.I18n.t("关闭翻译") : window.I18n.t("开启翻译"));
+    btn.title = on ? window.I18n.t("翻译已开启（点一下关闭）") : window.I18n.t("开启翻译");
   }
 
   function mount() {
@@ -3325,15 +3152,15 @@
   function applyTarget(k) {
     k = normalizeTarget(k);
     var t = targetLabel(k);
-    if (!setTarget(k)) { toast('已经在翻译成' + t.short + '了'); return; }
-    toast('已切换：翻译成' + t.short);
+    if (!setTarget(k)) { toast(window.I18n.t("已经在翻译成") + t.short + window.I18n.t("了")); return; }
+    toast(window.I18n.t("已切换：翻译成") + t.short);
     setTimeout(function () { translatePage(false); }, 80);   // 让用户立刻看到效果
   }
 
   function pickTarget() {
     var items = TARGETS.map(function (t) { return { key: t.key, label: t.label, icon: 'globe' }; });
     if (window.UI && UI.choose) {
-      UI.choose('翻译成哪种语言', items, TO, function (k) { if (k) applyTarget(k); });
+      UI.choose(window.I18n.t("翻译成哪种语言"), items, TO, function (k) { if (k) applyTarget(k); });
     } else {
       var v = window.prompt ? window.prompt('目标语言：\n1. 简体中文\n2. English') : null;
       if (v) applyTarget(/^\s*(2|en)\s*$/i.test(v) ? 'en' : 'zh-Hans');
@@ -3344,28 +3171,28 @@
     var cur = currentEngine();
     var items = [
       // 放在第一位：彻底消除等待的办法就是让它后台先翻，翻完你正好看到
-      { key: 'auto', label: '打开页面时自动翻译', value: prefGet(KEY_AUTO, false) ? '已开启' : '关', icon: 'zap' },
-      { key: 'again', label: '重新翻译本页', icon: 'sync',
-        value: state.ms ? (state.ms / 1000).toFixed(1) + ' 秒' : '' },
-      { key: 'restore', label: '关闭翻译并还原', icon: 'history' },
+      { key: 'auto', label: window.I18n.t("打开页面时自动翻译"), value: prefGet(KEY_AUTO, false) ? window.I18n.t("已开启") : window.I18n.t("关"), icon: 'zap' },
+      { key: 'again', label: window.I18n.t("重新翻译本页"), icon: 'sync',
+        value: state.ms ? (state.ms / 1000).toFixed(1) + window.I18n.t(" 秒") : '' },
+      { key: 'restore', label: window.I18n.t("关闭翻译并还原"), icon: 'history' },
       '-',
       // 目标语言开关：日/俄/韩/阿等语言也都是翻到这里选的那一种
-      { key: 'lang', label: '翻译成', icon: 'globe', value: targetLabel(TO).label },
+      { key: 'lang', label: window.I18n.t("翻译成"), icon: 'globe', value: targetLabel(TO).label },
       // 显示实际在跑哪个引擎：手动选的和实际跑的是同一个时就不要重复念两遍
-      { key: 'eng', label: '翻译引擎', icon: 'globe',
+      { key: 'eng', label: window.I18n.t("翻译引擎"), icon: 'globe',
         value: cur === 'auto'
-          ? '自动' + (state.engine ? ' · ' + (ENGINES[state.engine] ? ENGINES[state.engine].label : state.engine) : '')
+          ? window.I18n.t("自动") + (state.engine ? ' · ' + (ENGINES[state.engine] ? ENGINES[state.engine].label : state.engine) : '')
           : (ENGINES[cur] ? ENGINES[cur].label : cur) +
             (state.engine && state.engine !== cur
-              ? ' · 上次 ' + (ENGINES[state.engine] ? ENGINES[state.engine].label : state.engine)
+              ? window.I18n.t(" · 上次 ") + (ENGINES[state.engine] ? ENGINES[state.engine].label : state.engine)
               : '') },
-      { key: 'clear', label: '清空译文缓存', icon: 'trash' },
-      { key: 'resetEng', label: '重置引擎状态（清除失败标记）', icon: 'refresh-cw' },
+      { key: 'clear', label: window.I18n.t("清空译文缓存"), icon: 'trash' },
+      { key: 'resetEng', label: window.I18n.t("重置引擎状态（清除失败标记）"), icon: 'refresh-cw' },
       '-',
-      { key: 'about', label: '关于翻译', icon: 'info' }
+      { key: 'about', label: window.I18n.t("关于翻译"), icon: 'info' }
     ];
     if (window.UI && UI.menu) {
-      UI.menu('翻译', items).then(function (k) { if (k) onMenu(k); });
+      UI.menu(window.I18n.t("翻译"), items).then(function (k) { if (k) onMenu(k); });
     } else {
       // Demo（没有 UI 组件）里的极简兜底
       var map = items.filter(function (x) { return x.key; }).map(function (x, i) { return (i + 1) + '. ' + x.label; });
@@ -3381,10 +3208,10 @@
     else if (k === 'eng') pickEngine();
     else if (k === 'auto') {
       prefSet(KEY_AUTO, !prefGet(KEY_AUTO, false));
-      toast(prefGet(KEY_AUTO, false) ? '已开启：进页面自动翻译' : '已关闭自动翻译');
+      toast(prefGet(KEY_AUTO, false) ? window.I18n.t("已开启：进页面自动翻译") : window.I18n.t("已关闭自动翻译"));
     } else if (k === 'clear') {
       cache = {}; prefSet(KEY_CACHE, cache);
-      toast('译文缓存已清空');
+      toast(window.I18n.t("译文缓存已清空"));
     } else if (k === 'resetEng') {
       /* 手动重置所有引擎状态：清掉 badUntil、探测黑名单、准入缓存。
        * 网络从不可用恢复、或者之前填错过密钥导致引擎被标坏时，
@@ -3395,7 +3222,7 @@
       resetPool();
       probing = null;
       probeCoolUntil = 0;
-      toast('已重置所有引擎状态，马上重新翻译');
+      toast(window.I18n.t("已重置所有引擎状态，马上重新翻译"));
       if (collect(root()).length) setTimeout(translatePage, 60);
     } else if (k === 'about') about();
   }
@@ -3415,20 +3242,20 @@
 
   /* 需要填凭据的三家：填了才进池子，没填就在列表里显示为「去填写」 */
   var KEYED = [
-    { key: 'youdaoOpen', title: '有道翻译开放平台',
-      fields: [{ k: KEY_YD_APPKEY, label: 'appKey（应用ID）' },
-               { k: KEY_YD_SECRET, label: 'appSecret（应用密钥）' }],
-      desc: '控制台 ai.youdao.com/console 的「我的应用」里创建应用可得（引擎列表里' +
-            '长按本条可直达）。单次 5000 字节，国内直连，注册即送体验金 —— 填了它就是主力。' },
-    { key: 'baidu', title: '百度翻译开放平台',
+    { key: 'youdaoOpen', title: window.I18n.t("有道翻译开放平台"),
+      fields: [{ k: KEY_YD_APPKEY, label: window.I18n.t("appKey（应用ID）") },
+               { k: KEY_YD_SECRET, label: window.I18n.t("appSecret（应用密钥）") }],
+      desc: window.I18n.t("控制台 ai.youdao.com/console 的「我的应用」里创建应用可得（引擎列表里") +
+            window.I18n.t("长按本条可直达）。单次 5000 字节，国内直连，注册即送体验金 —— 填了它就是主力。") },
+    { key: 'baidu', title: window.I18n.t("百度翻译开放平台"),
       fields: [{ k: KEY_BAIDU_APPID, label: 'APP ID' },
-               { k: KEY_BAIDU_KEY, label: '密钥（Secret Key）' }],
-      desc: '控制台 fanyi-api.baidu.com「开发者信息」里可查（引擎列表里长按本条可直达）。' +
-            '单次 6000 字节（匿名接口的 6 倍），标准版 QPS=1，所以它是串行跑的 —— 一发顶六发。' },
-    { key: 'niutrans', title: '小牛翻译',
+               { k: KEY_BAIDU_KEY, label: window.I18n.t("密钥（Secret Key）") }],
+      desc: window.I18n.t("控制台 fanyi-api.baidu.com「开发者信息」里可查（引擎列表里长按本条可直达）。") +
+            window.I18n.t("单次 6000 字节（匿名接口的 6 倍），标准版 QPS=1，所以它是串行跑的 —— 一发顶六发。") },
+    { key: 'niutrans', title: window.I18n.t("小牛翻译"),
       fields: [{ k: KEY_NIU_KEY, label: 'apikey' }],
-      desc: '控制台 niutrans.com/cloud/console 的「个人中心」可查 apikey（引擎列表里' +
-            '长按本条可直达）。不用签名，接起来最省事，额度不如上面两家，作为第三路分流。' }
+      desc: window.I18n.t("控制台 niutrans.com/cloud/console 的「个人中心」可查 apikey（引擎列表里") +
+            window.I18n.t("长按本条可直达）。不用签名，接起来最省事，额度不如上面两家，作为第三路分流。") }
   ];
 
   /* 三家密钥引擎的注册 / 管理页：在引擎列表里长按对应条目，用系统浏览器
@@ -3458,7 +3285,7 @@
     function next() {
       if (i >= cfg.fields.length) {
         resetPool();
-        toast(cfg.title + '已配置，马上重翻本页');
+        toast(cfg.title + window.I18n.t("已配置，马上重翻本页"));
         if (done) done();
         return;
       }
@@ -3466,7 +3293,7 @@
       var old = prefGet(f.k, '');
       if (window.UI && UI.prompt) {
         UI.prompt(cfg.title + ' · ' + f.label, {
-          desc: cfg.desc, value: old, placeholder: '填写' + f.label
+          desc: cfg.desc, value: old, placeholder: window.I18n.t("填写") + f.label
         }).then(function (v) {
           if (v === null || v === undefined) return;   // 取消：不再追问后面的字段
           prefSet(f.k, String(v).trim());
@@ -3483,28 +3310,28 @@
   }
 
   function pickEngine() {
-    var items = [{ key: 'auto', label: '自动选择（多个引擎协作，推荐）', icon: 'zap' }];
+    var items = [{ key: 'auto', label: window.I18n.t("自动选择（多个引擎协作，推荐）"), icon: 'zap' }];
     /* custom 已经在 ORDER 里了，这里不再单独 push 一次（以前会显示两遍） */
     ORDER.forEach(function (k) {
       if (!ENGINES[k]) return;
       var need = hasKey(k) && !isReady(k);
       /* 两个手势在标签里写明白：点是填密钥，长按是去官网拿密钥。
        * 已填过的三家也保留长按入口 —— 查额度、换密钥都是同一个控制台。 */
-      var hint = need ? '（点这里填密钥，长按去官网注册）'
-        : (REG_URLS[k] ? '（长按可去官网）' : '');
+      var hint = need ? window.I18n.t("（点这里填密钥，长按去官网注册）")
+        : (REG_URLS[k] ? window.I18n.t("（长按可去官网）") : '');
       items.push({ key: k, label: ENGINES[k].label + hint, icon: 'globe' });
     });
     var cur = currentEngine();
     if (window.UI && UI.choose) {
-      UI.choose('翻译引擎', items, cur, function (k) {
+      UI.choose(window.I18n.t("翻译引擎"), items, cur, function (k) {
         if (k === 'custom') {
           var url = prefGet(KEY_CUSTOM, '');
           if (window.UI && UI.prompt) {
-            UI.prompt('自定义接口地址', {
-              desc: 'POST JSON {"q":["文本"],"to":"' + TO + '"}，返回 {"translations":["译文"]}',
+            UI.prompt(window.I18n.t("自定义接口地址"), {
+              desc: 'POST JSON {"q":[window.I18n.t("文本")],"to":"' + TO + '"}，返回 {"translations":["译文"]}',
               value: url, placeholder: 'https://你的接口/translate'
             }).then(function (v) {
-              if (v) applyEngine('custom', '已保存，马上用新接口重翻本页');
+              if (v) applyEngine('custom', window.I18n.t("已保存，马上用新接口重翻本页"));
             });
           }
           return;
@@ -3516,7 +3343,7 @@
             if (!isReady(k)) {
               configKeys(KEYED[i], function () {
                 resetPool();
-                applyEngine('auto', '已保存密钥，多个引擎一起上');
+                applyEngine('auto', window.I18n.t("已保存密钥，多个引擎一起上"));
               });
             } else {
               /* 已填过密钥：给一个二级菜单，避免「点了就直接切过去、没法改密钥」。
@@ -3531,26 +3358,26 @@
          * 直接切过去用户只会看到「不可用」，先探一下能不能用。 */
         if (k === 'ondevice') {
           if (!onDeviceReady()) {
-            toast('当前设备不支持系统翻译 API（需要 Android 14+ 且已下载语言包），' +
-              '可改用自动选择或其他在线引擎');
+            toast(window.I18n.t("当前设备不支持系统翻译 API（需要 Android 14+ 且已下载语言包），") +
+              window.I18n.t("可改用自动选择或其他在线引擎"));
             return;
           }
         }
-        applyEngine(k, k === 'auto' ? '已设为自动选择，马上重翻本页' : '已切换到 ' + ENGINES[k].label + '，马上重翻本页');
+        applyEngine(k, k === 'auto' ? window.I18n.t("已设为自动选择，马上重翻本页") : window.I18n.t("已切换到 ") + ENGINES[k].label + window.I18n.t("，马上重翻本页"));
       }, function (k) {
         /* 长按：跳系统浏览器去创建 / 查看密钥。弹层留着不关 ——
          * 用户从浏览器拿到密钥回来，还要点一下这条把它填进去。 */
         if (!REG_URLS[k]) return;
         UI.haptic();
         if (openRegPage(k)) {
-          toast('已打开' + SHORT[k] + '控制台，拿到密钥后回来点这条填入');
+          toast(window.I18n.t("已打开") + SHORT[k] + window.I18n.t("控制台，拿到密钥后回来点这条填入"));
         } else {
-          toast('打不开浏览器，请手动访问：' + REG_URLS[k], 5000);
+          toast(window.I18n.t("打不开浏览器，请手动访问：") + REG_URLS[k], 5000);
         }
       });
     } else {
       var v = prompt('引擎：auto/youdaoOpen/baidu/niutrans/youdao/ondevice/deepl/google/mymemory/custom');
-      if (v) applyEngine(v.trim(), '已切换');
+      if (v) applyEngine(v.trim(), window.I18n.t("已切换"));
     }
   }
 
@@ -3558,29 +3385,29 @@
    *  这是「填错密钥后找不到重置入口」的修复点。 */
   function manageKeyedEngine(cfg) {
     UI.menu(cfg.title, [
-      { icon: 'edit', label: '修改密钥', key: 'edit' },
-      { icon: 'trash', label: '清空密钥（恢复为未配置）', key: 'clear' },
+      { icon: 'edit', label: window.I18n.t("修改密钥"), key: 'edit' },
+      { icon: 'trash', label: window.I18n.t("清空密钥（恢复为未配置）"), key: 'clear' },
       '-',
-      { icon: 'play', label: '使用此引擎翻译', key: 'use' }
+      { icon: 'play', label: window.I18n.t("使用此引擎翻译"), key: 'use' }
     ]).then(function (k) {
       if (!k) return;
       if (k === 'edit') {
         configKeys(cfg, function () {
           resetPool();
-          applyEngine('auto', '已更新密钥，马上重翻本页');
+          applyEngine('auto', window.I18n.t("已更新密钥，马上重翻本页"));
         });
       } else if (k === 'clear') {
-        UI.confirm('清空 ' + cfg.title + ' 的密钥',
-          '将删除已保存的 appid / 密钥，之后该引擎不再参与自动翻译。' +
-          '可以随时重新填入。', '清空').then(function (ok) {
+        UI.confirm(window.I18n.t("清空 ") + cfg.title + window.I18n.t(" 的密钥"),
+          window.I18n.t("将删除已保存的 appid / 密钥，之后该引擎不再参与自动翻译。") +
+          window.I18n.t("可以随时重新填入。"), window.I18n.t("清空")).then(function (ok) {
             if (!ok) return;
             cfg.fields.forEach(function (f) { prefSet(f.k, ''); });
             resetPool();
             clearBad(cfg.key);
-            toast('已清空 ' + cfg.title + ' 的密钥');
+            toast(window.I18n.t("已清空 ") + cfg.title + window.I18n.t(" 的密钥"));
           });
       } else if (k === 'use') {
-        applyEngine(cfg.key, '已切换到 ' + cfg.title + '，马上重翻本页');
+        applyEngine(cfg.key, window.I18n.t("已切换到 ") + cfg.title + window.I18n.t("，马上重翻本页"));
       }
     });
   }
@@ -3591,18 +3418,18 @@
       '• 译文有本地缓存，同样的内容不会重复请求\n' +
       '• 请求不携带你的 GitHub 令牌，但文本会发给所选翻译服务商\n\n' +
       '【多个引擎一起翻】\n' +
-      '自动模式下本页会按能力分摊给多个同时可用的引擎：谁单次带得多、额度大，' +
-      '谁就多吃几批；某个引擎撞了限流，它名下剩下的批立刻交给下一个，' +
+      window.I18n.t("自动模式下本页会按能力分摊给多个同时可用的引擎：谁单次带得多、额度大，") +
+      window.I18n.t("谁就多吃几批；某个引擎撞了限流，它名下剩下的批立刻交给下一个，") +
       '不再出现「一个免费口子堵住整页」。\n\n' +
       '【国内直连的免费引擎】\n' +
       '• 有道 / MyMemory：免密钥，开箱即用，但单次只有 900 字节、额度小\n' +
-      '• 百度翻译、有道开放平台、小牛翻译：国内机房，注册就送免费额度，' +
-      '单次 5000~6000 字节 —— 在「翻译引擎」里点一下填密钥、长按一下用浏览器' +
+      window.I18n.t("• 百度翻译、有道开放平台、小牛翻译：国内机房，注册就送免费额度，") +
+      window.I18n.t("单次 5000~6000 字节 —— 在「翻译引擎」里点一下填密钥、长按一下用浏览器") +
       '去官网注册（密钥只存在本机）\n' +
       '• DeepL / Google 需要能访问海外网络；微软 Edge 官方已关闭免费接口\n\n' +
-      '点按钮翻译 / 还原，长按按钮打开设置。';
+      window.I18n.t("点按钮翻译 / 还原，长按按钮打开设置。");
     if (window.UI && UI.sheet) {
-      UI.sheet({ title: '关于翻译', body: '<div style="font-size:14px;line-height:1.7;white-space:pre-wrap">' +
+      UI.sheet({ title: window.I18n.t("关于翻译"), body: '<div style="font-size:14px;line-height:1.7;white-space:pre-wrap">' +
         String(msg).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }) + '</div>' });
     } else alert(msg);
   }
