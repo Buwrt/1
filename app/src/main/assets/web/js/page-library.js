@@ -620,7 +620,7 @@
     UI.sheet({
       title: window.I18n.t("选择要跟踪的应用"),
       full: true,
-      body: '<div class="field"><input class="input" id="lk-q" placeholder=window.I18n.t("搜索应用名或包名")></div>' +
+      body: '<div class="field"><input class="input" id="lk-q" placeholder="' + window.I18n.t("搜索应用名或包名") + '"></div>' +
         '<div id="lk-list">' + rows(shown) + '</div>',
       onMount: function () {
         var root = document.getElementById('sheet-root');
@@ -812,7 +812,7 @@
       var idle = sortList(all.filter(function (it) { return !it.hasUpdate && !it.pending; }));
 
       var html = '<div style="padding:12px;display:flex;flex-direction:column;gap:10px">' +
-        '<div class="field"><input class="input" id="lib-q" placeholder=window.I18n.t("搜索应用") value="' + U.esc(CTX.query) + '"></div>';
+        '<div class="field"><input class="input" id="lib-q" placeholder="' + window.I18n.t("搜索应用") + '" value="' + U.esc(CTX.query) + '"></div>';
 
       if (!items.length) {
         html += UI.empty('package', window.I18n.t("应用库还是空的"), window.I18n.t("点右上角 ➕ 加入本机已装的应用，开始跟踪它的更新"));
