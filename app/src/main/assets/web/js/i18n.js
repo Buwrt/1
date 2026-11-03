@@ -204,7 +204,9 @@
     'lang.switched.en': 'Language switched to English'
   };
 
-  var PACKS = { zh: ZH, en: EN };
+  /* wx = 天道仙文。包在 i18n-tiandao.js 里定义，本文件之前加载；
+     万一没加载就退化成空表，界面回落中文，不会白屏。 */
+  var PACKS = { zh: ZH, en: EN, wx: (window.I18N_WX || {}) };
   var DEFAULT = 'zh';
   var cur = null;
   var manual = null;            // null = 还没读过存档
@@ -259,9 +261,11 @@
     /* 界面里写死的中文是「以中文为键」批量转换过来的（见 i18n-strings.js）：
      * 业务代码里写 t('删除')，中文模式下这张表根本不参与，
      * 英文模式下才查它。好处是漏一个词也只是那一处退回中文，不会炸。 */
-    if ((v === undefined || v === null || v === '') && lang() === 'en') {
+    if ((v === undefined || v === null || v === '') && lang() !== 'zh') {
       try {
-        var flat = window.I18N_STRINGS;
+        /* 中文模式下这张表根本不参与；非中文时按当前语言取对应的表。
+           天道仙文走 I18N_STRINGS_WX。 */
+        var flat = lang() === 'wx' ? window.I18N_STRINGS_WX : window.I18N_STRINGS;
         if (flat && flat[key]) v = flat[key];
       } catch (e) {}
     }
@@ -316,7 +320,8 @@
     var opts = [
       { key: '', label: t('settings.lang.auto'), icon: 'device-desktop' },
       { key: 'zh', label: t('settings.lang.zh'), icon: 'globe' },
-      { key: 'en', label: t('settings.lang.en'), icon: 'globe' }
+      { key: 'en', label: t('settings.lang.en'), icon: 'globe' },
+      { key: 'wx', label: '天道仙文', icon: 'star' }
     ];
     var now = pref();
     if (window.UI && typeof window.UI.choose === 'function') {
@@ -343,7 +348,7 @@
     applyDom: applyDom,
     chooseSheet: chooseSheet,
     packs: PACKS,
-    codes: ['zh', 'en']
+    codes: ['zh', 'en', 'wx']
   };
   /* 快捷方式：业务代码里写 t('key') 比 I18n.t 短，也更像别的项目的习惯 */
   window.t = t;
