@@ -20,7 +20,7 @@
         '<div class="field"><label>个人访问令牌（Personal Access Token）</label>' +
         '<div class="tk-wrap">' +
         '<input class="input" id="tk" type="password" placeholder="ghp_xxxxxxxxxxxx 或 github_pat_xxxx" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">' +
-        '<button type="button" class="tk-eye" id="tkeye" aria-label=window.I18n.t("显示令牌")>' + window.icon('eye-closed', 16) + '</button>' +
+        '<button type="button" class="tk-eye" id="tkeye" aria-label="' + window.I18n.t("显示令牌") + '">' + window.icon('eye-closed', 16) + '</button>' +
         '</div>' +
         '<div class="hint">令牌仅保存在本机加密存储中，不会上传任何服务器。</div></div>' +
         '<button class="btn primary block lg" id="go">登录</button>' +
