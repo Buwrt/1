@@ -539,12 +539,12 @@
     UI.sheet({
       title: window.I18n.t("发表评论"),
       body: '<div class="rowflex" style="gap:4px;margin-bottom:8px">' + ['bold', 'italic', 'quote', 'code', 'link', 'list-unordered'].map(function (i) {
-        var t = i === 'link' ? ' title=window.I18n.t("上传附件")' : '';
+        var t = i === 'link' ? ' title="' + window.I18n.t("上传附件") + '"' : '';
         return '<button class="btn sm" data-md="' + i + '"' + t + '>' + window.icon(i, 14) + '</button>';
       }).join('') +
-        '<button class="btn sm" data-md="attach" title=window.I18n.t("插入图片或视频")>' + window.icon('image', 14) + '</button>' +
+        '<button class="btn sm" data-md="attach" title="' + window.I18n.t("插入图片或视频") + '">' + window.icon('image', 14) + '</button>' +
         '<button class="btn sm" data-md="preview" style="margin-left:auto">预览</button></div>' +
-        '<textarea class="textarea" id="cb" style="min-height:160px" placeholder=window.I18n.t("支持 Markdown，可使用 @ 提及他人")>' + U.esc(text) + '</textarea>' +
+        '<textarea class="textarea" id="cb" style="min-height:160px" placeholder="' + window.I18n.t("支持 Markdown，可使用 @ 提及他人") + '">' + U.esc(text) + '</textarea>' +
         '<div id="prev" class="card" hidden style="padding:12px;margin-top:10px"></div>',
       foot: '<button class="btn" data-no>取消</button><button class="btn primary" data-yes>提交评论</button>',
       onMount: function () {
@@ -752,7 +752,7 @@
       title: window.I18n.t("评论 ") + path + window.I18n.t(" 第 ") + line + window.I18n.t(' 行'),
       body: '<div class="mono tiny" style="padding:6px 8px;background:var(--diff-hunk-bg);border-radius:6px;white-space:pre-wrap;word-break:break-all">' +
         U.esc(text) + '</div>' +
-        '<div class="field"><textarea class="textarea" id="ic" style="min-height:110px" placeholder=window.I18n.t("写下你的意见")>' + U.esc(old) + '</textarea></div>' +
+        '<div class="field"><textarea class="textarea" id="ic" style="min-height:110px" placeholder="' + window.I18n.t("写下你的意见") + '">' + U.esc(old) + '</textarea></div>' +
         '<div class="muted tiny">提交后会随本次评审一起发出（现在还不会发给对方）。</div>' +
         (idx >= 0 ? '<button class="btn danger" id="icdel" style="margin-top:8px">删除这条评论</button>' : ''),
       foot: '<button class="btn" data-no>取消</button><button class="btn primary" data-yes>加入评审</button>',
@@ -816,7 +816,7 @@
         { key: 'APPROVE', label: window.I18n.t("批准") },
         { key: 'REQUEST_CHANGES', label: window.I18n.t('请求修改') }
       ], 'COMMENT') +
-      '</div><div class="field"><label>总体说明</label><textarea class="textarea" id="rb" style="min-height:110px" placeholder=window.I18n.t("可选。仅评论时建议填写具体意见")></textarea></div>' +
+      '</div><div class="field"><label>总体说明</label><textarea class="textarea" id="rb" style="min-height:110px" placeholder="' + window.I18n.t("可选。仅评论时建议填写具体意见") + '"></textarea></div>' +
       (list.length ? '<div class="card"><div class="section-title">' + window.icon('comment', 14) + ' 随本次评审提交的 ' + list.length + ' 条行内评论</div>' +
         '<div class="list">' + list.map(function (c, i) {
           return '<div class="list-row static"><span class="row-main"><span class="row-title mono tiny">' +
@@ -981,7 +981,7 @@
             '<td class="fp-val"><code>' + U.esc(it.val) + '</code></td>' +
             '<td class="fp-act">' +
               '<button class="fp-copy" data-fp="' + U.esc(it.val) + '" ' +
-              'title=window.I18n.t("复制这枚指纹") aria-label="复制' + U.esc(k.name) + '">' +
+              'title="' + window.I18n.t("复制这枚指纹") + '" aria-label="复制' + U.esc(k.name) + '">' +
               window.icon('copy', 14) + '</button>' +
             '</td>' +
             '</tr>';
@@ -1276,7 +1276,7 @@
       '<div style="display:flex;flex-direction:column;height:100%">' +
       '<div id="lg-steps" style="display:none;gap:6px;padding:8px 12px;overflow-x:auto;flex:none"></div>' +
       '<div style="display:flex;gap:6px;align-items:center;padding:0 12px 8px;flex:none">' +
-      '<input class="input" id="lg-q" placeholder=window.I18n.t("搜索日志内容") autocomplete="off" ' +
+      '<input class="input" id="lg-q" placeholder="' + window.I18n.t("搜索日志内容") + '" autocomplete="off" ' +
       'autocapitalize="none" spellcheck="false" style="flex:1;min-width:0">' +
       '<button class="btn sm" id="lg-copy" style="flex:none">' + window.icon('copy', 13) + '复制</button>' +
       '</div>' +
