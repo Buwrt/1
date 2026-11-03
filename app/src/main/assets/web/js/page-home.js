@@ -295,7 +295,9 @@
       var epoch = window.Router.viewEpoch;
       // 登录态：只展示「我的仓库」，不出现关注动态、不出现热门仓库
       return Promise.all([
-        window.API.get('/user', null, { cache: 60000 }),
+        /* 单条失败不该让整页停在骨架：拿不到 /user 就退回已存的登录态，
+           下面 me 为空时有用 user 顶上的兜底。 */
+        window.API.get('/user', null, { cache: 60000 }).catch(function () { return { data: null }; }),
         /*
           per_page 以前是 30。仓库数超过 30 时首页就只显示前 30 个，
           而「我的仓库」这一节没有任何「还有更多」的提示 ——
