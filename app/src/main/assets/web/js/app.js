@@ -240,20 +240,6 @@
       }
       A._avEvt = function () { gap = 800; schedule(); };
       window.addEventListener('online', A._avEvt);
-      /* 换网自动重连：链路一恢复就清掉上一轮的失败状态并重画当前页。
-       * 不重启 App，用户不用手动点「重新加载」。 */
-      (function () {
-        function back() {
-          try { if (window.API && window.API.onNetworkBack) window.API.onNetworkBack(); } catch (e) {}
-          try { if (window.App && window.App.clearPageCache) window.App.clearPageCache(); } catch (e) {}
-          try { if (window.Router && window.Router.reload) window.Router.reload(); } catch (e) {}
-        }
-        window.addEventListener('online', back);
-        try {
-          var c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-          if (c && c.addEventListener) c.addEventListener('change', back);
-        } catch (e) {}
-      })();
       schedule();
     },
     invalidate: function (prefix) {
@@ -1168,10 +1154,6 @@
 
   var Router = {
     current: null,
-    /* 当前还在等数据的首屏渲染。启动期语言纠正等重画若撞上它，
-       不能递增 viewEpoch 把在途请求整份作废，否则骨架屏再没人替换。 */
-    pending: null,
-    queuedReload: false,
     /* 每个路由的滚动位置。返回时按路由还原，避免「点进详情再返回回到顶部」*/
     scrollMemo: Object.create(null),
     backNav: false,          // 本次 render 是不是「回退」触发的
@@ -1204,13 +1186,7 @@
         setTimeout(function () { Router.render(); }, 30);
       }
     },
-    reload: function () {
-      /* 首屏渲染还在等数据时（冷启动语言纠正常落在这一刻），不重画：
-         重画会让 viewEpoch 递增，page-home.js 把在途请求整份丢弃，
-         骨架屏就再也没人替换。挂个标记，等它落地后再用新语言重画一次。 */
-      if (this.pending) { this.queuedReload = true; return; }
-      this.render();
-    },
+    reload: function () { this.render(); },
     /** 当前路由是否属于「标签根页面」（首页 / 通知 / 探索 / 搜索 / 我的） */
     isRoot: function (path) {
       var p = (path || '').replace(/^#/, '').split('?')[0];
@@ -1316,51 +1292,10 @@
         内容撑开后再来一次，避免高度不够被夹回 0。
       */
       function applyRestore() { host.scrollTop = restore; }
-      var myHash = hash;
-      var wd = null;
-      /* 渲染失败 / 超时时，屏幕上若还只剩骨架，换成能重试的占位。
-         原来只调 done() 关掉 loading，骨架原样留着 —— 用户看到的就是
-         「一直卡在这里」。 */
-      var showFallback = function (e) {
-        try {
-          if (!host.querySelector || !host.querySelector('.skel')) return;
-          var msg = (e && e.message) ? e.message : window.I18n.t('加载失败');
-          host.innerHTML = '<div class="page">' + UI.errorBox(new Error(msg)) +
-            '<div style="text-align:center;margin-top:12px">' +
-            '<button class="btn" id="retry-render">' + window.I18n.t('重新加载') + '</button></div></div>';
-          var rb = document.getElementById('retry-render');
-          if (rb) rb.onclick = function () {
-            try { window.API.clearCache(); } catch (x) {}
-            Router.render();
-          };
-        } catch (x) {}
-      };
       try {
         var ret = page.render(r.ctx, host);
         if (restore) applyRestore();
-        if (ret && ret.then) {
-          Router.pending = ret;
-          /* 兜底时钟：请求既没成功也没失败（原生层卡住、回调被吞）时，
-             10 秒后也必须把骨架换掉，不能无限等。 */
-          wd = setTimeout(function () {
-            if (Router.pending !== ret) return;
-            Router.pending = null;
-            done();
-            showFallback(new Error(window.I18n.t('加载超时，请检查网络后重试')));
-          }, 10000);
-          var settle = function (ok, e) {
-            if (wd) { clearTimeout(wd); wd = null; }
-            if (Router.pending === ret) Router.pending = null;
-            done();
-            if (!ok) showFallback(e);
-            if (Router.queuedReload) {
-              Router.queuedReload = false;
-              /* 只有还停在原路由时才补画，别把用户刚点开的下一页顶掉 */
-              if (Router.current === myHash) Router.render();
-            }
-          };
-          ret.then(function () { settle(true); }, function (e) { settle(false, e); });
-        } else done();
+        if (ret && ret.then) ret.then(done, done); else done();
       } catch (e) {
         done();
         host.innerHTML = UI.errorBox(e);

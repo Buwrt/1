@@ -72,7 +72,6 @@
     'settings.lang.auto': '跟随系统',
     'settings.lang.zh': '简体中文',
     'settings.lang.en': 'English',
-    'settings.lang.wx': '天道仙文',
     'settings.note.version': '第一位版本号变化时必须安装新版本才能继续使用，后两位可以选择是否更新。',
     'settings.login': '登录 GitHub',
     'settings.loginOwn': '登录自己的令牌',
@@ -109,8 +108,7 @@
     'lang.title': '界面语言',
     'lang.note': '跟随系统时使用手机当前的语言；也可以在这里固定成某一种。',
     'lang.switched': '已切换为中文',
-    'lang.switched.en': 'Language switched to English',
-    'lang.switched.wx': '已切换为天道仙文'
+    'lang.switched.en': 'Language switched to English'
   };
 
   var EN = {
@@ -167,7 +165,6 @@
     'settings.lang.auto': 'Follow System',
     'settings.lang.zh': '简体中文',
     'settings.lang.en': 'English',
-    'settings.lang.wx': '天道仙文 (WX)',
     'settings.note.version': 'A change in the first version number requires updating; the other two are optional.',
     'settings.login': 'Sign in to GitHub',
     'settings.loginOwn': 'Sign in with your token',
@@ -204,8 +201,7 @@
     'lang.title': 'Language',
     'lang.note': 'Follow System uses your device language. You can also pin one here.',
     'lang.switched': '已切换为中文',
-    'lang.switched.en': 'Language switched to English',
-    'lang.switched.wx': '已切换为天道仙文'
+    'lang.switched.en': 'Language switched to English'
   };
 
   /* wx = 天道仙文。包在 i18n-tiandao.js 里定义，本文件之前加载；
@@ -213,51 +209,18 @@
   var PACKS = { zh: ZH, en: EN, wx: (window.I18N_WX || {}) };
   var DEFAULT = 'zh';
   var cur = null;
-  var manual = null;            // null = 还没确认过存档
-  var STORE_KEY = 'gh_lang';    // 整包 gh_settings 里的旧字段（兼容老存档）
-  var LANG_KEY  = 'gh_lang';    // 专用键：不跟整包一起被旧值覆盖
-  var VALID = { '': 1, zh: 1, en: 1, wx: 1 };
-  function valid(code) {
-    return Object.prototype.hasOwnProperty.call(VALID, code);
-  }
+  var manual = null;            // null = 还没读过存档
+  var STORE_KEY = 'gh_lang';
 
-  /* ---- 读语言存档 ----
-   * 旧版只从 Store.get('gh_lang') 读，而 Store 把设置整包存在 gh_settings，
-   * 读的时候「原生 getPref 非空就直接用，不再看 localStorage」。
-   * 清理后台强杀进程后，原生可能还留着上一份旧 JSON（没有 gh_lang），
-   * 语言就悄悄回到「跟随系统」—— 现象就是「重进变成别的语言」。
-   *
-   * 现在语言单独存一个 gh_lang 键，原生 / localStorage / 整包三路都读，
-   * 任一路读到合法值就认。一路都没有时**不缓存**，等 Store 起来再读，
-   * 也不会把早期的误判锁死。 */
-  function readOne(fn) {
-    try {
-      var v = fn();
-      return (v === null || v === undefined) ? '' : String(v).trim();
-    } catch (e) { return ''; }
-  }
+  /* ---- 读存档：留到运行时，定义时 Store 还不存在 ---- */
   function getManual() {
-    if (manual !== null) return manual;
-    var list = [];
-    list.push(readOne(function () {
-      return (window.NativeBridge && typeof window.NativeBridge.getPref === 'function')
-        ? window.NativeBridge.getPref(LANG_KEY) : '';
-    }));
-    list.push(readOne(function () { return localStorage.getItem(LANG_KEY); }));
-    list.push(readOne(function () {
-      return (window.Store && window.Store.get) ? window.Store.get(STORE_KEY) : '';
-    }));
-    for (var i = 0; i < list.length; i++) {
-      var v = list[i];
-      /* 空值只表示「这一路没有存档」，不能短路后面的有效值：
-         老版本只把语言写在整包里，专用键自然读不到东西。 */
-      if (!v || !valid(v)) continue;
-      /* lang() 可能已经在 Store 就绪前缓存过一次误判，这里作废重算 */
-      cur = null;
-      manual = v;
-      return manual;
+    if (manual === null) {
+      try {
+        manual = (window.Store && window.Store.get)
+          ? (window.Store.get(STORE_KEY, '') || '') : '';
+      } catch (e) { manual = ''; }
     }
-    return '';                 // 三路都没有明确存档：跟随系统，且不缓存
+    return manual;
   }
 
   /**
@@ -344,46 +307,9 @@
    * 切换语言并重画界面。
    * @param code 'zh' / 'en' / ''（'' = 跟随系统）
    */
-  /** 天道仙文兜底层：装/卸全文档文本节点的仙化与 MutationObserver */
-  function syncWx(code) {
-    try {
-      if (code === 'wx' && window.I18N_WX_DOM) {
-        var root = document.body || document.documentElement;
-        if (root) window.I18N_WX_DOM(root);
-        if (window.I18N_WX_INSTALL) window.I18N_WX_INSTALL();
-      } else if (window.I18N_WX_UNINSTALL) {
-        window.I18N_WX_UNINSTALL();
-      }
-    } catch (e) {}
-  }
-
-  /** 冷启动重读存档：若早期算错了语言，纠正并重画 */
-  function refresh() {
-    var before = cur;
-    manual = null;
-    cur = resolve();
-    if (cur !== before) {
-      try { document.documentElement.setAttribute('lang', cur === 'en' ? 'en' : 'zh-CN'); } catch (e) {}
-      applyDom(document);
-      try { if (window.Router && window.Router.reload) window.Router.reload(); } catch (e) {}
-    }
-    return cur;
-  }
-
-  /**
-   * 切换语言并重画界面。
-   * @param code 'zh' / 'en' / 'wx' / ''（'' = 跟随系统）
-   */
   function setLang(code) {
-    code = valid(code) ? code : '';
+    code = PACKS[code] ? code : '';
     manual = code;
-    /* 三路都写：专用键独立，整包 gh_settings 被旧值覆盖也不影响语言；
-       保留整包写入是为了让老版本回退时仍能读到。 */
-    try {
-      if (window.NativeBridge && typeof window.NativeBridge.setPref === 'function')
-        window.NativeBridge.setPref(LANG_KEY, code);
-    } catch (e) {}
-    try { localStorage.setItem(LANG_KEY, code); } catch (e) {}
     try { if (window.Store && window.Store.set) window.Store.set(STORE_KEY, code); } catch (e) {}
     cur = resolve();
     /* <html lang> 跟着改：屏幕阅读器、系统字体回退都看它 */
@@ -392,7 +318,17 @@
     /* 页面里那些由 JS 生成的文案（设置项、我的页列表）不在 [data-i18n] 上，
      * 只能整页重画。Router.reload() 就是重跑当前路由的 render。 */
     try { if (window.Router && window.Router.reload) window.Router.reload(); } catch (e) {}
-    syncWx(cur);
+    /* 天道仙文的兜底层：大量中文直接写在 HTML 模板字符串里，不走 t()。
+       切到 wx 时对整个文档的文本节点再仙化一遍，并用 MutationObserver
+       接住之后动态插入的内容；切回别的语言就卸掉，避免残留。 */
+    try {
+      if (cur === 'wx' && window.I18N_WX_DOM) {
+        window.I18N_WX_DOM(document.body);
+        if (window.I18N_WX_INSTALL) window.I18N_WX_INSTALL();
+      } else if (window.I18N_WX_UNINSTALL) {
+        window.I18N_WX_UNINSTALL();
+      }
+    } catch (e) {}
     return cur;
   }
 
@@ -402,7 +338,7 @@
       { key: '', label: t('settings.lang.auto'), icon: 'device-desktop' },
       { key: 'zh', label: t('settings.lang.zh'), icon: 'globe' },
       { key: 'en', label: t('settings.lang.en'), icon: 'globe' },
-      { key: 'wx', label: t('settings.lang.wx'), icon: 'star' }
+      { key: 'wx', label: '天道仙文', icon: 'star' }
     ];
     var now = pref();
     if (window.UI && typeof window.UI.choose === 'function') {
@@ -412,8 +348,7 @@
         if (k === now) return;
         var got = setLang(k);
         if (window.UI && window.UI.toast) {
-          window.UI.toast(got === 'en' ? t('lang.switched.en')
-            : (got === 'wx' ? '已切换为天道仙文' : t('lang.switched')));
+          window.UI.toast(got === 'en' ? t('lang.switched.en') : t('lang.switched'));
         }
       });
       return;
@@ -422,17 +357,11 @@
     setLang(now === 'en' ? 'zh' : 'en');
   }
 
-  /* 语言在脚本加载时同步定档，不等 DOMContentLoaded。
-     启动途中再去纠正并 Router.reload()，会把首屏那批在途请求整份作废
-     （page-home.js 用 viewEpoch 判过期），界面就永远停在骨架屏。 */
-  try { cur = resolve(); } catch (e) {}
-
   window.I18n = {
     t: t,
     lang: lang,
     pref: pref,
     setLang: setLang,
-    refresh: refresh,
     applyDom: applyDom,
     chooseSheet: chooseSheet,
     packs: PACKS,
@@ -453,18 +382,21 @@
    * （wxInstall 内部有 wxObs 判空）。
    */
   (function bootWx() {
-    /* 语言已在上面同步定档，这里只补装仙文兜底层：
-       不再在启动途中调 refresh() —— 那会触发 Router.reload()，
-       把首屏在途请求按 viewEpoch 整份作废，界面就停在骨架屏。 */
     function arm() {
-      try { syncWx(lang()); } catch (e) {}
+      try {
+        if (lang() !== 'wx' || !window.I18N_WX_DOM) return;
+        var root = document.body || document.documentElement;
+        if (root) window.I18N_WX_DOM(root);
+        if (window.I18N_WX_INSTALL) window.I18N_WX_INSTALL();
+      } catch (e) {}
     }
+    /* 脚本在 body 末尾，但路由首屏渲染可能更晚：
+       先等 DOMContentLoaded，再补两拍兜住异步渲染。 */
     if (document.readyState === 'loading') {
       try { document.addEventListener('DOMContentLoaded', arm); } catch (e) {}
     } else {
       arm();
     }
-    /* 再补一拍，兜住异步插入的节点；syncWx 内部幂等，装多次无害。 */
-    try { setTimeout(arm, 400); } catch (e) {}
+    try { setTimeout(arm, 0); setTimeout(arm, 400); } catch (e) {}
   })();
 })();

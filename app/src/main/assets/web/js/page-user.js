@@ -1458,7 +1458,6 @@ var ed = UI.$('#edit', host);
     try { if (window.I18n && window.I18n.pref) p = window.I18n.pref() || ''; } catch (e) {}
     if (p === 'en') return L('settings.lang.en');
     if (p === 'zh') return L('settings.lang.zh');
-    if (p === 'wx') return L('settings.lang.wx');
     return L('settings.lang.auto');
   }
 
@@ -2071,7 +2070,6 @@ var ed = UI.$('#edit', host);
         '<div class="section"></div>' +
         '<div class="set-group">' +
         row('update', 'sync', window.I18n.t('检查更新'), 'v' + appVer()) +
-        row('netdiag', 'globe', window.I18n.t("网络诊断"), '') +
         row('errlog', 'bug', window.I18n.t("下载错误日志"), '') +
         '</div>' +
 
@@ -2190,85 +2188,6 @@ var ed = UI.$('#edit', host);
               UI.closeSheet();
               if (window.Updater) return window.Updater.manualCheck();
               return UI.toast(window.I18n.t('当前版本不支持在线检查'));
-            }
-
-            /* 网络诊断：主动 probing，把每次的原始证据摆给用户看。
-             * 只读，不改动任何仓库。结果同时写进错误日志，导出时带得走。 */
-            if (k === 'netdiag') {
-              UI.closeSheet();
-              var legend = window.I18n.t("代号：ok 正常 / bogus 状态码被改写但数据完好 / real404 资源确实不存在 / token 令牌失效 / ratelimit 接口限流 / server 服务器错误 / network 网络不通 / empty 响应体不是JSON / permission 权限不足 / other 其它");
-              UI.sheet({
-                title: window.I18n.t("网络诊断"),
-                body: '<div class="muted" style="font-size:12px;line-height:1.6;margin-bottom:8px">' +
-                        window.I18n.t("点「开始检测」会向 GitHub 发若干次测试请求，逐次记录原始状态码、响应头和响应体特征。检测只读，不会改动任何仓库。") +
-                      '</div>' +
-                      '<div class="muted" style="font-size:12px;line-height:1.6;margin-bottom:6px">' +
-                        window.I18n.t("加速入口（可选）：直连不通时，匿名浏览请求会改走这里。登录与写操作仍直连 GitHub，令牌不会经过该服务器。留空恢复直连。") +
-                      '</div>' +
-                      '<input id="ndAlt" type="url" autocomplete="off" spellcheck="false" ' +
-                        'placeholder="https://your-domain.example" ' +
-                        'style="width:100%;box-sizing:border-box;padding:8px;border-radius:8px;border:1px solid rgba(127,127,127,.35);background:transparent;color:inherit;font-size:12px;margin-bottom:8px" />' +
-                      '<div id="ndAltTip" class="muted" style="font-size:11px;line-height:1.5;margin-bottom:8px"></div>' +
-                      '<div id="ndBox" class="mono" style="font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;max-height:40vh;overflow:auto;padding:8px;border-radius:8px;background:rgba(127,127,127,.09)">' +
-                      legend + '</div>',
-                foot: '<button class="btn" data-nd-copy="1">' + window.I18n.t("复制结果") + '</button>' +
-                      '<button class="btn" data-nd-save="1">' + window.I18n.t("保存入口") + '</button>' +
-                      '<button class="btn primary" data-nd-go="1">' + window.I18n.t("开始检测") + '</button>',
-                onMount: function (body, close) {
-                  var box = UI.$('#ndBox') || UI.$('#ndBox', body);
-                  var text = '';
-                  var altIn = UI.$('#ndAlt') || UI.$('#ndAlt', body);
-                  var altTip = UI.$('#ndAltTip') || UI.$('#ndAltTip', body);
-                  try {
-                    if (altIn && window.API && window.API.getAltBases)
-                      altIn.value = window.API.getAltBases() || '';
-                  } catch (e) {}
-                  try {
-                    if (altTip && window.API && window.API.getAltBases)
-                      altTip.textContent = window.API.getAltBases()
-                        ? window.I18n.t("当前已启用备用入口")
-                        : window.I18n.t("当前为官方直连");
-                  } catch (e) {}
-                  var saveBtn = UI.$('[data-nd-save]');
-                  if (saveBtn) saveBtn.onclick = function () {
-                    if (!window.API || !window.API.setAltBases) {
-                      if (altTip) altTip.textContent = window.I18n.t("当前版本不支持");
-                      return;
-                    }
-                    var list = window.API.setAltBases(altIn ? altIn.value : '');
-                    if (altTip) altTip.textContent = list.length
-                      ? window.I18n.t("已保存，直连失败时会自动切换") + '（' + list.join('、') + '）'
-                      : window.I18n.t("已恢复官方直连");
-                    try { window.API.onNetworkBack(); } catch (e) {}
-                    UI.toast(list.length ? window.I18n.t("入口已保存") : window.I18n.t("已恢复官方直连"));
-                  };
-                  UI.$('[data-nd-go]').onclick = function () {
-                    if (!window.API || !window.API.diagProbe) {
-                      box.textContent = window.I18n.t("当前版本不支持");
-                      return;
-                    }
-                    box.textContent = window.I18n.t("检测中，请稍候…");
-                    window.API.diagProbe().then(function (recs) {
-                      var c = {};
-                      recs.forEach(function (r) { c[r.kind] = (c[r.kind] || 0) + 1; });
-                      var sm = [];
-                      Object.keys(c).sort().forEach(function (kk) { sm.push(kk + '=' + c[kk]); });
-                      text = '[total] ' + recs.length + '  ' + sm.join('  ') + '\n\n' +
-                             legend + '\n\n' +
-                             recs.map(function (r) { return window.API.diagLine(r); }).join('\n');
-                      box.textContent = text;
-                      try { window.API.logError(window.I18n.t("网络诊断"), text); } catch (e) {}
-                    }).catch(function (e) {
-                      box.textContent = window.I18n.t("检测失败") + '：' + String((e && e.message) || e);
-                    });
-                  };
-                  UI.$('[data-nd-copy]').onclick = function () {
-                    if (!text) return UI.toast(window.I18n.t("请先开始检测"));
-                    copyText(text);
-                  };
-                }
-              });
-              return;
             }
 
             // 下载错误日志：把今天出的问题（功能出错 / 脚本报错 / 闪退 / 关键操作）

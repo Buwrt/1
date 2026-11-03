@@ -1771,32 +1771,7 @@
     "旧": "Old",
     "由": "by",
     "第": "",
-    "译": "Translated",
-    /* ---- 网络诊断 ---- */
-    "网络诊断": "Network Diagnostics",
-    "代号：ok 正常 / bogus 状态码被改写但数据完好 / real404 资源确实不存在 / token 令牌失效 / ratelimit 接口限流 / server 服务器错误 / network 网络不通 / empty 响应体不是JSON / permission 权限不足 / other 其它": "Codes: ok = normal / bogus = status rewritten but data intact / real404 = resource genuinely missing / token = invalid credential / ratelimit = quota exhausted / server = 5xx / network = unreachable / empty = non-JSON body / permission = insufficient scope / other = misc",
-    "点「开始检测」会向 GitHub 发若干次测试请求，逐次记录原始状态码、响应头和响应体特征。检测只读，不会改动任何仓库。": "Tap Start to send several read-only probes to GitHub. Each attempt records the raw HTTP status, response headers and a body fingerprint. Nothing is modified.",
-    "复制结果": "Copy Result",
-    "开始检测": "Start",
-    "检测中，请稍候…": "Probing, please wait…",
-    "检测失败": "Probe failed",
-    "请先开始检测": "Run the probe first",
-    "连不上 GitHub": "Cannot reach GitHub",
-    "域名被 hosts 或 VPN 改了解析": "DNS hijacked by hosts/VPN",
-    "DNS 解析失败": "DNS lookup failed",
-    "连接被拒绝": "Connection refused",
-    "TLS 握手失败": "TLS handshake failed",
-    "连接被重置": "Connection reset",
-    "连接或读取超时": "Connection/read timeout",
-    "对方没回内容": "No response body",
-    "加速入口（可选）：直连不通时，匿名浏览请求会改走这里。登录与写操作仍直连 GitHub，令牌不会经过该服务器。留空恢复直连。": "Alternate endpoint (optional): when direct connection fails, anonymous read requests use it. Sign-in and writes still go straight to GitHub; your token never passes through this server. Leave empty for direct.",
-    "当前已启用备用入口": "Alternate endpoint is active",
-    "当前为官方直连": "Using official direct connection",
-    "当前版本不支持": "Not supported in this version",
-    "已保存，直连失败时会自动切换": "Saved; will switch automatically when direct fails",
-    "已恢复官方直连": "Reset to official direct connection",
-    "入口已保存": "Endpoint saved",
-    "保存入口": "Save endpoint"
+    "译": "Translated"
   };
   window.I18N_STRINGS = S;
 })();

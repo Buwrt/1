@@ -9,48 +9,6 @@
   // 允许通过 window.__GH_API_BASE__ 覆盖（仅用于本地调试/测试）
   var API_BASE = window.__GH_API_BASE__ || 'https://api.github.com';
   var ACCEPT = 'application/vnd.github+json';
-
-  /* ------------------------------------------------------------
-   * 备用入口（加速通道）
-   *
-   * 默认空 = 只连官方。绝不在包里预置任何第三方公共代理：带令牌的
-   * 请求一旦经过别人的服务器，令牌就相当于交出去了。只有用户在
-   * 「网络诊断 → 加速入口」里主动填写的域名才会被启用，而且它
-   * 只接管**匿名 GET**（仓库 / README / Release 这类浏览请求）；
-   * 登录和所有写操作永远直连 api.github.com。
-   * ------------------------------------------------------------ */
-  var ALT_KEY = 'gh_api_alt';
-  function readAlt() {
-    var raw = '';
-    try { raw = localStorage.getItem(ALT_KEY) || ''; } catch (e) {}
-    if (!raw) {
-      try {
-        if (window.NativeBridge && window.NativeBridge.getPref)
-          raw = window.NativeBridge.getPref(ALT_KEY) || '';
-      } catch (e) {}
-    }
-    return String(raw || '');
-  }
-  function writeAlt(v) {
-    v = String(v == null ? '' : v).trim();
-    try { localStorage.setItem(ALT_KEY, v); } catch (e) {}
-    try {
-      if (window.NativeBridge && window.NativeBridge.setPref)
-        window.NativeBridge.setPref(ALT_KEY, v);
-    } catch (e) {}
-  }
-  function altBases() {
-    var out = [];
-    readAlt().split(/[\s,;]+/).forEach(function (x) {
-      x = (x || '').trim().replace(/\/+$/, '');
-      if (!x) return;
-      if (x.indexOf('https://') !== 0) return;          // 只允许 TLS
-      if (!/^https:\/\/[a-z0-9.-]+(:\d+)?(\/[^\s]*)?$/i.test(x)) return;
-      if (x === API_BASE || out.indexOf(x) >= 0) return;
-      out.push(x);
-    });
-    return out.slice(0, 3);
-  }
   var X_VERSION = '2022-11-28';
 
   /* ---------- 原生桥 ---------- */
@@ -916,26 +874,12 @@
       if (this.settings) return this.settings;
       var s = {};
       for (var k in defaults) s[k] = defaults[k];
-      /* 原生 prefs 与 WebView localStorage 是两份独立存档。
-         强杀进程时 SharedPreferences.apply() 可能还未来得及落盘，
-         原生留在上一份旧 JSON（没有新加的 gh_lang 等字段）；
-         以前「原生非空就直接用、不再看 localStorage」，于是设置悄悄丢失。
-         现在两份都读、逐字段合并，后写的 localStorage 覆盖旧值。 */
-      var raws = [];
+      var raw = null;
       if (window.NativeBridge && typeof window.NativeBridge.getPref === 'function') {
-        try { var a = window.NativeBridge.getPref(SETTINGS_KEY); if (a) raws.push(a); } catch (e) {}
+        try { raw = window.NativeBridge.getPref(SETTINGS_KEY); } catch (e) {}
       }
-      try { var b = localStorage.getItem(SETTINGS_KEY); if (b) raws.push(b); } catch (e) {}
-      for (var i = 0; i < raws.length; i++) {
-        try {
-          var o = JSON.parse(raws[i]);
-          if (o && typeof o === 'object') {
-            for (var j in o) {
-              if (Object.prototype.hasOwnProperty.call(o, j)) s[j] = o[j];
-            }
-          }
-        } catch (e) {}
-      }
+      if (!raw) { try { raw = localStorage.getItem(SETTINGS_KEY); } catch (e) {} }
+      if (raw) { try { var o = JSON.parse(raw); for (var j in o) s[j] = o[j]; } catch (e) {} }
       this.settings = s;
       return s;
     },
@@ -1353,244 +1297,6 @@
     return e;
   }
 
-  /* ============================================================
-   * 网络诊断 —— 精确定位「假 404 / 假 403」
-   *
-   * 实测抓到过这样一次响应：
-   *   HTTP 403 + server: github.com + x-ratelimit-remaining: 4999
-   *   + body 是完整的 current_user_url 那份正常 JSON
-   * 状态码被链路上的某一环改写了，数据本身完好。旧逻辑只看
-   * status >= 400 就抛错，于是网络明明通着，用户却看到「404」。
-   *
-   * 这里做两件事：
-   *  1) 逐条留存**原始证据**：时间、完整 URL、状态码、响应体指纹、
-   *     关键响应头、网络类型、分类结论。故意**不去重** ——
-   *     「地方不一样 / 时间不一样 / 结果不一样」正是要靠这些差异定位，
-   *     按签名去重会把证据抹平。
-   *  2) 给出可复核的分类，供 settle() 决定「按成功用」还是「真抛错」。
-   *
-   * 安全：完整令牌绝不进日志；URL 去掉 query；body 只取前 160 字节
-   *       且先脱敏；响应头只挑白名单字段。
-   * ============================================================ */
-  var DIAG_MAX = 120;
-  var diagBuf = [];
-  try { diagBuf = Store.getJSON('netdiag', []) || []; } catch (e) { diagBuf = []; }
-
-  function diagTime() {
-    var d = new Date();
-    function p(n) { return n < 10 ? '0' + n : '' + n; }
-    return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
-  }
-
-  function diagNet() {
-    try {
-      var c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-      if (c) return String(c.type || c.effectiveType || 'unknown');
-    } catch (e) {}
-    return 'unknown';
-  }
-
-  function diagClean(v) {
-    var x = String(v == null ? '' : v);
-    /* 万一令牌被拼进来了，先抹掉，绝不落盘 */
-    x = x.replace(/gh[pousr]_[A-Za-z0-9]{20,}/g, 'gh*_***');
-    x = x.replace(/Bearer\s+[A-Za-z0-9._-]{10,}/gi, 'Bearer ***');
-    return x.replace(/[\r\n\t]+/g, ' ').slice(0, 160);
-  }
-
-  function diagSafeUrl(url) {
-    var u = String(url || '');
-    var q = u.indexOf('?');
-    if (q >= 0) u = u.slice(0, q) + '?<omitted>';
-    return diagClean(u);
-  }
-
-  /* 响应体是不是「完好的 GitHub 数据」而不是错误对象。
-   * 最硬的闸门：只要带 message 字段，就是 GitHub 的错误体，不算数据。
-   * 这样 {message:"Not Found"} / {message:"API rate limit exceeded"}
-   * 永远不会被误判成数据，也就不会被「自愈」吞掉。 */
-  function diagIsData(data) {
-    if (data === null || data === undefined) return false;
-    if (Array.isArray(data)) return data.length > 0;
-    if (typeof data !== 'object') return false;
-    if (Object.prototype.hasOwnProperty.call(data, 'message')) return false;
-    var keys = Object.keys(data);
-    if (!keys.length) return false;
-    var marks = ['url', 'login', 'id', 'full_name', 'items', 'current_user_url',
-                 'resources', 'rate', 'name', 'html_url', 'total_count', 'sha'];
-    for (var i = 0; i < marks.length; i++) {
-      if (Object.prototype.hasOwnProperty.call(data, marks[i])) return true;
-    }
-    return keys.length >= 3;
-  }
-
-  var DIAG_HEADERS = ['server', 'x-github-request-id', 'x-ratelimit-remaining',
-                      'x-ratelimit-limit', 'x-ratelimit-reset', 'content-type',
-                      'via', 'date', 'retry-after',
-                      /* 原生层请求失败时回调 status=0，并把异常文本放在这里。
-                       * 以前白名单没它，DNS / 连接 / TLS / 超时五种故障
-                       * 就全被压成一句「no HTTP status」。 */
-                      'error'];
-
-  function diagHeaders(h) {
-    var out = {};
-    h = h || {};
-    for (var i = 0; i < DIAG_HEADERS.length; i++) {
-      var k = DIAG_HEADERS[i];
-      var v = (h[k] !== undefined && h[k] !== null) ? h[k] : null;
-      if (v !== null && v !== '') out[k] = diagClean(v);
-    }
-    return out;
-  }
-
-  /**
-   * 分类。kind 的取值本身就是跨语言的代号，诊断页直接用。
-   *   ok        正常
-   *   bogus     状态码被改写但数据完好（可自愈）
-   *   real404   真的资源不存在
-   *   token     令牌作废
-   *   ratelimit 配额用尽
-   *   permission 权限不足
-   *   server    5xx
-   *   network   无响应 / 超时
-   *   empty     有状态码但响应体不是 JSON（常见：网关代答的 HTML 404 页）
-   *   other     其它
-   */
-  function diagClassify(res, data) {
-    res = res || {};
-    var s = Number(res.status) || 0;
-    var h = res.headers || {};
-    var msg = (data && typeof data === 'object' && !Array.isArray(data))
-      ? String(data.message || '') : '';
-    var remain = h['x-ratelimit-remaining'];
-    var rid = h['x-github-request-id'] || '';
-    var server = h['server'] || '';
-
-    if (!s) {
-      /* 原生层把 catch 到的异常原文放在 headers.error。读出来就能把
-       * 「连不上」拆成具体环节，不用再靠猜。 */
-      var ec = String(h.error || res.body || '');
-      var cause =
-        /解析到本机|127\.0\.0\.1|hosts/i.test(ec) ? 'dns-hosts' :
-        /UnknownHost|Name or service|getaddrinfo|域名|resolve|DNS/i.test(ec) ? 'dns' :
-        /SSL|TLS|handshake|certificate|证书/i.test(ec) ? 'tls' :
-        /timed out|Timeout|timeout|超时|SocketTimeout/i.test(ec) ? 'timeout' :
-        /Connection refused|ECONNREFUSED|refused|拒绝/i.test(ec) ? 'connect' :
-        /reset|RST|broken pipe|Connection reset/i.test(ec) ? 'reset' :
-        /空响应|Empty response/i.test(ec) ? 'empty-response' : 'unknown';
-      return { kind: 'network', bogus: false, cause: cause,
-               why: 'no HTTP status / ' + cause +
-                    (ec ? ' (' + String(ec).replace(/[\r\n\t]+/g, ' ').slice(0, 90) + ')' : '') };
-    }
-    if (s === 401) return { kind: 'token', bogus: false, why: msg || 'credential rejected', rid: rid };
-    if (s === 404 && /not found/i.test(msg)) return { kind: 'real404', bogus: false, why: msg, rid: rid };
-    if (s === 403 && String(remain) === '0') return { kind: 'ratelimit', bogus: false, why: 'remaining=0', rid: rid };
-    if (s >= 500) return { kind: 'server', bogus: false, why: 'HTTP ' + s + (msg ? ' / ' + msg : ''), rid: rid };
-
-    var isData = diagIsData(data);
-    if (s >= 400 && isData) {
-      return { kind: 'bogus', bogus: true,
-               why: 'HTTP ' + s + ' but body is valid GitHub data (no message field)',
-               rid: rid, server: server };
-    }
-    if (s >= 400 && data === null) {
-      return { kind: 'empty', bogus: false,
-               why: 'HTTP ' + s + ' with non-JSON body (gateway page?)', rid: rid, server: server };
-    }
-    if (s >= 400 && msg) {
-      return { kind: (s === 403 ? 'permission' : 'other'), bogus: false, why: msg, rid: rid };
-    }
-    if (s < 400) return { kind: 'ok', bogus: false, why: 'ok' };
-    return { kind: 'other', bogus: false, why: 'HTTP ' + s, rid: rid };
-  }
-
-  function diagRecord(rec) {
-    rec.t = rec.t || diagTime();
-    rec.net = rec.net || diagNet();
-    diagBuf.push(rec);
-    if (diagBuf.length > DIAG_MAX) diagBuf.splice(0, diagBuf.length - DIAG_MAX);
-    try { Store.setJSON('netdiag', diagBuf.slice(-40)); } catch (e) {}
-    return rec;
-  }
-
-  /** 一条证据 → 可读的一行，错误日志 / 诊断页 / 分享共用 */
-  function diagLine(rec) {
-    var hs = rec.headers || {}, bits = [];
-    for (var k in hs) if (Object.prototype.hasOwnProperty.call(hs, k)) bits.push(k + '=' + hs[k]);
-    return '[' + (rec.t || '') + '] ' + (rec.outcome || '') + ' ' + (rec.kind || '') +
-      ' | ' + (rec.method || 'GET') + ' ' + (rec.url || '') +
-      ' | HTTP ' + (rec.status === undefined ? '?' : rec.status) +
-      ' | net=' + (rec.net || '?') +
-      (rec.ms !== undefined ? ' | ' + rec.ms + 'ms' : '') +
-      (rec.tryNo !== undefined ? ' | try=' + rec.tryNo : '') +
-      (rec.base ? ' | base=' + rec.base : '') +
-      (rec.cause ? ' | cause=' + rec.cause : '') +
-      ' | ' + (rec.why || '') +
-      (bits.length ? ' | ' + bits.join(' ') : '') +
-      (rec.body ? ' | body=' + rec.body : '');
-  }
-
-  /**
-   * 统一收口两个网络分支的响应判定。
-   * 返回 {data,status,link,headers} 或抛出带原始证据的 error。
-   */
-  function settle(res, data, method, url, ctx) {
-    ctx = ctx || {};
-    var s = Number(res.status) || 0;
-    var h = res.headers || {};
-    var d = diagClassify(res, data);
-    var suspicious = (s >= 400) || !s ||
-                     (data === null && s !== 204 && s !== 205 && s !== 304);
-
-    if (suspicious) {
-      var rec = diagRecord({
-        method: method, url: diagSafeUrl(url), status: s,
-        kind: d.kind, why: d.why, cause: d.cause, headers: diagHeaders(h),
-        tryNo: ctx.tryNo, base: ctx.base, ms: ctx.ms,
-        body: diagClean(res.body), outcome: d.bogus ? 'auto-fixed' : 'failed'
-      });
-      /* 同时写一条进「错误日志」，用户从设置里导出时带得走 */
-      try {
-        if (window.API && typeof window.API.logError === 'function') {
-          window.API.logError(window.I18n.t('网络诊断'), diagLine(rec));
-        }
-      } catch (e) {}
-    }
-
-    /* status=0 是「根本没拿到 HTTP 响应」，不是空响应体。
-     * 以前会掉进下面的 emptyBodyError，报成「响应内容读取失败」，
-     * 用户看到的反而像内容坏了。这里按网络故障明确抛出，重试层
-     * 才认得出来该不该再试一次。 */
-    if (!s) {
-      var e0 = new Error(window.I18n.t('连不上 GitHub'));
-      e0.status = 0;
-      e0.diag = d;
-      e0.networkCause = d.cause;
-      e0.rawRes = { status: 0, body: String(res.body || ''), headers: h };
-      throw e0;
-    }
-    if (s >= 400) {
-      if (d.bogus) {
-        /* 状态码被改写，但数据完好 —— 按成功用，并留一条自愈记录。
-           对外给的 status 归正为 200，免得调用方按 403 走进错误分支。 */
-        return {
-          data: data, status: 200,
-          link: parseLink(h.link || h.Link), headers: h, _diagFixed: true
-        };
-      }
-      var e = makeError(res, data);
-      e.diag = d;
-      e.rawRes = { status: s, body: String(res.body || '').slice(0, 4000), headers: h };
-      throw e;
-    }
-    if (data === null && s !== 204 && s !== 205 && s !== 304) {
-      var e2 = emptyBodyError(res);
-      e2.rawRes = { status: s, body: String(res.body || '').slice(0, 4000), headers: h };
-      throw e2;
-    }
-    return { data: data, status: s, link: parseLink(h.link || h.Link), headers: h };
-  }
-
   var cache = Object.create(null);
   var inflight = Object.create(null);
 
@@ -1641,98 +1347,35 @@
     }
     if (isGet && inflight[ckey] && opts.dedupe !== false) return inflight[ckey];
 
-    /* ============================================================
-     * 一次尝试 → 失败退避重试 → 必要时切备用入口
-     *
-     * 丢一两个包、某个出口 IP 被抖一下，在蜂窝网络里是常态。旧逻辑
-     * 只打一次就放弃，于是「链路抖 20 秒」被表现成「软件整个用不了」。
-     *
-     * 三条硬规矩：
-     *  1) **只有 GET 自动重试**。POST / PATCH / PUT / DELETE 重发会让
-     *     服务端执行两次（建两条 Issue、传两份附件），绝不自动重试。
-     *  2) 401 / 真 404 / 权限不足不重试 —— 服务器已经明确答复了，
-     *     再试一万次一样，只会白烧配额。
-     *  3) 备用入口只接匿名 GET，去掉 Authorization 头。令牌永不经过
-     *     用户自己填的服务器之外的任何第三方。
-     * ============================================================ */
-    var bases = [API_BASE].concat(altBases());
-    var maxTry = (isGet && opts.retry !== false) ? 3 : (opts.retry ? 2 : 1);
-
-    function once(base, tryNo) {
-      var u = (url.indexOf(API_BASE) === 0)
-        ? base + url.slice(API_BASE.length) : url;
-      var hd = headers;
-      if (base !== API_BASE) {
-        hd = {};
-        for (var hk in headers) {
-          if (Object.prototype.hasOwnProperty.call(headers, hk) &&
-              hk.toLowerCase() !== 'authorization') hd[hk] = headers[hk];
-        }
-      }
-      var t0 = Date.now();
-      var raw;
-      if (Native.has()) {
-        raw = Native.http(method, u, body, hd);
-      } else {
-        var init = { method: method, headers: hd, mode: 'cors', credentials: 'omit' };
-        if (body) init.body = body;
-        raw = fetch(u, init).then(function (r) {
-          return r.text().then(function (txt) {
-            return { status: r.status, body: txt, headers: {
-              link: r.headers.get('Link'),
-              'x-ratelimit-remaining': r.headers.get('X-RateLimit-Remaining'),
-              server: r.headers.get('Server')
-            } };
-          });
-        });
-      }
-      return raw.then(function (res) {
+    var p;
+    if (Native.has()) {
+      p = Native.http(method, url, body, headers).then(function (res) {
         var data = parseJSON(res);
-        // 204/205/304 本来就无体；其余情况解不出内容按故障处理。
-        // （205 是「标已读」PATCH 的成功码，漏了会误抛「响应内容读取失败」。）
-        var out = settle(res, data, method, u,
-          { tryNo: tryNo, base: base, ms: Date.now() - t0 });
-        if (isGet && opts.cache && base === API_BASE)
-          cache[ckey] = { t: Date.now(), v: out };
+        if (res.status >= 400) throw makeError(res, data);
+        // 204/205/304 本来就无体；其余情况解不出内容按故障处理，别把 null 往下传
+        // （205 Reset Content：GitHub 单条「标已读」PATCH /notifications/threads/{id}
+        //  的成功返回码；「标 Done」的 DELETE 是 204。205 不进白名单的话，
+        //  标已读会被误抛「响应内容读取失败」——在静默 catch 下表现为「打开了还是未读」。）
+        if (data === null && res.status !== 204 && res.status !== 205 && res.status !== 304) throw emptyBodyError(res);
+        var out = { data: data, status: res.status, link: parseLink(res.headers.link || res.headers.Link), headers: res.headers };
+        if (isGet && opts.cache) cache[ckey] = { t: Date.now(), v: out };
         return out;
       });
-    }
-
-    function retryable(err) {
-      if (!err) return false;
-      var s = Number(err.status) || 0;
-      if (err.unauthorized || err.notFound) return false;
-      if (err.diag) {
-        var k = err.diag.kind;
-        if (k === 'token' || k === 'real404' || k === 'permission') return false;
-      }
-      if (s === 401 || s === 403 || s === 404) return false;
-      if (s > 400 && s < 500 && s !== 429) return false;
-      return true;   // 0 / network / empty / 5xx / 429
-    }
-
-    function run(tryNo) {
-      /* 第 0、1 次都走官方（换一条连接重试）；第 2 次才切备用入口。
-         没有备用入口时三次都是官方，不会偷偷连任何陌生域名。 */
-      var base = (tryNo >= 2 && bases.length > 1) ? bases[1] : bases[0];
-      return once(base, tryNo).catch(function (err) {
-        if (tryNo + 1 >= maxTry || !retryable(err)) throw err;
-        var wait = (tryNo === 0 ? 650 : 1500) + Math.floor(Math.random() * 300);
-        try {
-          diagRecord({
-            method: method, url: diagSafeUrl(url), status: Number(err.status) || 0,
-            kind: (err.diag && err.diag.kind) || 'network',
-            cause: (err.diag && err.diag.cause) || '',
-            why: 'retry in ' + wait + 'ms (' + String(err.message || '').slice(0, 80) + ')',
-            tryNo: tryNo, base: base, outcome: 'retry'
-          });
-        } catch (e) {}
-        return new Promise(function (r) { setTimeout(r, wait); })
-          .then(function () { return run(tryNo + 1); });
+    } else {
+      var init = { method: method, headers: headers, mode: 'cors', credentials: 'omit' };
+      if (body) init.body = body;
+      p = fetch(url, init).then(function (r) {
+        return r.text().then(function (txt) {
+          var res = { status: r.status, body: txt, headers: { link: r.headers.get('Link'), 'x-ratelimit-remaining': r.headers.get('X-RateLimit-Remaining') } };
+          var data = parseJSON(res);
+          if (r.status >= 400) throw makeError(res, data);
+          if (data === null && r.status !== 204 && r.status !== 205 && r.status !== 304) throw emptyBodyError(res);
+          var out = { data: data, status: r.status, link: parseLink(res.headers.link), headers: res.headers };
+          if (isGet && opts.cache) cache[ckey] = { t: Date.now(), v: out };
+          return out;
+        });
       });
     }
-
-    var p = run(0);
     /*
       请求失败统一采集。
 
@@ -1814,149 +1457,22 @@
       what = window.I18n.t('服务器端出错（') + status + '）';
       why = window.I18n.t('GitHub 那边的问题，稍后重试');
     } else if (status === 0 || !status) {
-      var cause = (err && err.diag && err.diag.cause) || '';
-      var cmap = {
-        'dns-hosts': window.I18n.t('域名被 hosts 或 VPN 改了解析'),
-        'dns': window.I18n.t('DNS 解析失败'),
-        'connect': window.I18n.t('连接被拒绝'),
-        'tls': window.I18n.t('TLS 握手失败'),
-        'reset': window.I18n.t('连接被重置'),
-        'timeout': window.I18n.t('连接或读取超时'),
-        'empty-response': window.I18n.t('对方没回内容')
-      };
-      what = window.I18n.t('连不上 GitHub') +
-             (cmap[cause] ? '（' + cmap[cause] + '）' : '');
-      var nativeErr = '';
-      try {
-        nativeErr = String((err && err.rawRes && err.rawRes.headers &&
-                            err.rawRes.headers.error) || '').slice(0, 120);
-      } catch (e) {}
-      why = nativeErr || String((err && err.message) || '').slice(0, 120);
+      what = window.I18n.t('网络连不上');
+      why = String((err && err.message) || window.I18n.t('请求没能发出去或没等到回应')).slice(0, 120);
     } else {
       what = window.I18n.t('请求失败（') + status + '）';
       why = String((err && err.message) || '').slice(0, 120);
     }
     try {
       if (window.API && typeof window.API.logError === 'function') {
-        var ev = '';
-        if (err && err.rawRes) {
-          var hs = diagHeaders(err.rawRes.headers), bits = [];
-          for (var k in hs) if (Object.prototype.hasOwnProperty.call(hs, k)) bits.push(k + '=' + hs[k]);
-          ev = ' | HTTP ' + (err.status || 0) +
-               ' | kind=' + ((err.diag && err.diag.kind) || '?') +
-               (bits.length ? ' | ' + bits.join(' ') : '') +
-               ' | body=' + diagClean(err.rawRes.body);
-        }
         window.API.logError(window.I18n.t('请求：') + method + ' ' + String(path || '').split('?')[0],
-          what + (why ? '。' + why : '') + ev);
+          what + (why ? '。' + why : ''));
       }
     } catch (e) { }
   }
 
   var API = {
     base: API_BASE,
-    /* 转发到原生日志桥。
-     * 原来 logError/logNote 定义在 Native 上，可 reportReqFail 等调用方
-     * 写的却是 window.API.logError —— 方法不存在，错误日志一直是空的。
-     * 在这里补一层转发，顺带让诊断证据能真正写进「下载错误日志」。 */
-    logError: function (w, y) { return Native.logError(w, y); },
-    logNote: function (w) { return Native.logNote(w); },
-
-    /* 加速入口：留空即恢复官方直连。只影响匿名 GET。 */
-    getAltBases: readAlt,
-    setAltBases: function (v) {
-      writeAlt(v);
-      return altBases();
-    },
-
-    /* 换网（WiFi ↔ 蜂窝、飞行模式开关）后：把上一轮失败留下的
-     * 缓存 / 去重 / 日志计数全清掉，让新链路从干净状态重判。 */
-    onNetworkBack: function () {
-      cache = Object.create(null);
-      inflight = Object.create(null);
-      _reqLogged = Object.create(null);
-      try {
-        diagRecord({ outcome: 'network-back', method: 'GET', url: '-',
-                     status: 0, kind: 'network', why: 'connectivity restored, cache cleared' });
-      } catch (e) {}
-      return true;
-    },
-
-    /* ---------- 网络诊断（对外） ---------- */
-    diagLog: function () { return diagBuf.slice(); },
-    diagClear: function () { diagBuf.length = 0; try { Store.setJSON('netdiag', []); } catch (e) {} },
-    diagLine: diagLine,
-    diagClassify: diagClassify,
-    diagText: function () { return diagBuf.map(diagLine).join('\n'); },
-
-    /**
-     * 主动探测：直接打原生通道，**绕过 settle() 的自愈** ——
-     * 诊断必须看原始状态码，看自愈后的结果就分不出真假了。
-     * 每个地址连打 times 次，逐次留证，用来复现「时间不一样结果不一样」。
-     */
-    diagProbe: function (paths, times) {
-      paths = paths || ['/', '/rate_limit', '/repos/Buwrt/githup'];
-      times = times || 3;
-      var chain = Promise.resolve(), out = [];
-
-      paths.forEach(function (p) {
-        for (var i = 0; i < times; i++) {
-          (function (p, i) {
-            chain = chain.then(function () {
-              /* 探针之间留一拍。连续失败时原生线程池/连接池容易把
-               * 后几次立刻判死（日志里出现过 17~37ms 的「失败」，
-               * 那不是超时，是没真发出去）。留间隔才能让 9 次真是
-               * 9 次，而不是一次失败连带八次短路。 */
-              return new Promise(function (r) { setTimeout(r, (p === paths[0] && i === 0) ? 0 : 220); });
-            }).then(function () {
-              var url = API_BASE + p;
-              var hd = { 'Accept': ACCEPT, 'X-GitHub-Api-Version': X_VERSION,
-                         'User-Agent': 'githup/1.0', 'Cache-Control': 'no-cache',
-                         'X-Hub-Probe': String(Date.now()) + '-' + i };
-              if (Session.token) hd['Authorization'] = 'Bearer ' + Session.token;
-              var t0 = Date.now();
-
-              function done(res) {
-                var data = parseJSON(res);
-                var d = diagClassify(res, data);
-                var rec = diagRecord({
-                  method: 'GET', url: diagSafeUrl(url), status: Number(res.status) || 0,
-                  kind: d.kind, why: d.why, cause: d.cause,
-                  headers: diagHeaders(res.headers),
-                  body: diagClean(res.body), ms: Date.now() - t0,
-                  tryNo: i, outcome: 'probe'
-                });
-                out.push(rec);
-                return rec;
-              }
-              function fail(err) {
-                var rec = diagRecord({
-                  method: 'GET', url: diagSafeUrl(url), status: 0,
-                  kind: 'network', why: String((err && err.message) || 'request failed'),
-                  headers: {}, body: '', ms: Date.now() - t0, outcome: 'probe'
-                });
-                out.push(rec);
-                return rec;
-              }
-
-              if (Native.has()) return Native.http('GET', url, null, hd).then(done, fail);
-              return fetch(url, { method: 'GET', headers: hd, credentials: 'omit' }).then(function (r) {
-                return r.text().then(function (txt) {
-                  return done({ status: r.status, body: txt, headers: {
-                    'server': r.headers.get('Server'),
-                    'x-github-request-id': r.headers.get('X-GitHub-Request-Id'),
-                    'x-ratelimit-remaining': r.headers.get('X-RateLimit-Remaining'),
-                    'content-type': r.headers.get('Content-Type')
-                  } });
-                });
-              }, fail);
-            });
-          })(p, i);
-        }
-      });
-      return chain.then(function () { return out; });
-    },
-
     get: function (p, params, opts) { return req('GET', p, Object.assign({ params: params }, opts)); },
     post: function (p, body, opts) { return req('POST', p, Object.assign({ body: body }, opts)); },
     patch: function (p, body, opts) { return req('PATCH', p, Object.assign({ body: body }, opts)); },
