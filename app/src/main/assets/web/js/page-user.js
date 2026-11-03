@@ -1458,6 +1458,7 @@ var ed = UI.$('#edit', host);
     try { if (window.I18n && window.I18n.pref) p = window.I18n.pref() || ''; } catch (e) {}
     if (p === 'en') return L('settings.lang.en');
     if (p === 'zh') return L('settings.lang.zh');
+    if (p === 'wx') return L('settings.lang.wx');
     return L('settings.lang.auto');
   }
 
