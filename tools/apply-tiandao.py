@@ -144,8 +144,52 @@ def main():
             "    } catch (e) {}",
             'i18n.js setLang 装/卸 DOM 层')
 
+    # ⑥ 启动时补装仙文兜底层 —— 这是「还是有些没变」的根因
+    #
+    # setLang() 只在用户点语言选择时才跑，而 DOM 兜底层（I18N_WX_INSTALL）
+    # 是在 setLang() 内部装的。于是：
+    #   选完天道仙文 —— 当次有效；
+    #   App 一重启 —— lang() 解析出来仍是 'wx'，却没人调过 setLang，
+    #                 兜底层根本没装，所有不走 t() 的硬编码中文
+    #                 （page-*.js 模板字符串里那一大批）全变回中文。
+    # 这里在启动时自检一次：当前是 wx 就补装。装多次无害（wxInstall 判空）。
+    s = sub(s,
+            "  window.t = t;",
+            "  window.t = t;\n"
+            "\n"
+            "  /* 启动时补装天道仙文兜底层。\n"
+            "   *\n"
+            "   * setLang() 只在用户点语言选择时才跑，而它内部才会装\n"
+            "   * I18N_WX_DOM / I18N_WX_INSTALL。于是选完仙文当次有效，\n"
+            "   * App 一重启 —— lang() 仍是 'wx'，却没人调过 setLang，\n"
+            "   * 兜底层根本没装，不走 t() 的硬编码中文（page-*.js 模板\n"
+            "   * 字符串里那一大批）就全变回中文了。\n"
+            "   *\n"
+            "   * 这里在启动时自检一次：当前是 wx 就补装。装多次无害\n"
+            "   * （wxInstall 内部有 wxObs 判空）。\n"
+            "   */\n"
+            "  (function bootWx() {\n"
+            "    function arm() {\n"
+            "      try {\n"
+            "        if (lang() !== 'wx' || !window.I18N_WX_DOM) return;\n"
+            "        var root = document.body || document.documentElement;\n"
+            "        if (root) window.I18N_WX_DOM(root);\n"
+            "        if (window.I18N_WX_INSTALL) window.I18N_WX_INSTALL();\n"
+            "      } catch (e) {}\n"
+            "    }\n"
+            "    /* 脚本在 body 末尾，但路由首屏渲染可能更晚：\n"
+            "       先等 DOMContentLoaded，再补两拍兜住异步渲染。 */\n"
+            "    if (document.readyState === 'loading') {\n"
+            "      try { document.addEventListener('DOMContentLoaded', arm); } catch (e) {}\n"
+            "    } else {\n"
+            "      arm();\n"
+            "    }\n"
+            "    try { setTimeout(arm, 0); setTimeout(arm, 400); } catch (e) {}\n"
+            "  })();",
+            'i18n.js 启动时补装仙文兜底层')
+
     write(p, s)
-    print('[3/4] i18n.js 四处改动完成（原文件已备份为 i18n.js.bak-tiandao）')
+    print('[3/4] i18n.js 五处改动完成（原文件已备份为 i18n.js.bak-tiandao）')
 
     # ---- 4. 提醒后处理 ----
     print('[4/4] 待办：')

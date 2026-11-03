@@ -369,4 +369,34 @@
   };
   /* 快捷方式：业务代码里写 t('key') 比 I18n.t 短，也更像别的项目的习惯 */
   window.t = t;
+
+  /* 启动时补装天道仙文兜底层。
+   *
+   * setLang() 只在用户点语言选择时才跑，而它内部才会装
+   * I18N_WX_DOM / I18N_WX_INSTALL。于是选完仙文当次有效，
+   * App 一重启 —— lang() 仍是 'wx'，却没人调过 setLang，
+   * 兜底层根本没装，不走 t() 的硬编码中文（page-*.js 模板
+   * 字符串里那一大批）就全变回中文了。
+   *
+   * 这里在启动时自检一次：当前是 wx 就补装。装多次无害
+   * （wxInstall 内部有 wxObs 判空）。
+   */
+  (function bootWx() {
+    function arm() {
+      try {
+        if (lang() !== 'wx' || !window.I18N_WX_DOM) return;
+        var root = document.body || document.documentElement;
+        if (root) window.I18N_WX_DOM(root);
+        if (window.I18N_WX_INSTALL) window.I18N_WX_INSTALL();
+      } catch (e) {}
+    }
+    /* 脚本在 body 末尾，但路由首屏渲染可能更晚：
+       先等 DOMContentLoaded，再补两拍兜住异步渲染。 */
+    if (document.readyState === 'loading') {
+      try { document.addEventListener('DOMContentLoaded', arm); } catch (e) {}
+    } else {
+      arm();
+    }
+    try { setTimeout(arm, 0); setTimeout(arm, 400); } catch (e) {}
+  })();
 })();
