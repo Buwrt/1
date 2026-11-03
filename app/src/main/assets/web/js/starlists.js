@@ -440,7 +440,7 @@
       title: isNew ? window.I18n.t("新建列表") : window.I18n.t("重命名列表"),
       body: '<div class="search-bar" style="margin-top:2px"><div class="search-input">' +
         window.icon('pencil', 15) +
-        '<input id="sl-name" placeholder=window.I18n.t("列表名称，比如：工具 / 追更 / 以后再看") maxlength="40"></div></div>' +
+        '<input id="sl-name" placeholder="' + window.I18n.t("列表名称，比如：工具 / 追更 / 以后再看") + '" maxlength="40"></div></div>' +
         (isNew ? '' : '<p class="muted tiny" style="text-align:center;margin:6px 0 0">重命名不影响列表里已加入的仓库</p>'),
       foot: '<button class="btn primary block" id="sl-ok">' + (isNew ? window.I18n.t('创建') : window.I18n.t('保存')) + '</button>',
       onMount: function (body, close) {
