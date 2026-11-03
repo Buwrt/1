@@ -367,7 +367,7 @@
       '<div class="totp-form">' +
         '<label class="totp-field"><span class="lb">密钥 / otpauth 链接</span>' +
           '<textarea id="tp-secret" rows="3" spellcheck="false" ' +
-            'placeholder=window.I18n.t("粘贴 Base32 密钥，或 otpauth:// 链接&#10;支持 Google Authenticator 导出链接")></textarea></label>' +
+            'placeholder="' + window.I18n.t("粘贴 Base32 密钥，或 otpauth:// 链接&#10;支持 Google Authenticator 导出链接") + '"></textarea></label>' +
         '<div class="totp-hint" id="tp-hint">密钥就是网站上那一串字母数字，通常在二维码下面。</div>' +
         '<button class="btn block" id="tp-live" style="margin-top:8px">' +
           '<span class="tp-scan-ico">⛶</span> 扫一扫（对准二维码）</button>' +
@@ -378,9 +378,9 @@
         '<button class="btn block" id="tp-help2" style="margin-top:8px">怎么找到密钥？</button>' +
         '<div class="totp-row2">' +
           '<label class="totp-field"><span class="lb">发行方</span>' +
-            '<input id="tp-issuer" type="text" placeholder=window.I18n.t("如 GitHub") value="' + U.esc(a.issuer) + '"></label>' +
+            '<input id="tp-issuer" type="text" placeholder="' + window.I18n.t("如 GitHub") + '" value="' + U.esc(a.issuer) + '"></label>' +
           '<label class="totp-field"><span class="lb">账户</span>' +
-            '<input id="tp-name" type="text" placeholder=window.I18n.t("如 alice@mail") value="' + U.esc(a.name) + '"></label>' +
+            '<input id="tp-name" type="text" placeholder="' + window.I18n.t("如 alice@mail") + '" value="' + U.esc(a.name) + '"></label>' +
         '</div>' +
         '<div class="totp-row2">' +
           '<label class="totp-field"><span class="lb">位数</span>' +
