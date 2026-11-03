@@ -94,13 +94,19 @@ def main():
             "    }",
             "    if ((v === undefined || v === null || v === '') && lang() !== 'zh') {\n"
             "      try {\n"
-            "        /* 中文模式下这张表根本不参与；非中文时按当前语言取对应的表。\n"
-            "           天道仙文走 I18N_STRINGS_WX。 */\n"
-            "        var flat = lang() === 'wx' ? window.I18N_STRINGS_WX : window.I18N_STRINGS;\n"
-            "        if (flat && flat[key]) v = flat[key];\n"
+            "        /* 中文模式下这张表不参与；英文走原来的 I18N_STRINGS。\n"
+            "           天道仙文（wx）走 I18N_WX_T：它内部先查整句表，\n"
+            "           未命中再按术语表做子串替换 —— 长句靠这一层才翻得动。\n"
+            "           还是没命中则原样返回 key（即中文），由下面的回落接住。 */\n"
+            "        if (lang() === 'wx' && window.I18N_WX_T) {\n"
+            "          v = window.I18N_WX_T(key);\n"
+            "        } else {\n"
+            "          var flat = window.I18N_STRINGS;\n"
+            "          if (flat && flat[key]) v = flat[key];\n"
+            "        }\n"
             "      } catch (e) {}\n"
             "    }",
-            'i18n.js 扁平表按语言取')
+            'i18n.js 按语言取词（wx 走三层查词）')
 
     s = sub(s,
             "      { key: 'en', label: t('settings.lang.en'), icon: 'globe' }\n"

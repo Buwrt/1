@@ -9,12 +9,12 @@
 #   1. app/build.gradle —— 构建时会读本文件比对，对不上直接构建失败
 #   2. build-apk.sh / release.sh —— 传别的版本号会被拒绝
 #
-# 本库当前锁定：1.2.19（versionCode 1002019）
+# 本库当前锁定：1.2.20（versionCode 1002020）
 #
 # 确需发新版（用户明确要求改版本号时）才动这里，顺序是：
 #   1. 改下面的 version / versionCode
 #   2. 改 app/build.gradle 里对应的 versionName / versionCode
 #   3. 重跑 tools/gen-guard.py（防护链常量要跟着变，否则启动被拦）
 #   4. 更新 version.json
-version=1.2.19
-versionCode=1002019
+version=1.2.20
+versionCode=1002020
