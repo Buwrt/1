@@ -318,6 +318,17 @@
     /* 页面里那些由 JS 生成的文案（设置项、我的页列表）不在 [data-i18n] 上，
      * 只能整页重画。Router.reload() 就是重跑当前路由的 render。 */
     try { if (window.Router && window.Router.reload) window.Router.reload(); } catch (e) {}
+    /* 天道仙文的兜底层：大量中文直接写在 HTML 模板字符串里，不走 t()。
+       切到 wx 时对整个文档的文本节点再仙化一遍，并用 MutationObserver
+       接住之后动态插入的内容；切回别的语言就卸掉，避免残留。 */
+    try {
+      if (cur === 'wx' && window.I18N_WX_DOM) {
+        window.I18N_WX_DOM(document.body);
+        if (window.I18N_WX_INSTALL) window.I18N_WX_INSTALL();
+      } else if (window.I18N_WX_UNINSTALL) {
+        window.I18N_WX_UNINSTALL();
+      }
+    } catch (e) {}
     return cur;
   }
 

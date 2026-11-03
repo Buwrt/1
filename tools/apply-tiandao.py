@@ -121,6 +121,29 @@ def main():
             "    codes: ['zh', 'en', 'wx']",
             'i18n.js 导出语言码')
 
+    # ⑤ setLang：wx 模式下装 DOM 层，切走时卸掉
+    s = sub(s,
+            "    applyDom(document);\n"
+            "    /* 页面里那些由 JS 生成的文案（设置项、我的页列表）不在 [data-i18n] 上，\n"
+            "     * 只能整页重画。Router.reload() 就是重跑当前路由的 render。 */\n"
+            "    try { if (window.Router && window.Router.reload) window.Router.reload(); } catch (e) {}",
+            "    applyDom(document);\n"
+            "    /* 页面里那些由 JS 生成的文案（设置项、我的页列表）不在 [data-i18n] 上，\n"
+            "     * 只能整页重画。Router.reload() 就是重跑当前路由的 render。 */\n"
+            "    try { if (window.Router && window.Router.reload) window.Router.reload(); } catch (e) {}\n"
+            "    /* 天道仙文的兜底层：大量中文直接写在 HTML 模板字符串里，不走 t()。\n"
+            "       切到 wx 时对整个文档的文本节点再仙化一遍，并用 MutationObserver\n"
+            "       接住之后动态插入的内容；切回别的语言就卸掉，避免残留。 */\n"
+            "    try {\n"
+            "      if (cur === 'wx' && window.I18N_WX_DOM) {\n"
+            "        window.I18N_WX_DOM(document.body);\n"
+            "        if (window.I18N_WX_INSTALL) window.I18N_WX_INSTALL();\n"
+            "      } else if (window.I18N_WX_UNINSTALL) {\n"
+            "        window.I18N_WX_UNINSTALL();\n"
+            "      }\n"
+            "    } catch (e) {}",
+            'i18n.js setLang 装/卸 DOM 层')
+
     write(p, s)
     print('[3/4] i18n.js 四处改动完成（原文件已备份为 i18n.js.bak-tiandao）')
 
