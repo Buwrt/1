@@ -2202,13 +2202,46 @@ var ed = UI.$('#edit', host);
                 body: '<div class="muted" style="font-size:12px;line-height:1.6;margin-bottom:8px">' +
                         window.I18n.t("点「开始检测」会向 GitHub 发若干次测试请求，逐次记录原始状态码、响应头和响应体特征。检测只读，不会改动任何仓库。") +
                       '</div>' +
-                      '<div id="ndBox" class="mono" style="font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;max-height:46vh;overflow:auto;padding:8px;border-radius:8px;background:rgba(127,127,127,.09)">' +
+                      '<div class="muted" style="font-size:12px;line-height:1.6;margin-bottom:6px">' +
+                        window.I18n.t("加速入口（可选）：直连不通时，匿名浏览请求会改走这里。登录与写操作仍直连 GitHub，令牌不会经过该服务器。留空恢复直连。") +
+                      '</div>' +
+                      '<input id="ndAlt" type="url" autocomplete="off" spellcheck="false" ' +
+                        'placeholder="https://your-domain.example" ' +
+                        'style="width:100%;box-sizing:border-box;padding:8px;border-radius:8px;border:1px solid rgba(127,127,127,.35);background:transparent;color:inherit;font-size:12px;margin-bottom:8px" />' +
+                      '<div id="ndAltTip" class="muted" style="font-size:11px;line-height:1.5;margin-bottom:8px"></div>' +
+                      '<div id="ndBox" class="mono" style="font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;max-height:40vh;overflow:auto;padding:8px;border-radius:8px;background:rgba(127,127,127,.09)">' +
                       legend + '</div>',
                 foot: '<button class="btn" data-nd-copy="1">' + window.I18n.t("复制结果") + '</button>' +
+                      '<button class="btn" data-nd-save="1">' + window.I18n.t("保存入口") + '</button>' +
                       '<button class="btn primary" data-nd-go="1">' + window.I18n.t("开始检测") + '</button>',
                 onMount: function (body, close) {
                   var box = UI.$('#ndBox') || UI.$('#ndBox', body);
                   var text = '';
+                  var altIn = UI.$('#ndAlt') || UI.$('#ndAlt', body);
+                  var altTip = UI.$('#ndAltTip') || UI.$('#ndAltTip', body);
+                  try {
+                    if (altIn && window.API && window.API.getAltBases)
+                      altIn.value = window.API.getAltBases() || '';
+                  } catch (e) {}
+                  try {
+                    if (altTip && window.API && window.API.getAltBases)
+                      altTip.textContent = window.API.getAltBases()
+                        ? window.I18n.t("当前已启用备用入口")
+                        : window.I18n.t("当前为官方直连");
+                  } catch (e) {}
+                  var saveBtn = UI.$('[data-nd-save]');
+                  if (saveBtn) saveBtn.onclick = function () {
+                    if (!window.API || !window.API.setAltBases) {
+                      if (altTip) altTip.textContent = window.I18n.t("当前版本不支持");
+                      return;
+                    }
+                    var list = window.API.setAltBases(altIn ? altIn.value : '');
+                    if (altTip) altTip.textContent = list.length
+                      ? window.I18n.t("已保存，直连失败时会自动切换") + '（' + list.join('、') + '）'
+                      : window.I18n.t("已恢复官方直连");
+                    try { window.API.onNetworkBack(); } catch (e) {}
+                    UI.toast(list.length ? window.I18n.t("入口已保存") : window.I18n.t("已恢复官方直连"));
+                  };
                   UI.$('[data-nd-go]').onclick = function () {
                     if (!window.API || !window.API.diagProbe) {
                       box.textContent = window.I18n.t("当前版本不支持");
