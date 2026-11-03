@@ -312,6 +312,11 @@
     manual = code;
     try { if (window.Store && window.Store.set) window.Store.set(STORE_KEY, code); } catch (e) {}
     cur = resolve();
+    /* ⚠️ 顺序要命：必须先卸掉 wx 兜底层（停观察器 + 把改过的文本节点还原），
+       再做下面的重画。以前是「先 reload、后 uninstall」，重画出来的中文
+       会被仍在运行的观察器当场仙化一遍，然后才停观察器 —— 于是勾着
+       「跟随系统」，整页却停在仙文，而且再也不会自己恢复。 */
+    try { if (window.I18N_WX_UNINSTALL) window.I18N_WX_UNINSTALL(); } catch (e) {}
     /* <html lang> 跟着改：屏幕阅读器、系统字体回退都看它 */
     try { document.documentElement.setAttribute('lang', cur === 'en' ? 'en' : 'zh-CN'); } catch (e) {}
     applyDom(document);
@@ -319,14 +324,11 @@
      * 只能整页重画。Router.reload() 就是重跑当前路由的 render。 */
     try { if (window.Router && window.Router.reload) window.Router.reload(); } catch (e) {}
     /* 天道仙文的兜底层：大量中文直接写在 HTML 模板字符串里，不走 t()。
-       切到 wx 时对整个文档的文本节点再仙化一遍，并用 MutationObserver
-       接住之后动态插入的内容；切回别的语言就卸掉，避免残留。 */
+       确认要 wx 时才装，装之前上面的卸载已经把旧状态清干净了。 */
     try {
       if (cur === 'wx' && window.I18N_WX_DOM) {
         window.I18N_WX_DOM(document.body);
         if (window.I18N_WX_INSTALL) window.I18N_WX_INSTALL();
-      } else if (window.I18N_WX_UNINSTALL) {
-        window.I18N_WX_UNINSTALL();
       }
     } catch (e) {}
     return cur;
@@ -384,7 +386,13 @@
   (function bootWx() {
     function arm() {
       try {
-        if (lang() !== 'wx' || !window.I18N_WX_DOM) return;
+        if (lang() !== 'wx') {
+          /* 冷启动自检：不是 wx 就把兜底层彻底卸掉（含还原），
+             免得任何残留的仙文跟着一次普通启动留下来。 */
+          if (window.I18N_WX_UNINSTALL) window.I18N_WX_UNINSTALL();
+          return;
+        }
+        if (!window.I18N_WX_DOM) return;
         var root = document.body || document.documentElement;
         if (root) window.I18N_WX_DOM(root);
         if (window.I18N_WX_INSTALL) window.I18N_WX_INSTALL();
