@@ -874,12 +874,26 @@
       if (this.settings) return this.settings;
       var s = {};
       for (var k in defaults) s[k] = defaults[k];
-      var raw = null;
+      /* 原生 prefs 与 WebView localStorage 是两份独立存档。
+         强杀进程时 SharedPreferences.apply() 可能还未来得及落盘，
+         原生留在上一份旧 JSON（没有新加的 gh_lang 等字段）；
+         以前「原生非空就直接用、不再看 localStorage」，于是设置悄悄丢失。
+         现在两份都读、逐字段合并，后写的 localStorage 覆盖旧值。 */
+      var raws = [];
       if (window.NativeBridge && typeof window.NativeBridge.getPref === 'function') {
-        try { raw = window.NativeBridge.getPref(SETTINGS_KEY); } catch (e) {}
+        try { var a = window.NativeBridge.getPref(SETTINGS_KEY); if (a) raws.push(a); } catch (e) {}
       }
-      if (!raw) { try { raw = localStorage.getItem(SETTINGS_KEY); } catch (e) {} }
-      if (raw) { try { var o = JSON.parse(raw); for (var j in o) s[j] = o[j]; } catch (e) {} }
+      try { var b = localStorage.getItem(SETTINGS_KEY); if (b) raws.push(b); } catch (e) {}
+      for (var i = 0; i < raws.length; i++) {
+        try {
+          var o = JSON.parse(raws[i]);
+          if (o && typeof o === 'object') {
+            for (var j in o) {
+              if (Object.prototype.hasOwnProperty.call(o, j)) s[j] = o[j];
+            }
+          }
+        } catch (e) {}
+      }
       this.settings = s;
       return s;
     },
