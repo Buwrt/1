@@ -422,6 +422,11 @@
     setLang(now === 'en' ? 'zh' : 'en');
   }
 
+  /* 语言在脚本加载时同步定档，不等 DOMContentLoaded。
+     启动途中再去纠正并 Router.reload()，会把首屏那批在途请求整份作废
+     （page-home.js 用 viewEpoch 判过期），界面就永远停在骨架屏。 */
+  try { cur = resolve(); } catch (e) {}
+
   window.I18n = {
     t: t,
     lang: lang,
@@ -448,21 +453,18 @@
    * （wxInstall 内部有 wxObs 判空）。
    */
   (function bootWx() {
+    /* 语言已在上面同步定档，这里只补装仙文兜底层：
+       不再在启动途中调 refresh() —— 那会触发 Router.reload()，
+       把首屏在途请求按 viewEpoch 整份作废，界面就停在骨架屏。 */
     function arm() {
-      try {
-        /* 先把存档重新读一遍：原生整包被旧值覆盖、或早期 Store 未就绪
-           造成的误判，都在这里纠正；语言变了 refresh 会重画。 */
-        refresh();
-        syncWx(lang());
-      } catch (e) {}
+      try { syncWx(lang()); } catch (e) {}
     }
-    /* 脚本在 body 末尾，但路由首屏渲染可能更晚：
-       先等 DOMContentLoaded，再补两拍兜住异步渲染。 */
     if (document.readyState === 'loading') {
       try { document.addEventListener('DOMContentLoaded', arm); } catch (e) {}
     } else {
       arm();
     }
-    try { setTimeout(arm, 0); setTimeout(arm, 400); } catch (e) {}
+    /* 再补一拍，兜住异步插入的节点；syncWx 内部幂等，装多次无害。 */
+    try { setTimeout(arm, 400); } catch (e) {}
   })();
 })();
