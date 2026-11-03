@@ -240,6 +240,20 @@
       }
       A._avEvt = function () { gap = 800; schedule(); };
       window.addEventListener('online', A._avEvt);
+      /* 换网自动重连：链路一恢复就清掉上一轮的失败状态并重画当前页。
+       * 不重启 App，用户不用手动点「重新加载」。 */
+      (function () {
+        function back() {
+          try { if (window.API && window.API.onNetworkBack) window.API.onNetworkBack(); } catch (e) {}
+          try { if (window.App && window.App.clearPageCache) window.App.clearPageCache(); } catch (e) {}
+          try { if (window.Router && window.Router.reload) window.Router.reload(); } catch (e) {}
+        }
+        window.addEventListener('online', back);
+        try {
+          var c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+          if (c && c.addEventListener) c.addEventListener('change', back);
+        } catch (e) {}
+      })();
       schedule();
     },
     invalidate: function (prefix) {
