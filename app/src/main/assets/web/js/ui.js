@@ -163,7 +163,7 @@
       var html = '<div class="sheet-mask"' + (lock ? '' : ' data-close="1"') + '></div>' +
         '<div class="sheet' + full + '" role="dialog">' +
         (opt.title !== undefined ? '<div class="sheet-head">' + (opt.icon ? '<span>' + window.icon(opt.icon, 20) + '</span>' : '') +
-          '<h3>' + U.esc(opt.title) + '</h3>' + (lock ? '' : '<button class="icon-btn" data-close="1" aria-label=window.I18n.t("关闭")>' + window.icon('x', 18) + '</button>') + '</div>' : '') +
+          '<h3>' + U.esc(opt.title) + '</h3>' + (lock ? '' : '<button class="icon-btn" data-close="1" aria-label="' + window.I18n.t("关闭") + '">' + window.icon('x', 18) + '</button>') + '</div>' : '') +
         '<div class="sheet-body">' + (opt.body || '') + '</div>' +
         (opt.foot ? '<div class="sheet-foot">' + opt.foot + '</div>' : '') +
         '</div>';
@@ -392,7 +392,7 @@
        * 点空白处关闭，点按钮保存图片到相册，互不干扰。 */
       root.innerHTML =
         '<img src="' + U.esc(src) + '" alt="">' +
-        '<button class="viewer-save" aria-label=window.I18n.t("保存到相册") title=window.I18n.t("保存到相册")>' +
+        '<button class="viewer-save" aria-label="' + window.I18n.t("保存到相册") + '" title="' + window.I18n.t("保存到相册") + '">' +
           window.icon('download', 22) +
         '</button>';
       root.classList.add('show');
@@ -487,7 +487,7 @@
       var left = seconds;
       root.innerHTML =
         '<div class="boost-card" role="status">' +
-          '<button class="boost-x" aria-label=window.I18n.t("关闭")>' + window.icon('x', 16) + '</button>' +
+          '<button class="boost-x" aria-label="' + window.I18n.t("关闭") + '">' + window.icon('x', 16) + '</button>' +
           '<div class="boost-head">' + window.icon('zap', 15) + '<span>这次下载限速中</span></div>' +
           '<div class="boost-body">' +
             window.I18n.t("这份文件正在以较慢的速度下载，<b>不会中断，也不会失败</b>，只是要多等一会儿。") +
