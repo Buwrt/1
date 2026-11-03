@@ -609,9 +609,9 @@
       '<span style="margin-left:auto;display:flex;align-items:center;gap:6px">' +
       /* 上传是把本地文件搬进来，新建是直接在仓库里写一份 —— 官网的 Add file
          下拉里这两项是分开的，这里也给两个口子。 */
-      (canPush(repo) ? '<button id="nfbtn" title=window.I18n.t("新建文件") style="display:flex;align-items:center;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:3px 8px">' +
+      (canPush(repo) ? '<button id="nfbtn" title="' + window.I18n.t("新建文件") + '" style="display:flex;align-items:center;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:3px 8px">' +
         window.icon('plus', 13) + '</button>' : '') +
-      (window.Session.isLogin ? '<button id="upbtn" title=window.I18n.t("上传文件") style="display:flex;align-items:center;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:3px 8px">' +
+      (window.Session.isLogin ? '<button id="upbtn" title="' + window.I18n.t("上传文件") + '" style="display:flex;align-items:center;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:3px 8px">' +
         window.icon('upload', 13) + '</button>' : '') +
       refBtnHtml(ref, repo) +
       '</span>';
@@ -1136,7 +1136,7 @@
            { key: 'tags', label: segLabel('tags', window.I18n.t('标签 / 版本')) }], 'branches') + '</div>' +
         '<div class="search-bar" style="position:static;border:0;padding:8px 0">' +
         '<div class="search-input">' + window.icon('search', 15) +
-        '<input id="refq" type="search" placeholder=window.I18n.t("搜索分支名") autocomplete="off" style="flex:1;min-width:0;border:0;background:none;outline:none;font-size:15px;color:var(--fg);font-family:inherit"></div></div>' +
+        '<input id="refq" type="search" placeholder="' + window.I18n.t("搜索分支名") + '" autocomplete="off" style="flex:1;min-width:0;border:0;background:none;outline:none;font-size:15px;color:var(--fg);font-family:inherit"></div></div>' +
         '<div id="reflist">' + '<div class="ref-loading"><div class="spinner"></div><span>正在加载…</span></div>' + '</div>' +
         '<button class="btn block mt8" id="refmanual">手动输入分支名 / 标签名 / 提交号</button>' +
         '</div>',
@@ -2374,7 +2374,7 @@
       } else {
         ctl = '<input class="input" id="' + id + '" type="' + (it.type === 'number' ? 'number' : 'text') +
           '" value="' + U.esc(it.default || '') + '"' +
-          (it.type === 'environment' ? ' placeholder=window.I18n.t("环境名，如 production")' : '') + '>';
+          (it.type === 'environment' ? ' placeholder="' + window.I18n.t("环境名，如 production") + '"' : '') + '>';
       }
       return '<div class="field"><label>' + U.esc(it.name) +
         (it.required ? ' <b style="color:var(--danger)">*</b>' : '') + '</label>' + ctl + hint +
@@ -2749,15 +2749,15 @@
       '</select></div>' +
       '<div class="field"><label>安装包名称</label>' +
       '<input class="input mono" id="wf-name" type="text" autocomplete="off" ' +
-      'autocapitalize="none" spellcheck="false" placeholder=window.I18n.t("例如 MyApp")>' +
+      'autocapitalize="none" spellcheck="false" placeholder="' + window.I18n.t("例如 MyApp") + '">' +
       '<div class="hint">产物会命名为「名称-版本号.apk」。</div></div>' +
       '<div class="field"><label>版本号（versionName）</label>' +
       '<input class="input mono" id="wf-ver" type="text" autocomplete="off" ' +
-      'spellcheck="false" placeholder=window.I18n.t("例如 1.0.0")>' +
+      'spellcheck="false" placeholder="' + window.I18n.t("例如 1.0.0") + '">' +
       '<div class="hint">会写进 build.gradle / build.gradle.kts。</div></div>' +
       '<div class="field"><label>版本代号（versionCode）</label>' +
       '<input class="input mono" id="wf-vcode" type="text" inputmode="numeric" ' +
-      'autocomplete="off" spellcheck="false" placeholder=window.I18n.t("例如 1")>' +
+      'autocomplete="off" spellcheck="false" placeholder="' + window.I18n.t("例如 1") + '">' +
       '<div class="hint">必须是整数，每次发版递增。</div></div>' +
       // 签名配置：只在选了「Release + 签名」时出现
       '<div class="field" id="sign-box" hidden>' +
@@ -2769,7 +2769,7 @@
       '<div id="sg-make" style="margin-top:10px">' +
       '<div class="field"><label class="sub">签名口令</label>' +
       '<input class="input mono" id="sg-seed" type="text" autocomplete="off" ' +
-      'autocapitalize="none" spellcheck="false" placeholder=window.I18n.t("输入英文字母和数字，例如 githup2024abc")>' +
+      'autocapitalize="none" spellcheck="false" placeholder="' + window.I18n.t("输入英文字母和数字，例如 githup2024abc") + '">' +
       '<div class="hint">这串字符就是你的签名：口令相同，签名就完全相同，' +
       window.I18n.t("新包可以直接覆盖安装。口令不同就是另一个签名，请务必记牢。</div></div>") +
       '<button class="btn block" id="sg-gen">' + window.icon('key', 15) + ' 生成签名</button>' +
@@ -2779,14 +2779,14 @@
       '<div class="field"><label class="sub">keystore（Base64）</label>' +
       '<textarea class="textarea mono tiny" id="sg-b64" rows="3" spellcheck="false"' +
       ' autocapitalize="none" autocorrect="off" ' +
-      'placeholder=window.I18n.t("粘贴 keystore 文件的 Base64，是一长串数字和字母")></textarea>' +
+      'placeholder="' + window.I18n.t("粘贴 keystore 文件的 Base64，是一长串数字和字母") + '"></textarea>' +
       '<div class="hint">电脑上生成：' +
       'keytool -genkey -v -keystore app.keystore -alias mykey -keyalg RSA -keysize 2048 -validity 10000' +
       window.I18n.t("，再执行 base64 app.keystore，把输出整段粘进来。</div></div>") +
       '<div class="field"><label class="sub">密钥库密码</label>' +
       '<input class="input" id="sg-sp" type="text" autocomplete="off" spellcheck="false" placeholder="store password"></div>' +
       '<div class="field"><label class="sub">密钥别名</label>' +
-      '<input class="input mono" id="sg-alias" type="text" autocomplete="off" spellcheck="false" placeholder=window.I18n.t("例如 mykey")></div>' +
+      '<input class="input mono" id="sg-alias" type="text" autocomplete="off" spellcheck="false" placeholder="' + window.I18n.t("例如 mykey") + '"></div>' +
       '<div class="field"><label class="sub">密钥密码</label>' +
       '<input class="input" id="sg-kp" type="text" autocomplete="off" spellcheck="false" placeholder="key password"></div>' +
       '</div>' +
@@ -2806,7 +2806,7 @@
       '<div class="hint" id="wf-path"></div></div>' +
       '<div class="field"><label id="wf-note-label">修改说明</label>' +
       '<input class="input" id="wf-note" type="text" autocomplete="off" ' +
-      'placeholder=window.I18n.t("例如：改成 JDK 11、只编 app 模块")>' +
+      'placeholder="' + window.I18n.t("例如：改成 JDK 11、只编 app 模块") + '">' +
       '<div class="hint">改了下面的配置就必填，会同时写进文件头部的注释和提交信息。</div></div>' +
       // 默认展开：藏在折叠区里用户根本点不到，更别说改
       '<details class="wf-preview" id="wf-box" open><summary>查看并编辑将要写入的配置</summary>' +
@@ -3339,9 +3339,9 @@
       '<div class="field"><label>目标分支</label>' +
       '<input class="input mono" id="rl-branch" value="' + U.esc(repo.default_branch || 'main') + '" autocomplete="off"></div>' +
       '<div class="field"><label>发布标题</label>' +
-      '<input class="input" id="rl-name" placeholder=window.I18n.t("留空则使用标签名")></div>' +
+      '<input class="input" id="rl-name" placeholder="' + window.I18n.t("留空则使用标签名") + '"></div>' +
       '<div class="field"><label>说明</label>' +
-      '<textarea class="textarea" id="rl-body" rows="5" placeholder=window.I18n.t("本次更新内容…")></textarea></div>' +
+      '<textarea class="textarea" id="rl-body" rows="5" placeholder="' + window.I18n.t("本次更新内容…") + '"></textarea></div>' +
       '<div class="field"><label>附加文件（APK 等）</label>' +
       '<div class="upload-box">' +
       '<button class="btn block" id="rl-pick">' + window.icon('upload', 15) + ' 选择文件</button>' +
@@ -4697,7 +4697,7 @@
         '<input class="input" id="ms-d" type="date" value="' + U.esc(due) + '">' +
         '<div class="hint">Github 的时间按 UTC 计；留空表示不设期限。</div></div>' +
         '<div class="field"><label>说明</label>' +
-        '<textarea class="textarea" id="ms-b" style="min-height:100px" placeholder=window.I18n.t("这一版要做什么")>' +
+        '<textarea class="textarea" id="ms-b" style="min-height:100px" placeholder="' + window.I18n.t("这一版要做什么") + '">' +
         U.esc(edit ? (edit.description || '') : '') + '</textarea></div>',
       foot: '<button class="btn" data-no>取消</button><button class="btn primary" data-yes>' +
         (isNew ? window.I18n.t('创建') : window.I18n.t('保存')) + '</button>',
@@ -5191,15 +5191,15 @@
     if (!window.Session.isLogin) return UI.toast(window.I18n.t('请先登录'));
     var labels = [];
     var body =
-      '<div class="field"><label>标题</label><input class="input" id="it" placeholder=window.I18n.t("简洁描述问题")></div>' +
+      '<div class="field"><label>标题</label><input class="input" id="it" placeholder="' + window.I18n.t("简洁描述问题") + '"></div>' +
       '<div class="field"><label>内容（支持 Markdown）</label>' +
       '<div class="rowflex" style="gap:4px;margin-bottom:6px">' + ['bold', 'italic', 'quote', 'code', 'link', 'list-unordered', 'tasklist'].map(function (i) {
-        var t = i === 'link' ? ' title=window.I18n.t("上传附件")' : '';
+        var t = i === 'link' ? ' title="' + window.I18n.t("上传附件") + '"' : '';
         return '<button class="btn sm" data-md="' + i + '"' + t + '>' + window.icon(i, 14) + '</button>';
       }).join('') +
-      '<button class="btn sm" data-md="attach" title=window.I18n.t("插入图片或视频")>' + window.icon('image', 14) + '</button>' +
+      '<button class="btn sm" data-md="attach" title="' + window.I18n.t("插入图片或视频") + '">' + window.icon('image', 14) + '</button>' +
       '<button class="btn sm" data-md="preview" style="margin-left:auto">预览</button></div>' +
-      '<textarea class="textarea" id="ib" placeholder=window.I18n.t("详细描述、复现步骤、环境信息…")></textarea></div>' +
+      '<textarea class="textarea" id="ib" placeholder="' + window.I18n.t("详细描述、复现步骤、环境信息…") + '"></textarea></div>' +
       '<div class="field"><label>标签</label><div id="lbwrap" class="rowflex wrap"><span class="muted tiny">加载中…</span></div></div>' +
       '<div id="prev" class="card" hidden style="padding:12px"></div>';
     var root = document.getElementById('sheet-root');
@@ -5334,23 +5334,23 @@
       '<span class="mono">owner:分支</span>，只写分支名则视为本仓库的分支。</div></div>' +
 
       '<div class="field"><label>源分支 <span style="color:var(--danger)">*</span></label>' +
-      '<div id="pr-hb-wrap"><input class="input mono" id="pr-hb" placeholder=window.I18n.t("选择来源仓库后自动加载") autocomplete="off"></div></div>' +
+      '<div id="pr-hb-wrap"><input class="input mono" id="pr-hb" placeholder="' + window.I18n.t("选择来源仓库后自动加载") + '" autocomplete="off"></div></div>' +
 
       '<div class="field"><label>目标分支 <span style="color:var(--danger)">*</span></label>' +
       '<div id="pr-bb-wrap"><input class="input mono" id="pr-bb" value="' + U.esc(base) + '" autocomplete="off"></div>' +
       '<div class="hint">合进 ' + U.esc(owner) + '/' + U.esc(name) + ' 的哪个分支。</div></div>' +
 
       '<div class="field"><label>标题 <span style="color:var(--danger)">*</span></label>' +
-      '<input class="input" id="pr-title" placeholder=window.I18n.t("简洁描述这次改动")></div>' +
+      '<input class="input" id="pr-title" placeholder="' + window.I18n.t("简洁描述这次改动") + '"></div>' +
 
       '<div class="field"><label>说明（支持 Markdown）</label>' +
       '<div class="rowflex" style="gap:4px;margin-bottom:6px">' + ['bold', 'italic', 'quote', 'code', 'link', 'list-unordered', 'tasklist'].map(function (i) {
-        var t = i === 'link' ? ' title=window.I18n.t("上传附件")' : '';
+        var t = i === 'link' ? ' title="' + window.I18n.t("上传附件") + '"' : '';
         return '<button class="btn sm" data-md="' + i + '"' + t + '>' + window.icon(i, 14) + '</button>';
       }).join('') +
-      '<button class="btn sm" data-md="attach" title=window.I18n.t("插入图片或视频")>' + window.icon('image', 14) + '</button>' +
+      '<button class="btn sm" data-md="attach" title="' + window.I18n.t("插入图片或视频") + '">' + window.icon('image', 14) + '</button>' +
       '<button class="btn sm" data-md="preview" style="margin-left:auto">预览</button></div>' +
-      '<textarea class="textarea" id="pr-body" placeholder=window.I18n.t("改了什么、为什么改、怎么验证…")></textarea></div>' +
+      '<textarea class="textarea" id="pr-body" placeholder="' + window.I18n.t("改了什么、为什么改、怎么验证…") + '"></textarea></div>' +
 
       '<div class="field"><label>选项</label>' +
       '<label class="rowflex" style="gap:8px;padding:8px 0"><input type="checkbox" id="pr-draft" style="width:16px;height:16px">' +
@@ -5404,7 +5404,7 @@
           var tFull = repo.full_name;
           var same = hFull.toLowerCase() === String(tFull).toLowerCase();
 
-          hbWrap.innerHTML = '<input class="input mono" id="pr-hb" placeholder=window.I18n.t("加载中…") disabled>';
+          hbWrap.innerHTML = '<input class="input mono" id="pr-hb" placeholder="' + window.I18n.t("加载中…") + '" disabled>';
           hbEl = root.querySelector('#pr-hb');
 
           var headP = listBranches(hFull);
@@ -5425,7 +5425,7 @@
             bindSelects();
             if (st.headBranch) loadCompare();
           }).catch(function (e) {
-            hbWrap.innerHTML = '<input class="input mono" id="pr-hb" placeholder=window.I18n.t("分支名（列表拉不到，手动填）")>';
+            hbWrap.innerHTML = '<input class="input mono" id="pr-hb" placeholder="' + window.I18n.t("分支名（列表拉不到，手动填）") + '">';
             hbEl = root.querySelector('#pr-hb');
             bindSelects();
             UI.toast(window.I18n.t("拉取分支列表失败：") + e.message);
@@ -5700,7 +5700,7 @@
       '<input class="input" id="rn" placeholder="my-awesome-project" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">' +
       '<div class="hint">只能包含字母、数字、连字符（-）、下划线（_）和点（.）</div></div>' +
       '<div class="field"><label>简介</label>' +
-      '<input class="input" id="rd" placeholder=window.I18n.t("一句话描述这个仓库（可选）")></div>' +
+      '<input class="input" id="rd" placeholder="' + window.I18n.t("一句话描述这个仓库（可选）") + '"></div>' +
       '<div class="field"><label>可见性</label>' +
       '<div class="newrepo-radio on" data-vis="public"><span class="dot"></span><span class="grow">' +
       '<span class="rt">公开</span><span class="rd">任何人都可以看到这个仓库</span></span></div>' +
@@ -5733,7 +5733,7 @@
       '<input class="input" id="iurl" type="text" placeholder="https://github.com/用户名/仓库.git" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">' +
       '<div class="hint">填写要导入的 Git 仓库地址，支持 GitHub / GitLab / Bitbucket 等公开仓库。</div></div>' +
       '<div class="field"><label>新仓库名称 <span style="color:var(--danger)">*</span></label>' +
-      '<input class="input" id="iname" placeholder=window.I18n.t("导入后在你账号下的仓库名") autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></div>' +
+      '<input class="input" id="iname" placeholder="' + window.I18n.t("导入后在你账号下的仓库名") + '" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></div>' +
       '<div class="field"><label>可见性</label>' +
       '<div class="newrepo-radio on" data-vis="public"><span class="dot"></span><span class="grow">' +
       '<span class="rt">公开</span><span class="rd">任何人都可以看到这个仓库</span></span></div>' +
