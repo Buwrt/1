@@ -1297,6 +1297,207 @@
     return e;
   }
 
+  /* ============================================================
+   * 网络诊断 —— 精确定位「假 404 / 假 403」
+   *
+   * 实测抓到过这样一次响应：
+   *   HTTP 403 + server: github.com + x-ratelimit-remaining: 4999
+   *   + body 是完整的 current_user_url 那份正常 JSON
+   * 状态码被链路上的某一环改写了，数据本身完好。旧逻辑只看
+   * status >= 400 就抛错，于是网络明明通着，用户却看到「404」。
+   *
+   * 这里做两件事：
+   *  1) 逐条留存**原始证据**：时间、完整 URL、状态码、响应体指纹、
+   *     关键响应头、网络类型、分类结论。故意**不去重** ——
+   *     「地方不一样 / 时间不一样 / 结果不一样」正是要靠这些差异定位，
+   *     按签名去重会把证据抹平。
+   *  2) 给出可复核的分类，供 settle() 决定「按成功用」还是「真抛错」。
+   *
+   * 安全：完整令牌绝不进日志；URL 去掉 query；body 只取前 160 字节
+   *       且先脱敏；响应头只挑白名单字段。
+   * ============================================================ */
+  var DIAG_MAX = 120;
+  var diagBuf = [];
+  try { diagBuf = Store.getJSON('netdiag', []) || []; } catch (e) { diagBuf = []; }
+
+  function diagTime() {
+    var d = new Date();
+    function p(n) { return n < 10 ? '0' + n : '' + n; }
+    return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
+
+  function diagNet() {
+    try {
+      var c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+      if (c) return String(c.type || c.effectiveType || 'unknown');
+    } catch (e) {}
+    return 'unknown';
+  }
+
+  function diagClean(v) {
+    var x = String(v == null ? '' : v);
+    /* 万一令牌被拼进来了，先抹掉，绝不落盘 */
+    x = x.replace(/gh[pousr]_[A-Za-z0-9]{20,}/g, 'gh*_***');
+    x = x.replace(/Bearer\s+[A-Za-z0-9._-]{10,}/gi, 'Bearer ***');
+    return x.replace(/[\r\n\t]+/g, ' ').slice(0, 160);
+  }
+
+  function diagSafeUrl(url) {
+    var u = String(url || '');
+    var q = u.indexOf('?');
+    if (q >= 0) u = u.slice(0, q) + '?<omitted>';
+    return diagClean(u);
+  }
+
+  /* 响应体是不是「完好的 GitHub 数据」而不是错误对象。
+   * 最硬的闸门：只要带 message 字段，就是 GitHub 的错误体，不算数据。
+   * 这样 {message:"Not Found"} / {message:"API rate limit exceeded"}
+   * 永远不会被误判成数据，也就不会被「自愈」吞掉。 */
+  function diagIsData(data) {
+    if (data === null || data === undefined) return false;
+    if (Array.isArray(data)) return data.length > 0;
+    if (typeof data !== 'object') return false;
+    if (Object.prototype.hasOwnProperty.call(data, 'message')) return false;
+    var keys = Object.keys(data);
+    if (!keys.length) return false;
+    var marks = ['url', 'login', 'id', 'full_name', 'items', 'current_user_url',
+                 'resources', 'rate', 'name', 'html_url', 'total_count', 'sha'];
+    for (var i = 0; i < marks.length; i++) {
+      if (Object.prototype.hasOwnProperty.call(data, marks[i])) return true;
+    }
+    return keys.length >= 3;
+  }
+
+  var DIAG_HEADERS = ['server', 'x-github-request-id', 'x-ratelimit-remaining',
+                      'x-ratelimit-limit', 'x-ratelimit-reset', 'content-type',
+                      'via', 'date', 'retry-after'];
+
+  function diagHeaders(h) {
+    var out = {};
+    h = h || {};
+    for (var i = 0; i < DIAG_HEADERS.length; i++) {
+      var k = DIAG_HEADERS[i];
+      var v = (h[k] !== undefined && h[k] !== null) ? h[k] : null;
+      if (v !== null && v !== '') out[k] = diagClean(v);
+    }
+    return out;
+  }
+
+  /**
+   * 分类。kind 的取值本身就是跨语言的代号，诊断页直接用。
+   *   ok        正常
+   *   bogus     状态码被改写但数据完好（可自愈）
+   *   real404   真的资源不存在
+   *   token     令牌作废
+   *   ratelimit 配额用尽
+   *   permission 权限不足
+   *   server    5xx
+   *   network   无响应 / 超时
+   *   empty     有状态码但响应体不是 JSON（常见：网关代答的 HTML 404 页）
+   *   other     其它
+   */
+  function diagClassify(res, data) {
+    res = res || {};
+    var s = Number(res.status) || 0;
+    var h = res.headers || {};
+    var msg = (data && typeof data === 'object' && !Array.isArray(data))
+      ? String(data.message || '') : '';
+    var remain = h['x-ratelimit-remaining'];
+    var rid = h['x-github-request-id'] || '';
+    var server = h['server'] || '';
+
+    if (!s) return { kind: 'network', bogus: false, why: 'no HTTP status (timeout / not sent)' };
+    if (s === 401) return { kind: 'token', bogus: false, why: msg || 'credential rejected', rid: rid };
+    if (s === 404 && /not found/i.test(msg)) return { kind: 'real404', bogus: false, why: msg, rid: rid };
+    if (s === 403 && String(remain) === '0') return { kind: 'ratelimit', bogus: false, why: 'remaining=0', rid: rid };
+    if (s >= 500) return { kind: 'server', bogus: false, why: 'HTTP ' + s + (msg ? ' / ' + msg : ''), rid: rid };
+
+    var isData = diagIsData(data);
+    if (s >= 400 && isData) {
+      return { kind: 'bogus', bogus: true,
+               why: 'HTTP ' + s + ' but body is valid GitHub data (no message field)',
+               rid: rid, server: server };
+    }
+    if (s >= 400 && data === null) {
+      return { kind: 'empty', bogus: false,
+               why: 'HTTP ' + s + ' with non-JSON body (gateway page?)', rid: rid, server: server };
+    }
+    if (s >= 400 && msg) {
+      return { kind: (s === 403 ? 'permission' : 'other'), bogus: false, why: msg, rid: rid };
+    }
+    if (s < 400) return { kind: 'ok', bogus: false, why: 'ok' };
+    return { kind: 'other', bogus: false, why: 'HTTP ' + s, rid: rid };
+  }
+
+  function diagRecord(rec) {
+    rec.t = rec.t || diagTime();
+    rec.net = rec.net || diagNet();
+    diagBuf.push(rec);
+    if (diagBuf.length > DIAG_MAX) diagBuf.splice(0, diagBuf.length - DIAG_MAX);
+    try { Store.setJSON('netdiag', diagBuf.slice(-40)); } catch (e) {}
+    return rec;
+  }
+
+  /** 一条证据 → 可读的一行，错误日志 / 诊断页 / 分享共用 */
+  function diagLine(rec) {
+    var hs = rec.headers || {}, bits = [];
+    for (var k in hs) if (Object.prototype.hasOwnProperty.call(hs, k)) bits.push(k + '=' + hs[k]);
+    return '[' + (rec.t || '') + '] ' + (rec.outcome || '') + ' ' + (rec.kind || '') +
+      ' | ' + (rec.method || 'GET') + ' ' + (rec.url || '') +
+      ' | HTTP ' + (rec.status === undefined ? '?' : rec.status) +
+      ' | net=' + (rec.net || '?') +
+      (rec.ms !== undefined ? ' | ' + rec.ms + 'ms' : '') +
+      ' | ' + (rec.why || '') +
+      (bits.length ? ' | ' + bits.join(' ') : '') +
+      (rec.body ? ' | body=' + rec.body : '');
+  }
+
+  /**
+   * 统一收口两个网络分支的响应判定。
+   * 返回 {data,status,link,headers} 或抛出带原始证据的 error。
+   */
+  function settle(res, data, method, url) {
+    var s = Number(res.status) || 0;
+    var h = res.headers || {};
+    var d = diagClassify(res, data);
+    var suspicious = (s >= 400) || (data === null && s !== 204 && s !== 205 && s !== 304);
+
+    if (suspicious) {
+      var rec = diagRecord({
+        method: method, url: diagSafeUrl(url), status: s,
+        kind: d.kind, why: d.why, headers: diagHeaders(h),
+        body: diagClean(res.body), outcome: d.bogus ? 'auto-fixed' : 'failed'
+      });
+      /* 同时写一条进「错误日志」，用户从设置里导出时带得走 */
+      try {
+        if (window.API && typeof window.API.logError === 'function') {
+          window.API.logError(window.I18n.t('网络诊断'), diagLine(rec));
+        }
+      } catch (e) {}
+    }
+
+    if (s >= 400) {
+      if (d.bogus) {
+        /* 状态码被改写，但数据完好 —— 按成功用，并留一条自愈记录。
+           对外给的 status 归正为 200，免得调用方按 403 走进错误分支。 */
+        return {
+          data: data, status: 200,
+          link: parseLink(h.link || h.Link), headers: h, _diagFixed: true
+        };
+      }
+      var e = makeError(res, data);
+      e.diag = d;
+      e.rawRes = { status: s, body: String(res.body || '').slice(0, 4000), headers: h };
+      throw e;
+    }
+    if (data === null && s !== 204 && s !== 205 && s !== 304) {
+      var e2 = emptyBodyError(res);
+      e2.rawRes = { status: s, body: String(res.body || '').slice(0, 4000), headers: h };
+      throw e2;
+    }
+    return { data: data, status: s, link: parseLink(h.link || h.Link), headers: h };
+  }
+
   var cache = Object.create(null);
   var inflight = Object.create(null);
 
@@ -1351,13 +1552,11 @@
     if (Native.has()) {
       p = Native.http(method, url, body, headers).then(function (res) {
         var data = parseJSON(res);
-        if (res.status >= 400) throw makeError(res, data);
         // 204/205/304 本来就无体；其余情况解不出内容按故障处理，别把 null 往下传
         // （205 Reset Content：GitHub 单条「标已读」PATCH /notifications/threads/{id}
         //  的成功返回码；「标 Done」的 DELETE 是 204。205 不进白名单的话，
         //  标已读会被误抛「响应内容读取失败」——在静默 catch 下表现为「打开了还是未读」。）
-        if (data === null && res.status !== 204 && res.status !== 205 && res.status !== 304) throw emptyBodyError(res);
-        var out = { data: data, status: res.status, link: parseLink(res.headers.link || res.headers.Link), headers: res.headers };
+        var out = settle(res, data, method, url);
         if (isGet && opts.cache) cache[ckey] = { t: Date.now(), v: out };
         return out;
       });
@@ -1366,11 +1565,9 @@
       if (body) init.body = body;
       p = fetch(url, init).then(function (r) {
         return r.text().then(function (txt) {
-          var res = { status: r.status, body: txt, headers: { link: r.headers.get('Link'), 'x-ratelimit-remaining': r.headers.get('X-RateLimit-Remaining') } };
+          var res = { status: r.status, body: txt, headers: { link: r.headers.get('Link'), 'x-ratelimit-remaining': r.headers.get('X-RateLimit-Remaining'), server: r.headers.get('Server') } };
           var data = parseJSON(res);
-          if (r.status >= 400) throw makeError(res, data);
-          if (data === null && r.status !== 204 && r.status !== 205 && r.status !== 304) throw emptyBodyError(res);
-          var out = { data: data, status: r.status, link: parseLink(res.headers.link), headers: res.headers };
+          var out = settle(res, data, method, url);
           if (isGet && opts.cache) cache[ckey] = { t: Date.now(), v: out };
           return out;
         });
@@ -1465,14 +1662,95 @@
     }
     try {
       if (window.API && typeof window.API.logError === 'function') {
+        var ev = '';
+        if (err && err.rawRes) {
+          var hs = diagHeaders(err.rawRes.headers), bits = [];
+          for (var k in hs) if (Object.prototype.hasOwnProperty.call(hs, k)) bits.push(k + '=' + hs[k]);
+          ev = ' | HTTP ' + (err.status || 0) +
+               ' | kind=' + ((err.diag && err.diag.kind) || '?') +
+               (bits.length ? ' | ' + bits.join(' ') : '') +
+               ' | body=' + diagClean(err.rawRes.body);
+        }
         window.API.logError(window.I18n.t('请求：') + method + ' ' + String(path || '').split('?')[0],
-          what + (why ? '。' + why : ''));
+          what + (why ? '。' + why : '') + ev);
       }
     } catch (e) { }
   }
 
   var API = {
     base: API_BASE,
+    /* 转发到原生日志桥。
+     * 原来 logError/logNote 定义在 Native 上，可 reportReqFail 等调用方
+     * 写的却是 window.API.logError —— 方法不存在，错误日志一直是空的。
+     * 在这里补一层转发，顺带让诊断证据能真正写进「下载错误日志」。 */
+    logError: function (w, y) { return Native.logError(w, y); },
+    logNote: function (w) { return Native.logNote(w); },
+
+    /* ---------- 网络诊断（对外） ---------- */
+    diagLog: function () { return diagBuf.slice(); },
+    diagClear: function () { diagBuf.length = 0; try { Store.setJSON('netdiag', []); } catch (e) {} },
+    diagLine: diagLine,
+    diagClassify: diagClassify,
+    diagText: function () { return diagBuf.map(diagLine).join('\n'); },
+
+    /**
+     * 主动探测：直接打原生通道，**绕过 settle() 的自愈** ——
+     * 诊断必须看原始状态码，看自愈后的结果就分不出真假了。
+     * 每个地址连打 times 次，逐次留证，用来复现「时间不一样结果不一样」。
+     */
+    diagProbe: function (paths, times) {
+      paths = paths || ['/', '/rate_limit', '/repos/Buwrt/githup'];
+      times = times || 3;
+      var chain = Promise.resolve(), out = [];
+
+      paths.forEach(function (p) {
+        for (var i = 0; i < times; i++) {
+          (function (p, i) {
+            chain = chain.then(function () {
+              var url = API_BASE + p;
+              var hd = { 'Accept': ACCEPT, 'X-GitHub-Api-Version': X_VERSION, 'User-Agent': 'githup/1.0' };
+              if (Session.token) hd['Authorization'] = 'Bearer ' + Session.token;
+              var t0 = Date.now();
+
+              function done(res) {
+                var data = parseJSON(res);
+                var d = diagClassify(res, data);
+                var rec = diagRecord({
+                  method: 'GET', url: diagSafeUrl(url), status: Number(res.status) || 0,
+                  kind: d.kind, why: d.why, headers: diagHeaders(res.headers),
+                  body: diagClean(res.body), ms: Date.now() - t0, outcome: 'probe'
+                });
+                out.push(rec);
+                return rec;
+              }
+              function fail(err) {
+                var rec = diagRecord({
+                  method: 'GET', url: diagSafeUrl(url), status: 0,
+                  kind: 'network', why: String((err && err.message) || 'request failed'),
+                  headers: {}, body: '', ms: Date.now() - t0, outcome: 'probe'
+                });
+                out.push(rec);
+                return rec;
+              }
+
+              if (Native.has()) return Native.http('GET', url, null, hd).then(done, fail);
+              return fetch(url, { method: 'GET', headers: hd, credentials: 'omit' }).then(function (r) {
+                return r.text().then(function (txt) {
+                  return done({ status: r.status, body: txt, headers: {
+                    'server': r.headers.get('Server'),
+                    'x-github-request-id': r.headers.get('X-GitHub-Request-Id'),
+                    'x-ratelimit-remaining': r.headers.get('X-RateLimit-Remaining'),
+                    'content-type': r.headers.get('Content-Type')
+                  } });
+                });
+              }, fail);
+            });
+          })(p, i);
+        }
+      });
+      return chain.then(function () { return out; });
+    },
+
     get: function (p, params, opts) { return req('GET', p, Object.assign({ params: params }, opts)); },
     post: function (p, body, opts) { return req('POST', p, Object.assign({ body: body }, opts)); },
     patch: function (p, body, opts) { return req('PATCH', p, Object.assign({ body: body }, opts)); },
