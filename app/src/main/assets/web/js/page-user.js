@@ -198,7 +198,7 @@ var ed = UI.$('#edit', host);
     box.innerHTML = (withFilter ? '<div class="filterbar">' +
       UI.seg('rseg', [{ key: 'updated', label: window.I18n.t('最近更新') }, { key: 'pushed', label: window.I18n.t('最近推送') }, { key: 'created', label: window.I18n.t('最新创建') }, { key: 'full_name', label: window.I18n.t('名称') }], 'updated') +
       newBtn + '</div><div class="search-bar"><div class="search-input">' + window.icon('search', 17) +
-      '<input id="rf" placeholder=window.I18n.t("筛选仓库…")></div></div>' : '') + '<div id="rl">' + UI.skeleton(4) + '</div>';
+      '<input id="rf" placeholder="' + window.I18n.t("筛选仓库…") + '"></div></div>' : '') + '<div id="rl">' + UI.skeleton(4) + '</div>';
     // 记住当前选的排序：筛选用的是同一个接口，打字时不能把排序键丢掉，
     // 否则选了「名称」再敲一下关键词，列表又跳回默认的「最近更新」
     var curSort = 'updated';
@@ -463,7 +463,7 @@ var ed = UI.$('#edit', host);
          全部收藏 / 各列表 / ＋新建，一排横滑 chips，样式全部复用 app.css。 */
       '<div class="chips" id="fav-chips" hidden></div>' +
       '<div class="search-bar"><div class="search-input">' + window.icon('search', 17) +
-        '<input id="sf" placeholder=window.I18n.t("筛选 Star 的仓库…")></div></div>' +
+        '<input id="sf" placeholder="' + window.I18n.t("筛选 Star 的仓库…") + '"></div></div>' +
       '<div id="sl">' + UI.skeleton(4) + '</div>';
 
     function isFav(name) { return favs.indexOf(name) >= 0; }
@@ -953,7 +953,7 @@ var ed = UI.$('#edit', host);
       '<input class="input mono" id="gn" value="' + U.esc(originalName) + '" spellcheck="false">' +
       '<div class="hint">带扩展名才能让 GitHub 认出语言、给出高亮，例如 main.py、app.js。</div></div>' +
       '<div class="field"><label>内容</label>' +
-      '<textarea class="textarea" id="gc2" style="min-height:280px" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off" placeholder=window.I18n.t("把代码贴在这里")>' +
+      '<textarea class="textarea" id="gc2" style="min-height:280px" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off" placeholder="' + window.I18n.t("把代码贴在这里") + '">' +
       U.esc(opt.content || '') + '</textarea></div>';
 
     UI.sheet({
@@ -1365,7 +1365,7 @@ var ed = UI.$('#edit', host);
       '<button class="btn sm" style="flex:none" id="ep_avatar">去修改</button></div>' +
 
       '<div class="form-row"><label>昵称</label><input class="input" id="ep_name" value="' + U.esc(u.name || '') + '" placeholder="显示名称"></div>' +
-      '<div class="form-row"><label>简介</label><textarea class="input" id="ep_bio" rows="3" placeholder=window.I18n.t("一句话介绍自己")>' + U.esc(u.bio || '') + '</textarea></div>' +
+      '<div class="form-row"><label>简介</label><textarea class="input" id="ep_bio" rows="3" placeholder="' + window.I18n.t("一句话介绍自己") + '">' + U.esc(u.bio || '') + '</textarea></div>' +
       '<div class="form-row"><label>公司</label><input class="input" id="ep_company" value="' + U.esc(u.company || '') + '" placeholder="@company"></div>' +
       '<div class="form-row"><label>地区</label><input class="input" id="ep_location" value="' + U.esc(u.location || '') + '" placeholder="城市"></div>' +
       '<div class="form-row"><label>博客</label><input class="input" id="ep_blog" value="' + U.esc(u.blog || '') + '" placeholder="https://"></div>' +
@@ -2019,7 +2019,7 @@ var ed = UI.$('#edit', host);
         '<span class="fp-kind">' + U.esc(kind) + '</span>' +
         '<code class="fp-val">' + U.esc(shown) + '</code>' +
         (val ? '<button class="fp-copy" data-fp="' + U.esc(val) + '" ' +
-               'title=window.I18n.t("复制这枚指纹")>' + window.icon('copy', 14) + '</button>' : '') +
+               'title="' + window.I18n.t("复制这枚指纹") + '">' + window.icon('copy', 14) + '</button>' : '') +
         '</div>';
     };
 
@@ -2128,7 +2128,7 @@ var ed = UI.$('#edit', host);
                 title: window.I18n.t('赞赏支持'),
                 body:
                   '<div class="center" style="padding:2px 0 6px">' +
-                  '<img id="tip-qr" src="img/tips.png" alt=window.I18n.t("赞赏码") ' +
+                  '<img id="tip-qr" src="img/tips.png" alt="' + window.I18n.t("赞赏码") + '" ' +
                   'style="width:100%;max-width:340px;display:block;margin:0 auto">' +
                   '</div>' +
                   '<div class="muted tiny" style="margin-top:12px;line-height:1.7;text-align:center">' +
