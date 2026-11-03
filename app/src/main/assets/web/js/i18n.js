@@ -263,10 +263,16 @@
      * 英文模式下才查它。好处是漏一个词也只是那一处退回中文，不会炸。 */
     if ((v === undefined || v === null || v === '') && lang() !== 'zh') {
       try {
-        /* 中文模式下这张表根本不参与；非中文时按当前语言取对应的表。
-           天道仙文走 I18N_STRINGS_WX。 */
-        var flat = lang() === 'wx' ? window.I18N_STRINGS_WX : window.I18N_STRINGS;
-        if (flat && flat[key]) v = flat[key];
+        /* 中文模式下这张表不参与；英文走原来的 I18N_STRINGS。
+           天道仙文（wx）走 I18N_WX_T：它内部先查整句表，
+           未命中再按术语表做子串替换 —— 长句靠这一层才翻得动。
+           还是没命中则原样返回 key（即中文），由下面的回落接住。 */
+        if (lang() === 'wx' && window.I18N_WX_T) {
+          v = window.I18N_WX_T(key);
+        } else {
+          var flat = window.I18N_STRINGS;
+          if (flat && flat[key]) v = flat[key];
+        }
       } catch (e) {}
     }
     if (v === undefined || v === null || v === '') v = ZH[key];   // 缺词回落中文
