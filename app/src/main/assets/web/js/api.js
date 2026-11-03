@@ -9,6 +9,48 @@
   // 允许通过 window.__GH_API_BASE__ 覆盖（仅用于本地调试/测试）
   var API_BASE = window.__GH_API_BASE__ || 'https://api.github.com';
   var ACCEPT = 'application/vnd.github+json';
+
+  /* ------------------------------------------------------------
+   * 备用入口（加速通道）
+   *
+   * 默认空 = 只连官方。绝不在包里预置任何第三方公共代理：带令牌的
+   * 请求一旦经过别人的服务器，令牌就相当于交出去了。只有用户在
+   * 「网络诊断 → 加速入口」里主动填写的域名才会被启用，而且它
+   * 只接管**匿名 GET**（仓库 / README / Release 这类浏览请求）；
+   * 登录和所有写操作永远直连 api.github.com。
+   * ------------------------------------------------------------ */
+  var ALT_KEY = 'gh_api_alt';
+  function readAlt() {
+    var raw = '';
+    try { raw = localStorage.getItem(ALT_KEY) || ''; } catch (e) {}
+    if (!raw) {
+      try {
+        if (window.NativeBridge && window.NativeBridge.getPref)
+          raw = window.NativeBridge.getPref(ALT_KEY) || '';
+      } catch (e) {}
+    }
+    return String(raw || '');
+  }
+  function writeAlt(v) {
+    v = String(v == null ? '' : v).trim();
+    try { localStorage.setItem(ALT_KEY, v); } catch (e) {}
+    try {
+      if (window.NativeBridge && window.NativeBridge.setPref)
+        window.NativeBridge.setPref(ALT_KEY, v);
+    } catch (e) {}
+  }
+  function altBases() {
+    var out = [];
+    readAlt().split(/[\s,;]+/).forEach(function (x) {
+      x = (x || '').trim().replace(/\/+$/, '');
+      if (!x) return;
+      if (x.indexOf('https://') !== 0) return;          // 只允许 TLS
+      if (!/^https:\/\/[a-z0-9.-]+(:\d+)?(\/[^\s]*)?$/i.test(x)) return;
+      if (x === API_BASE || out.indexOf(x) >= 0) return;
+      out.push(x);
+    });
+    return out.slice(0, 3);
+  }
   var X_VERSION = '2022-11-28';
 
   /* ---------- 原生桥 ---------- */
@@ -1384,7 +1426,11 @@
 
   var DIAG_HEADERS = ['server', 'x-github-request-id', 'x-ratelimit-remaining',
                       'x-ratelimit-limit', 'x-ratelimit-reset', 'content-type',
-                      'via', 'date', 'retry-after'];
+                      'via', 'date', 'retry-after',
+                      /* 原生层请求失败时回调 status=0，并把异常文本放在这里。
+                       * 以前白名单没它，DNS / 连接 / TLS / 超时五种故障
+                       * 就全被压成一句「no HTTP status」。 */
+                      'error'];
 
   function diagHeaders(h) {
     var out = {};
@@ -1420,7 +1466,22 @@
     var rid = h['x-github-request-id'] || '';
     var server = h['server'] || '';
 
-    if (!s) return { kind: 'network', bogus: false, why: 'no HTTP status (timeout / not sent)' };
+    if (!s) {
+      /* 原生层把 catch 到的异常原文放在 headers.error。读出来就能把
+       * 「连不上」拆成具体环节，不用再靠猜。 */
+      var ec = String(h.error || res.body || '');
+      var cause =
+        /解析到本机|127\.0\.0\.1|hosts/i.test(ec) ? 'dns-hosts' :
+        /UnknownHost|Name or service|getaddrinfo|域名|resolve|DNS/i.test(ec) ? 'dns' :
+        /SSL|TLS|handshake|certificate|证书/i.test(ec) ? 'tls' :
+        /timed out|Timeout|timeout|超时|SocketTimeout/i.test(ec) ? 'timeout' :
+        /Connection refused|ECONNREFUSED|refused|拒绝/i.test(ec) ? 'connect' :
+        /reset|RST|broken pipe|Connection reset/i.test(ec) ? 'reset' :
+        /空响应|Empty response/i.test(ec) ? 'empty-response' : 'unknown';
+      return { kind: 'network', bogus: false, cause: cause,
+               why: 'no HTTP status / ' + cause +
+                    (ec ? ' (' + String(ec).replace(/[\r\n\t]+/g, ' ').slice(0, 90) + ')' : '') };
+    }
     if (s === 401) return { kind: 'token', bogus: false, why: msg || 'credential rejected', rid: rid };
     if (s === 404 && /not found/i.test(msg)) return { kind: 'real404', bogus: false, why: msg, rid: rid };
     if (s === 403 && String(remain) === '0') return { kind: 'ratelimit', bogus: false, why: 'remaining=0', rid: rid };
@@ -1461,6 +1522,9 @@
       ' | HTTP ' + (rec.status === undefined ? '?' : rec.status) +
       ' | net=' + (rec.net || '?') +
       (rec.ms !== undefined ? ' | ' + rec.ms + 'ms' : '') +
+      (rec.tryNo !== undefined ? ' | try=' + rec.tryNo : '') +
+      (rec.base ? ' | base=' + rec.base : '') +
+      (rec.cause ? ' | cause=' + rec.cause : '') +
       ' | ' + (rec.why || '') +
       (bits.length ? ' | ' + bits.join(' ') : '') +
       (rec.body ? ' | body=' + rec.body : '');
@@ -1470,16 +1534,19 @@
    * 统一收口两个网络分支的响应判定。
    * 返回 {data,status,link,headers} 或抛出带原始证据的 error。
    */
-  function settle(res, data, method, url) {
+  function settle(res, data, method, url, ctx) {
+    ctx = ctx || {};
     var s = Number(res.status) || 0;
     var h = res.headers || {};
     var d = diagClassify(res, data);
-    var suspicious = (s >= 400) || (data === null && s !== 204 && s !== 205 && s !== 304);
+    var suspicious = (s >= 400) || !s ||
+                     (data === null && s !== 204 && s !== 205 && s !== 304);
 
     if (suspicious) {
       var rec = diagRecord({
         method: method, url: diagSafeUrl(url), status: s,
-        kind: d.kind, why: d.why, headers: diagHeaders(h),
+        kind: d.kind, why: d.why, cause: d.cause, headers: diagHeaders(h),
+        tryNo: ctx.tryNo, base: ctx.base, ms: ctx.ms,
         body: diagClean(res.body), outcome: d.bogus ? 'auto-fixed' : 'failed'
       });
       /* 同时写一条进「错误日志」，用户从设置里导出时带得走 */
@@ -1490,6 +1557,18 @@
       } catch (e) {}
     }
 
+    /* status=0 是「根本没拿到 HTTP 响应」，不是空响应体。
+     * 以前会掉进下面的 emptyBodyError，报成「响应内容读取失败」，
+     * 用户看到的反而像内容坏了。这里按网络故障明确抛出，重试层
+     * 才认得出来该不该再试一次。 */
+    if (!s) {
+      var e0 = new Error(window.I18n.t('连不上 GitHub'));
+      e0.status = 0;
+      e0.diag = d;
+      e0.networkCause = d.cause;
+      e0.rawRes = { status: 0, body: String(res.body || ''), headers: h };
+      throw e0;
+    }
     if (s >= 400) {
       if (d.bogus) {
         /* 状态码被改写，但数据完好 —— 按成功用，并留一条自愈记录。
@@ -1562,31 +1641,98 @@
     }
     if (isGet && inflight[ckey] && opts.dedupe !== false) return inflight[ckey];
 
-    var p;
-    if (Native.has()) {
-      p = Native.http(method, url, body, headers).then(function (res) {
+    /* ============================================================
+     * 一次尝试 → 失败退避重试 → 必要时切备用入口
+     *
+     * 丢一两个包、某个出口 IP 被抖一下，在蜂窝网络里是常态。旧逻辑
+     * 只打一次就放弃，于是「链路抖 20 秒」被表现成「软件整个用不了」。
+     *
+     * 三条硬规矩：
+     *  1) **只有 GET 自动重试**。POST / PATCH / PUT / DELETE 重发会让
+     *     服务端执行两次（建两条 Issue、传两份附件），绝不自动重试。
+     *  2) 401 / 真 404 / 权限不足不重试 —— 服务器已经明确答复了，
+     *     再试一万次一样，只会白烧配额。
+     *  3) 备用入口只接匿名 GET，去掉 Authorization 头。令牌永不经过
+     *     用户自己填的服务器之外的任何第三方。
+     * ============================================================ */
+    var bases = [API_BASE].concat(altBases());
+    var maxTry = (isGet && opts.retry !== false) ? 3 : (opts.retry ? 2 : 1);
+
+    function once(base, tryNo) {
+      var u = (url.indexOf(API_BASE) === 0)
+        ? base + url.slice(API_BASE.length) : url;
+      var hd = headers;
+      if (base !== API_BASE) {
+        hd = {};
+        for (var hk in headers) {
+          if (Object.prototype.hasOwnProperty.call(headers, hk) &&
+              hk.toLowerCase() !== 'authorization') hd[hk] = headers[hk];
+        }
+      }
+      var t0 = Date.now();
+      var raw;
+      if (Native.has()) {
+        raw = Native.http(method, u, body, hd);
+      } else {
+        var init = { method: method, headers: hd, mode: 'cors', credentials: 'omit' };
+        if (body) init.body = body;
+        raw = fetch(u, init).then(function (r) {
+          return r.text().then(function (txt) {
+            return { status: r.status, body: txt, headers: {
+              link: r.headers.get('Link'),
+              'x-ratelimit-remaining': r.headers.get('X-RateLimit-Remaining'),
+              server: r.headers.get('Server')
+            } };
+          });
+        });
+      }
+      return raw.then(function (res) {
         var data = parseJSON(res);
-        // 204/205/304 本来就无体；其余情况解不出内容按故障处理，别把 null 往下传
-        // （205 Reset Content：GitHub 单条「标已读」PATCH /notifications/threads/{id}
-        //  的成功返回码；「标 Done」的 DELETE 是 204。205 不进白名单的话，
-        //  标已读会被误抛「响应内容读取失败」——在静默 catch 下表现为「打开了还是未读」。）
-        var out = settle(res, data, method, url);
-        if (isGet && opts.cache) cache[ckey] = { t: Date.now(), v: out };
+        // 204/205/304 本来就无体；其余情况解不出内容按故障处理。
+        // （205 是「标已读」PATCH 的成功码，漏了会误抛「响应内容读取失败」。）
+        var out = settle(res, data, method, u,
+          { tryNo: tryNo, base: base, ms: Date.now() - t0 });
+        if (isGet && opts.cache && base === API_BASE)
+          cache[ckey] = { t: Date.now(), v: out };
         return out;
       });
-    } else {
-      var init = { method: method, headers: headers, mode: 'cors', credentials: 'omit' };
-      if (body) init.body = body;
-      p = fetch(url, init).then(function (r) {
-        return r.text().then(function (txt) {
-          var res = { status: r.status, body: txt, headers: { link: r.headers.get('Link'), 'x-ratelimit-remaining': r.headers.get('X-RateLimit-Remaining'), server: r.headers.get('Server') } };
-          var data = parseJSON(res);
-          var out = settle(res, data, method, url);
-          if (isGet && opts.cache) cache[ckey] = { t: Date.now(), v: out };
-          return out;
-        });
+    }
+
+    function retryable(err) {
+      if (!err) return false;
+      var s = Number(err.status) || 0;
+      if (err.unauthorized || err.notFound) return false;
+      if (err.diag) {
+        var k = err.diag.kind;
+        if (k === 'token' || k === 'real404' || k === 'permission') return false;
+      }
+      if (s === 401 || s === 403 || s === 404) return false;
+      if (s > 400 && s < 500 && s !== 429) return false;
+      return true;   // 0 / network / empty / 5xx / 429
+    }
+
+    function run(tryNo) {
+      /* 第 0、1 次都走官方（换一条连接重试）；第 2 次才切备用入口。
+         没有备用入口时三次都是官方，不会偷偷连任何陌生域名。 */
+      var base = (tryNo >= 2 && bases.length > 1) ? bases[1] : bases[0];
+      return once(base, tryNo).catch(function (err) {
+        if (tryNo + 1 >= maxTry || !retryable(err)) throw err;
+        var wait = (tryNo === 0 ? 650 : 1500) + Math.floor(Math.random() * 300);
+        try {
+          diagRecord({
+            method: method, url: diagSafeUrl(url), status: Number(err.status) || 0,
+            kind: (err.diag && err.diag.kind) || 'network',
+            cause: (err.diag && err.diag.cause) || '',
+            why: 'retry in ' + wait + 'ms (' + String(err.message || '').slice(0, 80) + ')',
+            tryNo: tryNo, base: base, outcome: 'retry'
+          });
+        } catch (e) {}
+        return new Promise(function (r) { setTimeout(r, wait); })
+          .then(function () { return run(tryNo + 1); });
       });
     }
+
+    var p = run(0);
     /*
       请求失败统一采集。
 
@@ -1668,8 +1814,24 @@
       what = window.I18n.t('服务器端出错（') + status + '）';
       why = window.I18n.t('GitHub 那边的问题，稍后重试');
     } else if (status === 0 || !status) {
-      what = window.I18n.t('网络连不上');
-      why = String((err && err.message) || window.I18n.t('请求没能发出去或没等到回应')).slice(0, 120);
+      var cause = (err && err.diag && err.diag.cause) || '';
+      var cmap = {
+        'dns-hosts': window.I18n.t('域名被 hosts 或 VPN 改了解析'),
+        'dns': window.I18n.t('DNS 解析失败'),
+        'connect': window.I18n.t('连接被拒绝'),
+        'tls': window.I18n.t('TLS 握手失败'),
+        'reset': window.I18n.t('连接被重置'),
+        'timeout': window.I18n.t('连接或读取超时'),
+        'empty-response': window.I18n.t('对方没回内容')
+      };
+      what = window.I18n.t('连不上 GitHub') +
+             (cmap[cause] ? '（' + cmap[cause] + '）' : '');
+      var nativeErr = '';
+      try {
+        nativeErr = String((err && err.rawRes && err.rawRes.headers &&
+                            err.rawRes.headers.error) || '').slice(0, 120);
+      } catch (e) {}
+      why = nativeErr || String((err && err.message) || '').slice(0, 120);
     } else {
       what = window.I18n.t('请求失败（') + status + '）';
       why = String((err && err.message) || '').slice(0, 120);
@@ -1700,6 +1862,26 @@
     logError: function (w, y) { return Native.logError(w, y); },
     logNote: function (w) { return Native.logNote(w); },
 
+    /* 加速入口：留空即恢复官方直连。只影响匿名 GET。 */
+    getAltBases: readAlt,
+    setAltBases: function (v) {
+      writeAlt(v);
+      return altBases();
+    },
+
+    /* 换网（WiFi ↔ 蜂窝、飞行模式开关）后：把上一轮失败留下的
+     * 缓存 / 去重 / 日志计数全清掉，让新链路从干净状态重判。 */
+    onNetworkBack: function () {
+      cache = Object.create(null);
+      inflight = Object.create(null);
+      _reqLogged = Object.create(null);
+      try {
+        diagRecord({ outcome: 'network-back', method: 'GET', url: '-',
+                     status: 0, kind: 'network', why: 'connectivity restored, cache cleared' });
+      } catch (e) {}
+      return true;
+    },
+
     /* ---------- 网络诊断（对外） ---------- */
     diagLog: function () { return diagBuf.slice(); },
     diagClear: function () { diagBuf.length = 0; try { Store.setJSON('netdiag', []); } catch (e) {} },
@@ -1721,8 +1903,16 @@
         for (var i = 0; i < times; i++) {
           (function (p, i) {
             chain = chain.then(function () {
+              /* 探针之间留一拍。连续失败时原生线程池/连接池容易把
+               * 后几次立刻判死（日志里出现过 17~37ms 的「失败」，
+               * 那不是超时，是没真发出去）。留间隔才能让 9 次真是
+               * 9 次，而不是一次失败连带八次短路。 */
+              return new Promise(function (r) { setTimeout(r, (p === paths[0] && i === 0) ? 0 : 220); });
+            }).then(function () {
               var url = API_BASE + p;
-              var hd = { 'Accept': ACCEPT, 'X-GitHub-Api-Version': X_VERSION, 'User-Agent': 'githup/1.0' };
+              var hd = { 'Accept': ACCEPT, 'X-GitHub-Api-Version': X_VERSION,
+                         'User-Agent': 'githup/1.0', 'Cache-Control': 'no-cache',
+                         'X-Hub-Probe': String(Date.now()) + '-' + i };
               if (Session.token) hd['Authorization'] = 'Bearer ' + Session.token;
               var t0 = Date.now();
 
@@ -1731,8 +1921,10 @@
                 var d = diagClassify(res, data);
                 var rec = diagRecord({
                   method: 'GET', url: diagSafeUrl(url), status: Number(res.status) || 0,
-                  kind: d.kind, why: d.why, headers: diagHeaders(res.headers),
-                  body: diagClean(res.body), ms: Date.now() - t0, outcome: 'probe'
+                  kind: d.kind, why: d.why, cause: d.cause,
+                  headers: diagHeaders(res.headers),
+                  body: diagClean(res.body), ms: Date.now() - t0,
+                  tryNo: i, outcome: 'probe'
                 });
                 out.push(rec);
                 return rec;
