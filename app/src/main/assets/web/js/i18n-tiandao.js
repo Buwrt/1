@@ -1122,6 +1122,43 @@
   var SKIP_TAG = { SCRIPT: 1, STYLE: 1, CODE: 1, PRE: 1, TEXTAREA: 1,
                    INPUT: 1, SELECT: 1, OPTION: 1, NOSCRIPT: 1, SVG: 1 };
 
+  /* ── 可逆记录 ──────────────────────────────────────────────
+   * wx 兜底层是直接改文本节点 / placeholder 的「破坏性」替换。
+   * 以前卸载时只 disconnect 观察器，不把改过的文字还原 —— 切回
+   * 中文/英文后，已经仙化的节点永远停在仙文，直到整页重画才碰运气。
+   * 这里把每一处原值记下来，wxUninstall() 统一还原。
+   * 用 WeakMap 判重（同一节点只记第一次），数组留引用供遍历还原。 */
+  var wxTextTouched = [];
+  var wxPhTouched = [];
+  var wxOrig = (typeof WeakMap !== 'undefined') ? new WeakMap() : null;
+  function wxMarkText(node, old) {
+    if (wxOrig) { if (wxOrig.has(node)) return; wxOrig.set(node, old); }
+    else { if (node.__wxOrig !== undefined) return; node.__wxOrig = old; }
+    wxTextTouched.push(node);
+  }
+  function wxMarkPh(el, old) {
+    if (wxOrig) { if (wxOrig.has(el)) return; wxOrig.set(el, old); }
+    else { if (el.__wxOrig !== undefined) return; el.__wxOrig = old; }
+    wxPhTouched.push(el);
+  }
+  function wxRestore() {
+    var i, n, o;
+    for (i = 0; i < wxTextTouched.length; i++) {
+      n = wxTextTouched[i];
+      o = wxOrig ? wxOrig.get(n) : n.__wxOrig;
+      if (o !== undefined) { try { n.nodeValue = o; } catch (e) {} }
+      if (!wxOrig) { try { delete n.__wxOrig; } catch (e) {} }
+    }
+    for (i = 0; i < wxPhTouched.length; i++) {
+      n = wxPhTouched[i];
+      o = wxOrig ? wxOrig.get(n) : n.__wxOrig;
+      if (o !== undefined) { try { n.setAttribute('placeholder', o); } catch (e) {} }
+      if (!wxOrig) { try { delete n.__wxOrig; } catch (e) {} }
+    }
+    wxTextTouched = []; wxPhTouched = [];
+    if (wxOrig) wxOrig = new WeakMap();
+  }
+
   function wxTextNode(node) {
     if (!node || node.nodeType !== 3) return false;
     var s = node.nodeValue;
@@ -1129,7 +1166,7 @@
     var p = node.parentNode;
     if (!p || SKIP_TAG[p.nodeName]) return false;
     var nv = wx(s);
-    if (nv !== s) { node.nodeValue = nv; return true; }
+    if (nv !== s) { wxMarkText(node, s); node.nodeValue = nv; return true; }
     return false;
   }
 
@@ -1153,7 +1190,7 @@
         var ph = els[j].getAttribute('placeholder');
         if (!ph) continue;
         var np = wx(ph);
-        if (np !== ph) els[j].setAttribute('placeholder', np);
+        if (np !== ph) { wxMarkPh(els[j], ph); els[j].setAttribute('placeholder', np); }
       }
     } catch (e) {}
     return n;
@@ -1188,9 +1225,13 @@
     } catch (e) { wxObs = null; }
   }
   function wxUninstall() {
-    if (!wxObs) return;
-    try { wxObs.disconnect(); } catch (e) {}
-    wxObs = null;
+    /* 先停观察器，再还原：顺序反了的话，还原动作本身会触发
+       characterData，观察器当场又把中文仙化回去，等于没还原。 */
+    if (wxObs) {
+      try { wxObs.disconnect(); } catch (e) {}
+      wxObs = null;
+    }
+    wxRestore();
   }
 
 
